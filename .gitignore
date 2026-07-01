@@ -17,6 +17,9 @@ checkpoints/
 *.pt
 reports/
 
+# 大型 RNA 数据（按 README，从 Google Drive 单独下载到 SlotSPE/dataset_csv/raw_rna_data_inter/）
+dataset_csv/raw_rna_data_inter/*_rna_inter.csv
+
 # 外部依赖（SlotSPE 基座不放进本仓库）
 SlotSPE/
 SlotSPE-main/
