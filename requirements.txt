@@ -1,0 +1,16 @@
+# 45_otehv2_rankevent (V45) 独立依赖
+#
+# torch / torchvision 请按你的 CUDA 版本单独安装，例如:
+#   pip install torch==2.1.0+cu118 torchvision==0.16.0+cu118 --index-url https://download.pytorch.org/whl/cu118
+# 没有 GPU 也可以跑 CPU 版（smoke_test.py 不需要 GPU），例如:
+#   pip install torch torchvision
+
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+scikit-survival>=0.21.0
+einops>=0.6.0
+lifelines>=0.27.0
+matplotlib>=3.5.0
+tqdm>=4.62.0
+PyYAML>=6.0

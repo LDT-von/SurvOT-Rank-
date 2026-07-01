@@ -1,0 +1,36 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# virtual envs
+.venv/
+venv/
+.env
+
+# 训练输出（结果不进仓库，只留代码）
+results/
+results_*/
+checkpoints/
+*.pth
+*.pkl
+*.log
+*.pt
+reports/
+
+# 外部依赖（SlotSPE 基座不放进本仓库）
+SlotSPE/
+SlotSPE-main/
+
+# Jupyter / IDE
+.ipynb_checkpoints/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 大文件 / 临时
+*.tmp
+*.bak
+*.zip
+*.tar.gz

@@ -1,0 +1,30 @@
+SurvOT-Rank- (45_otehv2_rankevent) — Optimal-transport-induced event hazard
+decomposition for multimodal cancer survival analysis, with pairwise ranking
+supervision and gated event aggregation.
+
+Copyright (c) 2026 LDT-von
+
+This work reuses the data-loading pipeline, slot attention, omics encoder and
+survival loss functions from:
+
+    SlotSPE: Slot-based Survival with Positional Encoding
+    (Zhang et al., ICLR 2026)
+    https://github.com/zylvemvet/SlotSPE
+
+Both this repository and the upstream SlotSPE base are released under the
+Creative Commons Attribution-NonCommercial 4.0 International License
+(CC BY-NC 4.0). A copy of the license is available at:
+
+    https://creativecommons.org/licenses/by-nc/4.0/legalcode
+
+You are free to:
+  - Share: copy and redistribute the material in any medium or format
+  - Adapt: remix, transform, and build upon the material
+
+Under the following terms:
+  - Attribution: you must give appropriate credit, provide a link to the
+    license, and indicate if changes were made.
+  - NonCommercial: you may not use the material for commercial purposes.
+
+If you use this work in academic research, please cite both this repository
+and the original SlotSPE paper (Zhang et al., ICLR 2026).
