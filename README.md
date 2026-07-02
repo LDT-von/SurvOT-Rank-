@@ -169,3 +169,35 @@ python train.py \
 - 本仓库只验证过 TCGA-BLCA；换 study 需要确认 SlotSPE 基座里有对应的
   clinical/RNA/split 数据
 - 不含 `common/model_factory.py` 的多方法切换能力，这个仓库只跑 V45 一个模型
+
+## 复现结果（最近一次实测）
+
+设置：TCGA-BLCA, 5-fold, 30 epoch, seed=3, batch_size=4, lr=5e-4,
+signatures=combine, rna_format=Pathways。
+启动：`run_v45_5fold_30ep.bat`（Windows）或等价 `python train.py ...` 命令
+（与 `run_v45_5fold_30ep.bat` 中完全相同的 flags）。
+
+| Fold | best val_cindex | @ epoch |
+|------|-----------------|---------|
+| 0 | 0.6997 | 3 |
+| 1 | 0.7107 | 3 |
+| 2 | 0.7102 | 11 |
+| 3 | 0.6574 | 20 |
+| 4 | 0.6868 | 5 |
+| **mean ± std** | **0.6929 ± 0.0198** | — |
+
+附属指标均值：c-index_ipcw=0.6341, IBS=0.2519, iauc=0.6400。
+完整训练日志与每 epoch 曲线见
+`results_v45_5fold_30ep/blca/SlotSPE_otehv2_rankevent/.../summary.csv` 与
+`epoch_curve_fold{0..4}.csv`。`process_monitor_fold{0..4}.csv` 是后台
+`utils/monitor.py` 写入的 CPU/RAM/GPU/磁盘/网络采样，可用于复盘资源曲线。
+
+> 训练时长：约 8h35min（在 RTX 3090, 12 vCPU, 24 GB RAM 上）。
+
+## 监控 / 性能打点
+
+`utils/monitor.py` 提供一个**零阻塞**的后台采样器，跑训练时只需在 `train.py`
+里 4 行引用（构造 → start → 每 batch `set_meta()` → stop）即可在
+`results_dir/process_monitor_fold{fold}.csv` 拿到一份 CPU/RAM/GPU/磁盘/网络/
+线程的时间序列，便于复盘 OOM、显存利用率低、数据加载瓶颈等。可独立
+`python utils/monitor.py` 跑 5 秒冒烟测试。
