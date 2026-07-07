@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+.env
+
+# 实验输出
+sweep_results/
+sweep_v2_results/
+sweep_v2paired_results/
+real_run_results/
+results/
+*.pth
+*.pkl
+*.log
+# sweep_results_* 只保留 summary 和 epoch_curve CSV
+!sweep_results_*/**/summary.csv
+!sweep_results_*/**/epoch_curve_*.csv
+
+# 中间产物
+*.png
+*.csv
+!02_*/IDEA.md
+!*/HOWTO.md
+!*/README.md
+!*/IDEA.md
+# 文献综述里的 csv 是文档不是结果, 保留
+!literature_review/**/*.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.codegraph/
+commit_msg.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 旧运行时日志（保留 /data1/sweep_results_30ep/_logs/ 作为唯一日志源）
+logs/
+_best_main.log
+logs_v45_blca.log

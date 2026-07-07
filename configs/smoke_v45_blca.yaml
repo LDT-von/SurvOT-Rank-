@@ -1,0 +1,61 @@
+name: smoke_v45_blca
+description: Fast syntax/data-path smoke run for V45.
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 256
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 1
+
+train:
+  survot_method: otehv2_rankevent
+  specific_simple: smoke_v45_blca
+  results_dir: results/smoke_v45_blca
+  max_epochs: 1
+  batch_size: 2
+  seed: 3
+  lr: 0.0005
+  gpu: 0
+  num_workers: 0
+  bag_loss: nll_surv
+  alpha_surv: 1.0
+  max_smoke_batches: 2
+  min_free_space_gb: 0.1
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 2
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 10
+  otehv2_warmup: 1
+  otehv2_num_events: 8
+  otehv2_heads: 4
+  otehv2_layers: 1
+  otehv2_dropout: 0.1
+  lambda_otehv2_ot: 0.06
+  lambda_otehv2_div: 0.01
+  lambda_otehv2_event_surv: 0.25
+  lambda_otehv2_recon: 0.2
+  lambda_rankevent_per_event: 0.15
+  lambda_rankevent_rank: 0.15
+  lambda_rankevent_global_cons: 0.02
+  lambda_rankevent_gate_ent: 0.005
+  rankevent_eps_start: 0.10
+  rankevent_eps_end: 0.05
+  rankevent_eps_anneal_epochs: 12
+  rankevent_global_init: -2.0

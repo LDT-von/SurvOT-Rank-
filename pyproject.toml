@@ -1,0 +1,21 @@
+[project]
+name = "survot-rank"
+version = "0.1.0"
+description = "SurvOT-Rank survival modeling framework"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.21.0",
+  "pandas>=1.3.0",
+  "scikit-learn>=1.0.0",
+  "scikit-survival>=0.21.0",
+  "einops>=0.6.0",
+  "matplotlib>=3.5.0",
+  "tqdm>=4.62.0",
+  "PyYAML>=6.0",
+]
+
+[project.scripts]
+survot-rank = "survot_rank.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["survot_rank*"]
