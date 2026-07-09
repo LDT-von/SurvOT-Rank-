@@ -101,6 +101,13 @@ class SurvivalDatasetFactory:
         else:
             cols = base_cols
         clinical_df = clinical_df[cols]
+
+        # Encode categorical clinical features
+        if self.use_clinical_modality:
+            for col in self.clinical_feature_cols:
+                if clinical_df[col].dtype == "object":
+                    clinical_df[col] = pd.Categorical(clinical_df[col]).codes
+
         self.clinical_df = clinical_df.dropna()
         # reindex the clinical data
         self.clinical_df = self.clinical_df.reset_index(drop=True)
@@ -291,9 +298,9 @@ class SurvivalDataset(Dataset):
     def __len__(self):
         return len(self.label_df)
 
-    def __getitem__(self, idx):
-        case_id = self.label_df.loc[idx, 'case id']
-        slides = self.label_df.loc[idx, 'wsi']
+    def __getitem__(self, batch_idx):
+        case_id = self.label_df.loc[batch_idx, 'case id']
+        slides = self.label_df.loc[batch_idx, 'wsi']
         label, event_time, censorship = self.get_label(case_id)
         wsi = self.load_wsi(slides)
         genes = self.load_genes(case_id)
@@ -301,21 +308,21 @@ class SurvivalDataset(Dataset):
         # sample from the patches
         if self.dataset_factory.num_patches is not None and self.split_key == 'train':
             n_samples = min(self.dataset_factory.num_patches, wsi.size(0))
-            idx = np.sort(np.random.choice(wsi.size(0), n_samples, replace=False))
-            wsi = wsi[idx, :]
+            patch_idx = np.sort(np.random.choice(wsi.size(0), n_samples, replace=False))
+            wsi = wsi[patch_idx, :]
 
             if n_samples < self.dataset_factory.num_patches:
                 wsi = torch.cat([wsi, torch.zeros(self.dataset_factory.num_patches - n_samples, wsi.size(1))], dim=0)
         if self.dataset_factory.num_genes is not None and self.split_key == 'train':
             if self.dataset_factory.rna_format != "Pathways":
                 n_genes = min(self.dataset_factory.num_genes, genes.size(0))
-                idx = np.sort(np.random.choice(genes.size(0), n_genes, replace=False))
-                genes = genes[idx]
+                gene_idx = np.sort(np.random.choice(genes.size(0), n_genes, replace=False))
+                genes = genes[gene_idx]
                 if n_genes < self.dataset_factory.num_genes:
                     genes = torch.cat([genes, torch.zeros(self.dataset_factory.num_genes - n_genes)], dim=0)
 
         if getattr(self.dataset_factory, "use_clinical_modality", False):
-            clinical_values = self.label_df.loc[idx, self.dataset_factory.clinical_feature_cols].values.astype(np.float32)
+            clinical_values = self.label_df.loc[batch_idx, self.dataset_factory.clinical_feature_cols].values.astype(np.float32)
             clinical_tensor = torch.from_numpy(clinical_values)
             return wsi, genes, label, event_time, censorship, clinical_tensor
         return wsi, genes, label, event_time, censorship

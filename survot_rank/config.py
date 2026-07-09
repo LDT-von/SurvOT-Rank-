@@ -76,8 +76,13 @@ def config_to_argv(config: dict[str, Any]) -> list[str]:
         if value is True:
             argv.append(flag)
         elif isinstance(value, (list, tuple)):
-            argv.append(flag)
-            argv.extend(str(item) for item in value)
+            # Special case: clinical_feature_cols is passed as comma-separated string
+            if key == "clinical_feature_cols":
+                argv.append(flag)
+                argv.append(",".join(str(item) for item in value))
+            else:
+                argv.append(flag)
+                argv.extend(str(item) for item in value)
         else:
             argv.extend([flag, str(value)])
     return argv

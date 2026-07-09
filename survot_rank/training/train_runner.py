@@ -509,7 +509,12 @@ def run(args):
     args = _prepare_for_experiment(args)
     ensure_min_free_space(args.results_dir, args.min_free_space_gb, "after experiment directory initialization")
 
-    # 2. 鏁版嵁闆嗗伐鍘?(涓€娆℃瀯閫? 澶?fold 澶嶇敤)
+    # 2. 临床特征列解析
+    clinical_feature_cols = None
+    if getattr(args, "clinical_feature_cols", None):
+        clinical_feature_cols = [c.strip() for c in args.clinical_feature_cols.split(",") if c.strip()]
+
+    # 3. 数据集工厂 (一次构建，跨 fold 重用)
     dataset_factory = SurvivalDatasetFactory(
         study=args.study,
         data_path=args.data_path,
@@ -519,9 +524,15 @@ def run(args):
         label_col=args.label_col,
         num_genes=args.num_genes,
         num_patches=args.num_patches,
+        clinical_feature_cols=clinical_feature_cols,
     )
 
-    # 3. 杩囨护鎺?RNA 琛ㄩ噷娌℃湁鐨?case_id (閬垮厤璁粌鏃?KeyError)
+    # 传递临床模态开关给模型
+    if clinical_feature_cols and len(clinical_feature_cols) > 0:
+        args.otehv2v2_use_clinical = True
+        args.otehv2v2_clinical_feature_dim = len(clinical_feature_cols)
+
+    # 4. 过滤掉 RNA 表里没有的 case_id (避免训练时 KeyError)
     if args.rna_format in ("Pathways", "RNASeq", "GeneEmbedding"):
         rna_cases = set(dataset_factory.gene_data_df.columns)
         before = len(dataset_factory.clinical_df)
