@@ -1,7 +1,7 @@
 name: v45_blca
 description: Default V45 otehv2_rankevent BLCA 5-fold training config.
 data:
-  study: blca
+  study: hnsc
   data_root_dir: /data/CPathPatchFeature
   data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
   rna_format: Pathways
@@ -16,7 +16,7 @@ split:
 train:
   survot_method: otehv2_rankevent
   specific_simple: runall_otehv2_rankevent_30ep
-  results_dir: results/v45_blca
+  results_dir: results/v45_hnsc
   max_epochs: 30
   batch_size: 4
   seed: 3

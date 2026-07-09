@@ -9,6 +9,7 @@ import argparse
 
 METHOD_CHOICES = [
     "otehv2_rankevent",
+    "otehv2_rankevent_v2",
     "pet",
     "prognostic_event_transport",
     "ot_event_hazard_v2",
@@ -101,6 +102,22 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rankevent_dropout", type=float, default=0.1)
     parser.add_argument("--rankevent_rank_margin", type=float, default=0.0)
     parser.add_argument("--rankevent_rank_max_pairs", type=int, default=4096)
+
+    # OTEHV2RankEventV2 新增能力配置（默认全部关闭/退化为 V45 行为）。
+    # 三模态融合（临床模态）。
+    parser.add_argument("--otehv2v2_use_clinical", action="store_true", default=False)
+    parser.add_argument("--otehv2v2_clinical_feature_dim", type=int, default=0)
+    parser.add_argument("--otehv2v2_num_slots_clinical", type=int, default=8)
+    # 统一生存目标（Unified Objective）。
+    parser.add_argument("--otehv2v2_use_unified_objective", action="store_true", default=False)
+    parser.add_argument("--lambda_unified_rank", type=float, default=0.15)
+    # Slot 身份/状态解耦与路由机制重设计。
+    parser.add_argument("--otehv2v2_slot_disentangled", action="store_true", default=False)
+    parser.add_argument("--otehv2v2_slot_router", type=str, default="softmax", choices=["softmax", "sinkhorn"])
+    parser.add_argument("--otehv2v2_slot_cross_modal_cond", action="store_true", default=False)
+    parser.add_argument("--otehv2v2_slot_adaptive_iters", action="store_true", default=False)
+    parser.add_argument("--otehv2v2_sinkhorn_max_iters", type=int, default=20)
+    parser.add_argument("--otehv2v2_convergence_threshold", type=float, default=0.0)
 
     return parser
 

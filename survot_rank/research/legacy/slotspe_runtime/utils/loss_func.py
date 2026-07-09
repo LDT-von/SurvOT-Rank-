@@ -453,3 +453,146 @@ if __name__ == "__main__":
     c = torch.tensor([1,0,0,0,0,0,0,0,0,0]).float()
     p = get_permutation_matrix(t,c)
     print(p)
+
+
+##################################################
+# Unified Survival Objective (per-event NLL + pairwise
+# margin-calibrated ranking penalty in one module).
+##################################################
+
+class UnifiedSurvivalObjective(nn.Module):
+    """统一生存目标：把 per-event NLL 生存损失与 Cox 式成对排序约束
+    （margin-calibrated concordance penalty）整合为单个模块的单个标量输出。
+
+    设计上不是发明新的似然公式，而是复用现有实现的逐样本计算逻辑：
+    - `_per_event_nll` 复用 `OTEHV2RankEvent._nll_per_sample` 的逐样本 NLL 计算逻辑
+      （`survot_rank/research/methods/prognostic_event_transport/model.py`）。
+    - `_pairwise_margin_penalty` 复用 `OTEHV2RankEvent._ranking_loss` 的可比对筛选逻辑
+      （`comparable = (e>0.5) & (ti<tj)`）以及 `softplus` margin 惩罚项。
+
+    Parameters
+    ----------
+    margin: float
+        Cox 排序惩罚项的 margin，默认为 0.0（与 `OTEHV2RankEvent.rank_margin` 默认值一致）。
+    rank_weight: float
+        排序惩罚项相对 NLL 的权重系数。
+    eps: float
+        数值稳定常数，避免对极小值取 log。
+    """
+
+    def __init__(self, margin=0.0, rank_weight=1.0, eps=1e-7):
+        super().__init__()
+        self.margin = margin
+        self.rank_weight = rank_weight
+        self.eps = eps
+
+    @staticmethod
+    def _nll_per_sample(logits, y, c, eps=1e-7):
+        """逐样本离散时间生存 NLL。
+
+        与 `OTEHV2RankEvent._nll_per_sample` 逐位一致，独立复制到此处以便
+        `loss_func.py` 内部可单独测试，不依赖 `prognostic_event_transport` 模块。
+        """
+        y = y.view(-1, 1).long()
+        c = c.view(-1, 1).float()
+        hazards = torch.sigmoid(logits)
+        survival = torch.cumprod(1.0 - hazards, dim=1)
+        survival_pad = torch.cat([torch.ones_like(c), survival], dim=1)
+        s_prev = torch.gather(survival_pad, 1, y).clamp_min(eps)
+        h_this = torch.gather(hazards, 1, y).clamp_min(eps)
+        s_this = torch.gather(survival_pad, 1, y + 1).clamp_min(eps)
+        uncensored = -(1.0 - c) * (torch.log(s_prev) + torch.log(h_this))
+        censored = -c * torch.log(s_this)
+        return (uncensored + censored).view(-1)
+
+    def _per_event_nll(self, event_logits, y, c):
+        """对 event_logits 计算逐样本 NLL 后取均值。
+
+        - 若 `event_logits` 形状为 `[batch, num_events, num_classes]`（即
+          `OTEHV2RankEvent._per_event_surv_loss` 的输入形状），展平为
+          `[batch*num_events, num_classes]` 后逐样本计算再取均值。
+        - 若 `event_logits` 形状为 `[batch, num_classes]`，直接逐样本计算后取均值。
+        """
+        if event_logits.dim() == 3:
+            bsz, num_events, num_classes = event_logits.shape
+            flat = event_logits.reshape(bsz * num_events, num_classes)
+            y_rep = y.view(-1, 1).expand(-1, num_events).reshape(-1)
+            c_rep = c.view(-1, 1).expand(-1, num_events).reshape(-1)
+            per_sample = self._nll_per_sample(flat, y_rep, c_rep, eps=self.eps)
+        else:
+            per_sample = self._nll_per_sample(event_logits, y, c, eps=self.eps)
+        return per_sample.mean()
+
+    @staticmethod
+    def _risk_from_logits(logits):
+        """由离散时间 hazard logits 计算标量风险分数（越大风险越高）。"""
+        hazards = torch.sigmoid(logits)
+        survival = torch.cumprod(1.0 - hazards, dim=1)
+        risk = -survival.sum(dim=1)
+        return risk
+
+    def _pairwise_margin_penalty(self, risk, y, c):
+        """成对 margin 惩罚项，复用 `OTEHV2RankEvent._ranking_loss` 的可比对筛选逻辑。
+
+        `comparable = (e>0.5) & (ti<tj)`：仅当样本 i 未删失且 t_i < t_j 时，
+        (i, j) 才被视为一对可比对（Cox 意义下 i 的风险理应大于 j）。
+        无可比对时返回 `risk.sum()*0.0`，保持梯度图连通、值为 0。
+        """
+        t = y.float().view(-1)
+        e = (1.0 - c.float()).view(-1)
+        if risk.numel() < 2 or e.sum() <= 0:
+            return risk.sum() * 0.0
+        ti = t.view(-1, 1)
+        tj = t.view(1, -1)
+        comparable = (e.view(-1, 1) > 0.5) & (ti < tj)
+        if comparable.sum() == 0:
+            return risk.sum() * 0.0
+        diff = risk.view(-1, 1) - risk.view(1, -1)
+        values = F.softplus(-(diff - self.margin))[comparable]
+        return values.mean()
+
+    def forward(self, event_logits=None, risk_logits=None, y=None, c=None):
+        """计算统一生存目标标量损失。
+
+        Parameters
+        ----------
+        event_logits: (batch, num_events, num_classes) 或 (batch, num_classes)，可选
+            事件级 hazard logits，用于计算 per-event NLL；若未提供 `risk_logits`，
+            也会作为风险分数的来源（3 维时对 `num_events` 维取均值）。
+        risk_logits: (batch, num_classes)，可选
+            用于计算风险分数与排序惩罚项的 hazard logits。
+        y: (batch,) 或 (batch, 1)
+            离散时间标签（时间箱索引）。
+        c: (batch,) 或 (batch, 1)
+            删失指示（1 表示删失，0 表示观测到事件）。
+
+        Returns
+        -------
+        Tensor
+            0 维（标量）张量，dtype 与输入 logits 一致。
+        """
+        if event_logits is None and risk_logits is None:
+            raise ValueError(
+                "UnifiedSurvivalObjective 需要至少提供 event_logits 或 risk_logits 之一"
+            )
+
+        ref_logits = event_logits if event_logits is not None else risk_logits
+        dtype = ref_logits.dtype
+        device = ref_logits.device
+
+        base_nll = torch.zeros((), dtype=dtype, device=device)
+        if event_logits is not None:
+            base_nll = self._per_event_nll(event_logits, y, c)
+
+        if risk_logits is not None:
+            risk_source = risk_logits
+        elif event_logits.dim() == 3:
+            risk_source = event_logits.mean(dim=1)
+        else:
+            risk_source = event_logits
+        risk = self._risk_from_logits(risk_source)
+
+        concordance_penalty = self._pairwise_margin_penalty(risk, y, c)
+
+        total = base_nll + self.rank_weight * concordance_penalty
+        return total.to(dtype)

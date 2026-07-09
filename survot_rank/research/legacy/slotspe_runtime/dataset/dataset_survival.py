@@ -55,7 +55,8 @@ class SurvivalDatasetFactory:
                  n_bins=4,
                  eps=1e-6,
                  num_patches=4096,
-                 num_genes=None):
+                 num_genes=None,
+                 clinical_feature_cols=None):
         self.study = study
         self.data_path = data_path
         self.signature = signature
@@ -69,6 +70,8 @@ class SurvivalDatasetFactory:
         self.num_genes = num_genes
         self.eps = eps
         self.label_col = label_col
+        self.clinical_feature_cols = clinical_feature_cols
+        self.use_clinical_modality = clinical_feature_cols is not None and len(clinical_feature_cols) > 0
 
         if self.label_col == "survival_months_os":
             self.survival_endpoint = "OS"
@@ -92,7 +95,12 @@ class SurvivalDatasetFactory:
     def _setup_clinical_data(self):
         clinical_path = os.path.join(self.data_path, "clinical", "all", f"{self.study}.csv")
         clinical_df = pd.read_csv(clinical_path)
-        clinical_df = clinical_df[["case id", self.label_col, self.censorship_var, "wsi"]]
+        base_cols = ["case id", self.label_col, self.censorship_var, "wsi"]
+        if self.use_clinical_modality:
+            cols = base_cols + list(self.clinical_feature_cols)
+        else:
+            cols = base_cols
+        clinical_df = clinical_df[cols]
         self.clinical_df = clinical_df.dropna()
         # reindex the clinical data
         self.clinical_df = self.clinical_df.reset_index(drop=True)
@@ -306,6 +314,10 @@ class SurvivalDataset(Dataset):
                 if n_genes < self.dataset_factory.num_genes:
                     genes = torch.cat([genes, torch.zeros(self.dataset_factory.num_genes - n_genes)], dim=0)
 
+        if getattr(self.dataset_factory, "use_clinical_modality", False):
+            clinical_values = self.label_df.loc[idx, self.dataset_factory.clinical_feature_cols].values.astype(np.float32)
+            clinical_tensor = torch.from_numpy(clinical_values)
+            return wsi, genes, label, event_time, censorship, clinical_tensor
         return wsi, genes, label, event_time, censorship
 
 
@@ -321,7 +333,11 @@ def _collate_pathways(batch):
     event_time = torch.FloatTensor([item[3] for item in batch])
     c = torch.FloatTensor([item[4] for item in batch])
 
-    return [img, omic_data_list, label, event_time, c]
+    result = [img, omic_data_list, label, event_time, c]
+    if len(batch[0]) > 5:
+        clinical = torch.stack([item[5] for item in batch])
+        result.append(clinical)
+    return result
 
 if __name__ == '__main__':
     from torch.utils.data import DataLoader, SubsetRandomSampler

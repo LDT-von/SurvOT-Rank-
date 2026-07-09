@@ -171,10 +171,11 @@ def _unpack_data(data, device, omics_format):
     event_time = data[3].to(device)
     c = data[4].to(device)
 
-    return data_wsi, data_omics, y_disc, event_time, c
+    x_clinical = data[5].to(device) if len(data) > 5 else None
+    return data_wsi, data_omics, y_disc, event_time, c, x_clinical
 
 def _process_data_and_forward(args, model, data, device, test=False):
-    data_wsi, data_omics, y_disc, event_time, c = _unpack_data(data, device, args.rna_format)
+    data_wsi, data_omics, y_disc, event_time, c, x_clinical = _unpack_data(data, device, args.rna_format)
     
     input_args = {"x_wsi": data_wsi}
 
@@ -189,6 +190,8 @@ def _process_data_and_forward(args, model, data, device, test=False):
         input_args['y'] = y_disc
         input_args['c'] = c
 
+    if getattr(args, "otehv2v2_use_clinical", False) and x_clinical is not None:
+        input_args["x_clinical"] = x_clinical
 
     if args.rna_format == "Pathways" or args.rna_format == "RankedGenes":
         for i in range(len(data_omics)):
