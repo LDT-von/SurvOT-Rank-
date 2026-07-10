@@ -111,6 +111,9 @@ def build_base_parser() -> argparse.ArgumentParser:
     # 统一生存目标（Unified Objective）。
     parser.add_argument("--otehv2v2_use_unified_objective", action="store_true", default=False)
     parser.add_argument("--lambda_unified_rank", type=float, default=0.15)
+    # 可学习自适应损失加权（Kendall 2018 同方差不确定性加权）。开启后用可学习对数
+    # 方差替代人工固定 lambda 配平多项损失；默认关闭，等价于 V45 的固定权重路径。
+    parser.add_argument("--otehv2v2_learnable_loss_weights", action="store_true", default=False)
     # Slot 身份/状态解耦与路由机制重设计。
     parser.add_argument("--otehv2v2_slot_disentangled", action="store_true", default=False)
     parser.add_argument("--otehv2v2_slot_router", type=str, default="softmax", choices=["softmax", "sinkhorn"])

@@ -254,3 +254,60 @@ class TestFullCapabilityIntegration:
         x_clinical = inputs["x_clinical"]
         assert x_clinical.grad is not None
         assert x_clinical.grad.norm(p=2).item() > 0.0
+
+
+# ---------------------------------------------------------------------------
+# 可学习自适应损失加权（AdaptiveLossWeighter）接入测试
+# ---------------------------------------------------------------------------
+
+
+class TestLearnableLossWeights:
+    def test_weighter_module_registered_when_enabled(self):
+        # 开启可学习加权时，模型应持有 _loss_weighter 子模块，且其 log_var
+        # 参数进入 model.parameters()（可被优化器更新）。
+        torch.manual_seed(0)
+        args = make_args(otehv2v2_learnable_loss_weights=True)
+        model = OTEHV2RankEventV2(args, omic_input_dim=OMIC_INPUT_DIM)
+        assert hasattr(model, "_loss_weighter")
+        param_names = [n for n, _ in model.named_parameters()]
+        assert any("_loss_weighter.log_vars" in n for n in param_names)
+
+    def test_not_registered_when_disabled(self):
+        # 默认关闭时不应实例化 _loss_weighter。
+        torch.manual_seed(0)
+        args = make_args()  # 默认 otehv2v2_learnable_loss_weights=False
+        model = OTEHV2RankEventV2(args, omic_input_dim=OMIC_INPUT_DIM)
+        assert not hasattr(model, "_loss_weighter")
+
+    @pytest.mark.parametrize("use_clinical", [False, True])
+    def test_forward_backward_with_learnable_weights(self, use_clinical):
+        # 开启可学习加权后（分别在双模态与三模态路径下），完整前向+反向应
+        # 产生有限 aux_loss，且 log_var 参数收到非 NaN/Inf 梯度。
+        torch.manual_seed(0)
+        kwargs_args = dict(
+            otehv2v2_learnable_loss_weights=True,
+            otehv2v2_slot_cross_modal_cond=True,  # 触发 V2 自身 forward 而非委托父类
+        )
+        clinical_dim = None
+        if use_clinical:
+            kwargs_args.update(
+                otehv2v2_use_clinical=True,
+                otehv2v2_clinical_feature_dim=5,
+                otehv2v2_num_slots_clinical=3,
+            )
+            clinical_dim = 5
+        args = make_args(**kwargs_args)
+        model = OTEHV2RankEventV2(args, omic_input_dim=OMIC_INPUT_DIM)
+        model.train()
+
+        inputs = make_inputs(batch=2, clinical_feature_dim=clinical_dim)
+        logits, aux_loss = model(**inputs)
+        assert torch.isfinite(aux_loss)
+
+        (logits.sum() + aux_loss).backward()
+        grads = [
+            p.grad for n, p in model.named_parameters() if "_loss_weighter.log_vars" in n and p.grad is not None
+        ]
+        assert len(grads) > 0
+        for g in grads:
+            assert torch.isfinite(g).all()
