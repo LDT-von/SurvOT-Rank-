@@ -52,6 +52,7 @@ _OTEHV2V2_BOOL_FIELDS = (
     "otehv2v2_slot_disentangled",
     "otehv2v2_slot_cross_modal_cond",
     "otehv2v2_slot_adaptive_iters",
+    "otehv2v2_learnable_loss_weights",
 )
 _OTEHV2V2_INT_FIELDS = (
     "otehv2v2_clinical_feature_dim",

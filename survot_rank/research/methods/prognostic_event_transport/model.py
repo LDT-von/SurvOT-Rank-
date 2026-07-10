@@ -311,6 +311,32 @@ class OTEHV2RankEventV2(OTEHV2RankEvent):
             margin=self.rank_margin, rank_weight=self.lambda_unified_rank
         )
 
+        # 可学习自适应损失加权（Kendall 2018 同方差不确定性加权），默认关闭。
+        # 开启后用可学习对数方差替代人工固定 lambda 来配平多项损失，缓解
+        # “损失函数太多、手工权重配不平”导致的协同崩塌（对照历史 V44 教训）。
+        self.otehv2v2_learnable_loss_weights = getattr(
+            args, "otehv2v2_learnable_loss_weights", False
+        )
+        if self.otehv2v2_learnable_loss_weights:
+            from survot_rank.research.components.adaptive_loss_weighter import (
+                AdaptiveLossWeighter,
+            )
+            # 注册所有可能出现的损失项名称超集（不同能力开关下实际用到的子集不同，
+            # forward 时只传入当前激活的子集）。
+            self._loss_weighter = AdaptiveLossWeighter(
+                [
+                    "nll",
+                    "per_event",
+                    "rank",
+                    "global_cons",
+                    "unified",
+                    "ot",
+                    "div",
+                    "recon",
+                    "gate_ent",
+                ]
+            )
+
         # Slot 身份/状态解耦与路由机制重设计相关配置（需求4+5），默认关闭/使用旧行为。
         self.otehv2v2_slot_disentangled = getattr(args, "otehv2v2_slot_disentangled", False)
         self.otehv2v2_slot_router = getattr(args, "otehv2v2_slot_router", "softmax")
@@ -418,11 +444,22 @@ class OTEHV2RankEventV2(OTEHV2RankEvent):
         if not self.training:
             return logits, 0.0
 
+        # ------------------------------------------------------------------
+        # 收集各损失项的“原始（未乘 lambda）值”与对应的固定 lambda 权重。
+        # - 关闭可学习加权时（默认）：aux_loss = sum(lambda_k * raw_k)，与原实现
+        #   逐项等价（含 OT warmup ramp）。
+        # - 开启可学习加权时：把原始损失项交给 AdaptiveLossWeighter，用可学习对数
+        #   方差自动配平，不再使用人工固定 lambda。
+        # ------------------------------------------------------------------
+        raw_losses: dict = {}
+        lambdas: dict = {}
+
         if self.otehv2v2_use_clinical:
-            aux_loss = (
-                self.lambda_div * self._diversity_loss(event_tokens)
-                + self.lambda_gate_ent * self._gate_entropy_penalty(gate)
-            )
+            # 三模态融合路径：沿用原实现，只有 diversity + gate entropy 两个正则项。
+            raw_losses["div"] = self._diversity_loss(event_tokens)
+            lambdas["div"] = self.lambda_div
+            raw_losses["gate_ent"] = self._gate_entropy_penalty(gate)
+            lambdas["gate_ent"] = self.lambda_gate_ent
         else:
             epoch = self._current_epoch(kwargs)
             ramp = 0.0 if epoch < self.ot_warmup else min(1.0, (epoch - self.ot_warmup) / max(1, self.ot_warmup))
@@ -430,26 +467,46 @@ class OTEHV2RankEventV2(OTEHV2RankEvent):
             recon_wsi = self.recon_wsi(slots_wsi)
             recon_omic = self.recon_omic(slots_omic)
             recon_loss = F.mse_loss(recon_wsi, slots_omic) + F.mse_loss(recon_omic, slots_wsi)
-            aux_loss = (
-                ramp * self.lambda_ot * ot_mean
-                + self.lambda_div * self._diversity_loss(event_tokens)
-                + self.lambda_recon * recon_loss
-                + self.lambda_gate_ent * self._gate_entropy_penalty(gate)
-            )
+            # OT warmup ramp 是训练进度调度（非损失权重），无论是否可学习加权都保留，
+            # 直接折进 OT 项的原始值里。
+            raw_losses["ot"] = ramp * ot_mean
+            lambdas["ot"] = self.lambda_ot
+            raw_losses["div"] = self._diversity_loss(event_tokens)
+            lambdas["div"] = self.lambda_div
+            raw_losses["recon"] = recon_loss
+            lambdas["recon"] = self.lambda_recon
+            raw_losses["gate_ent"] = self._gate_entropy_penalty(gate)
+            lambdas["gate_ent"] = self.lambda_gate_ent
 
         if "y" in kwargs and "c" in kwargs:
             y, c = kwargs["y"], kwargs["c"]
             if self.otehv2v2_use_unified_objective:
-                aux_loss = aux_loss + self._unified_objective(
+                # 统一目标本身已含 per-event NLL + 排序惩罚，作为单个监督项。
+                raw_losses["unified"] = self._unified_objective(
                     event_logits=event_logits, risk_logits=logits, y=y, c=c
                 )
+                lambdas["unified"] = 1.0
             else:
                 event_mean_logits = event_logits.mean(dim=1)
                 loss_fn = NLLSurvLoss(alpha=getattr(self.args, "alpha_surv", 0.0))
-                aux_loss = aux_loss + self.lambda_event_surv * loss_fn(event_mean_logits, y=y, c=c, t=None)
-                aux_loss = aux_loss + self.lambda_per_event * self._per_event_surv_loss(event_logits, y, c)
-                aux_loss = aux_loss + self.lambda_rank * self._ranking_loss(logits, y, c)
-                aux_loss = aux_loss + self.lambda_global_cons * F.mse_loss(global_logits, event_mean_logits.detach())
+                raw_losses["nll"] = loss_fn(event_mean_logits, y=y, c=c, t=None)
+                lambdas["nll"] = self.lambda_event_surv
+                raw_losses["per_event"] = self._per_event_surv_loss(event_logits, y, c)
+                lambdas["per_event"] = self.lambda_per_event
+                raw_losses["rank"] = self._ranking_loss(logits, y, c)
+                lambdas["rank"] = self.lambda_rank
+                raw_losses["global_cons"] = F.mse_loss(global_logits, event_mean_logits.detach())
+                lambdas["global_cons"] = self.lambda_global_cons
+
+        if self.otehv2v2_learnable_loss_weights:
+            aux_loss = self._loss_weighter(raw_losses)
+        else:
+            aux_loss = None
+            for name, value in raw_losses.items():
+                term = lambdas[name] * value
+                aux_loss = term if aux_loss is None else aux_loss + term
+            if aux_loss is None:
+                aux_loss = logits.sum() * 0.0
 
         return logits, aux_loss
 
