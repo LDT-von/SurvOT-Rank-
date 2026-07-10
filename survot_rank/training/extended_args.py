@@ -10,6 +10,7 @@ import argparse
 METHOD_CHOICES = [
     "otehv2_rankevent",
     "otehv2_rankevent_v2",
+    "otehv2_timelocal_competing",
     "pet",
     "prognostic_event_transport",
     "ot_event_hazard_v2",
@@ -115,6 +116,13 @@ def build_base_parser() -> argparse.ArgumentParser:
     # 可学习自适应损失加权（Kendall 2018 同方差不确定性加权）。开启后用可学习对数
     # 方差替代人工固定 lambda 配平多项损失；默认关闭，等价于 V45 的固定权重路径。
     parser.add_argument("--otehv2v2_learnable_loss_weights", action="store_true", default=False)
+
+    # OTEHTimeLocalCompeting (V50) 专属超参数。骨架超参数 (otehv2_* / rankevent_*)
+    # 继承自 V45，含义不变，无需重复声明。
+    parser.add_argument("--lambda_timelocal_spec", type=float, default=0.01)
+    parser.add_argument("--lambda_timelocal_cover", type=float, default=0.01)
+    parser.add_argument("--lambda_compete_reg", type=float, default=0.001)
+    parser.add_argument("--compete_beta_init", type=float, default=-2.0)
     # Slot 身份/状态解耦与路由机制重设计。
     parser.add_argument("--otehv2v2_slot_disentangled", action="store_true", default=False)
     parser.add_argument("--otehv2v2_slot_router", type=str, default="softmax", choices=["softmax", "sinkhorn"])

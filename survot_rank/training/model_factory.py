@@ -29,6 +29,10 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "prognostic_event_transport"),
         "OTEHV2RankEventV2",
     ),
+    "otehv2_timelocal_competing": (
+        os.path.join("survot_rank", "research", "methods", "prognostic_event_transport"),
+        "OTEHTimeLocalCompeting",
+    ),
 }
 
 METHOD_ALIASES = {
@@ -37,6 +41,7 @@ METHOD_ALIASES = {
     "pet": "otehv2_rankevent",
     "prognostic_event_transport": "otehv2_rankevent",
     "45v2": "otehv2_rankevent_v2",
+    "50": "otehv2_timelocal_competing",
 }
 
 
