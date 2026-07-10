@@ -121,11 +121,22 @@ class SurvivalDatasetFactory:
         return uncensored_df
 
     def _disc_label(self, uncensored_df):
+        # 修复历史 bug：原实现先用 pd.qcut 在未删失（uncensored）病人身上算出正确的
+        # 等频分位数边界 q_bins，但紧接着又调用 pd.cut 对*全部*病人（含删失）做等宽
+        # 分箱并覆盖掉 disc_labels/q_bins，导致第一行 qcut 的计算完全是死代码。
+        # 实际生效的等宽分箱在右删失比例高（时间分布长尾）的生存数据上会把绝大多数
+        # 病人塞进第一个箱、最后一个箱只剩个位数样本（如 BLCA 4 类分布曾是
+        # {0:310, 1:50, 2:16, 3:4}，箱3 仅占 1.1%），5-fold 切分后某些折几乎分不到
+        # 箱3/箱2 样本，导致 C-index 在不同 fold 间出现看似随机、实则系统性的大幅波动。
+        #
+        # 修复：改用 pd.qcut 算出的等频边界，再用这组边界（两端扩展到覆盖全体病人，
+        # 而不仅是未删失病人，避免删失病人时间超出未删失病人范围时落到区间外变成
+        # NaN）对全部病人分箱，保证四个类别样本数大致均衡。
         disc_labels, q_bins = pd.qcut(uncensored_df[self.label_col], q=self.n_bins, retbins=True, labels=False)
-        q_bins[-1] = uncensored_df[self.label_col].max() + self.eps
-        q_bins[0] = uncensored_df[self.label_col].min() - self.eps
-        disc_labels, q_bins = pd.cut(self.clinical_df[self.label_col], bins=self.n_bins, retbins=True, labels=False,
-                                     right=False, include_lowest=True)
+        q_bins[0] = self.clinical_df[self.label_col].min() - self.eps
+        q_bins[-1] = self.clinical_df[self.label_col].max() + self.eps
+        disc_labels = pd.cut(self.clinical_df[self.label_col], bins=q_bins, labels=False,
+                              right=False, include_lowest=True)
         self.clinical_df.insert(2, 'label', disc_labels.values.astype(int))
         self.bins = q_bins
 
