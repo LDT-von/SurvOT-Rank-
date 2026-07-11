@@ -283,10 +283,11 @@ class TestLearnableLossWeights:
     def test_forward_backward_with_learnable_weights(self, use_clinical):
         # 开启可学习加权后（分别在双模态与三模态路径下），完整前向+反向应
         # 产生有限 aux_loss，且 log_var 参数收到非 NaN/Inf 梯度。
+        # 注意：这里*不*额外打开 cross_modal_cond，专门验证仅开 learnable 一个
+        # 开关时 V2 forward 也会真正被触发（回归 forward 分发 bug 的修复）。
         torch.manual_seed(0)
         kwargs_args = dict(
             otehv2v2_learnable_loss_weights=True,
-            otehv2v2_slot_cross_modal_cond=True,  # 触发 V2 自身 forward 而非委托父类
         )
         clinical_dim = None
         if use_clinical:
@@ -311,3 +312,44 @@ class TestLearnableLossWeights:
         assert len(grads) > 0
         for g in grads:
             assert torch.isfinite(g).all()
+
+
+# ---------------------------------------------------------------------------
+# 回归测试：纯损失侧开关（unified objective / learnable weights）不得被
+# forward 分发逻辑提前 return 跳过（此前的死开关 bug，解释了 abl_02 == abl_00）
+# ---------------------------------------------------------------------------
+
+
+class TestLossSideSwitchesNotDeadCode:
+    def test_unified_objective_switch_takes_effect_without_clinical(self):
+        # 仅开 unified_objective（不开 clinical / cross_modal）：aux_loss 的计算
+        # 应走 UnifiedSurvivalObjective 分支，而不是被提前 return 到父类。
+        # 通过“统一目标模块参数是否参与计算图”来间接验证：给统一目标一个可学习
+        # rank_weight 权重不方便探针，这里改为验证 aux_loss 与关闭该开关时不同。
+        torch.manual_seed(0)
+        inputs = make_inputs(batch=4)
+
+        torch.manual_seed(0)
+        args_off = make_args(
+            otehv2v2_use_unified_objective=False,
+            lambda_otehv2_ot=0.1, lambda_otehv2_div=0.1,
+            lambda_otehv2_recon=0.1, lambda_otehv2_event_surv=0.1,
+        )
+        model_off = OTEHV2RankEventV2(args_off, omic_input_dim=OMIC_INPUT_DIM)
+        model_off.train()
+        _, aux_off = model_off(**inputs)
+
+        torch.manual_seed(0)
+        args_on = make_args(
+            otehv2v2_use_unified_objective=True,
+            lambda_otehv2_ot=0.1, lambda_otehv2_div=0.1,
+            lambda_otehv2_recon=0.1, lambda_otehv2_event_surv=0.1,
+        )
+        model_on = OTEHV2RankEventV2(args_on, omic_input_dim=OMIC_INPUT_DIM)
+        model_on.train()
+        _, aux_on = model_on(**inputs)
+
+        # 两者损失组成不同（unified 用单一统一目标替代 4 项加权和），数值应不同。
+        assert not torch.isclose(aux_off, aux_on), (
+            "开启 unified_objective 后 aux_loss 与关闭时相同，说明开关未生效（死开关）"
+        )
