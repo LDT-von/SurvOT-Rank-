@@ -1,8 +1,10 @@
-name: abl_01_clinical
-description: 'Ablation ''abl_01_clinical'' for OTEHV2RankEventV2. Extra enabled capabilities
-  relative to V45 baseline: {''otehv2v2_use_clinical'': True}'
+name: v45v2_luad_clinical
+description: Full 5-fold V45v2 training on LUAD with clinical (age, gender).
+
 data:
-  study: blca
+  study: luad
+  # LUAD's UNI pt_files live under /data/CPathPatchFeature/nsclc/, not luad/.
+  wsi_path_override: /data/CPathPatchFeature/nsclc/uni/pt_files
   data_root_dir: /data/CPathPatchFeature
   data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
   rna_format: Pathways
@@ -12,14 +14,17 @@ data:
   num_patches: 2048
   encoding_dim: 1024
   clinical_feature_cols:
-  - age
+    - age
+    - gender
+
 split:
   k_start: 0
   k_end: 5
+
 train:
   survot_method: otehv2_rankevent_v2
-  specific_simple: abl_01_clinical
-  results_dir: results/ablation/abl_01_clinical
+  specific_simple: v45v2_luad_clinical
+  results_dir: results/v45v2_luad_clinical
   max_epochs: 30
   batch_size: 4
   seed: 3
@@ -29,6 +34,7 @@ train:
   bag_loss: nll_surv
   alpha_surv: 1.0
   min_free_space_gb: 2.0
+
 slot:
   slot_num_wsi: 8
   slot_num_omics: 8
@@ -36,6 +42,7 @@ slot:
   temperature: 0.01
   topk_ratio: 0.25
   top_k_method: parallel_topk_st
+
 model:
   otehv2_eps: 0.05
   otehv2_iter: 50
@@ -52,10 +59,11 @@ model:
   lambda_rankevent_rank: 0.15
   lambda_rankevent_global_cons: 0.02
   lambda_rankevent_gate_ent: 0.005
-  rankevent_eps_start: 0.1
+  rankevent_eps_start: 0.10
   rankevent_eps_end: 0.05
   rankevent_eps_anneal_epochs: 12
   rankevent_global_init: -2.0
+
+clinical:
   otehv2v2_use_clinical: true
-  otehv2v2_clinical_feature_dim: 1
-  otehv2v2_num_slots_clinical: 4
+  otehv2v2_clinical_feature_dim: 2
