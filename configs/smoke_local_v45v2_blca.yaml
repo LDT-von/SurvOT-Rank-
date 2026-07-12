@@ -1,9 +1,14 @@
-name: smoke_v45_blca
-description: Fast syntax/data-path smoke run for V45.
+name: smoke_local_v45v2_blca
+description: >
+  本机（Windows + RTX 3060 6GB）真实数据 smoke 测试。使用
+  E:\TCGA-huggingface\blca\uni\pt_files 下的真实 UNI WSI 特征，验证
+  OTEHV2RankEventV2（新开关全部关闭，等价于 V45 baseline）能否在本机
+  真实数据上跑通一个 epoch 的少量 batch。显存有限，num_patches/batch_size
+  均调小。
 
 data:
   study: blca
-  data_root_dir: /data/CPathPatchFeature
+  data_root_dir: E:/TCGA-huggingface
   data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
   rna_format: Pathways
   label_col: survival_months_dss
@@ -11,9 +16,6 @@ data:
   n_classes: 4
   num_patches: 256
   encoding_dim: 1024
-  clinical_feature_cols:
-    - age
-    - gender
 
 split:
   k_start: 0
@@ -21,8 +23,8 @@ split:
 
 train:
   survot_method: otehv2_rankevent_v2
-  specific_simple: smoke_v45_blca
-  results_dir: results/smoke_v45_blca
+  specific_simple: smoke_local_v45v2_blca
+  results_dir: results/smoke_local_v45v2_blca
   max_epochs: 1
   batch_size: 2
   seed: 3
@@ -31,7 +33,7 @@ train:
   num_workers: 0
   bag_loss: nll_surv
   alpha_surv: 0.15
-  max_smoke_batches: 2
+  max_smoke_batches: 8
   min_free_space_gb: 0.1
 
 slot:
@@ -62,7 +64,5 @@ model:
   rankevent_eps_end: 0.05
   rankevent_eps_anneal_epochs: 12
   rankevent_global_init: -2.0
-
-clinical:
-  otehv2v2_use_clinical: true
-  otehv2v2_clinical_feature_dim: 2
+  # 以下新增开关全部保持默认关闭（不写等于 False），
+  # 确保这次 smoke 验证的是"新代码路径 = 旧 V45 行为"这条底线。

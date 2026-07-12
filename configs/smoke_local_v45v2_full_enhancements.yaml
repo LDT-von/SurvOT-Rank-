@@ -1,0 +1,97 @@
+name: smoke_local_v45v2_full_enhancements
+description: >
+  本机（Windows + RTX 3060 6GB）真实数据 smoke 测试。
+  开启全部 5 个新功能：
+  1. 临床模态融合
+  2. 统一生存目标函数
+  3. Slot 身份/状态解耦
+  4. Sinkhorn 路由机制
+  5. 跨模态条件化
+
+data:
+  study: blca
+  data_root_dir: E:/TCGA-huggingface
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 256
+  encoding_dim: 1024
+  # 临床特征列（从 GDC 下载的 age/stage/grade）
+  clinical_feature_cols:
+    - age_at_diagnosis
+    - pathologic_stage
+    - histological_grade
+
+split:
+  k_start: 0
+  k_end: 1
+
+train:
+  survot_method: otehv2_rankevent_v2
+  specific_simple: smoke_local_v45v2_full_enhancements
+  results_dir: results/smoke_local_v45v2_full_enhancements
+  max_epochs: 1
+  batch_size: 2
+  seed: 3
+  lr: 0.0005
+  gpu: 0
+  num_workers: 0
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  max_smoke_batches: 8
+  min_free_space_gb: 0.1
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 2
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 10
+  otehv2_warmup: 1
+  otehv2_num_events: 8
+  otehv2_heads: 4
+  otehv2_layers: 1
+  otehv2_dropout: 0.1
+  lambda_otehv2_ot: 0.06
+  lambda_otehv2_div: 0.01
+  lambda_otehv2_event_surv: 0.25
+  lambda_otehv2_recon: 0.2
+  lambda_rankevent_per_event: 0.15
+  lambda_rankevent_rank: 0.15
+  lambda_rankevent_global_cons: 0.02
+  lambda_rankevent_gate_ent: 0.005
+  rankevent_eps_start: 0.10
+  rankevent_eps_end: 0.05
+  rankevent_eps_anneal_epochs: 12
+  rankevent_global_init: -2.0
+
+  # ===== 开启全部 5 个新功能 =====
+  # 功能 1：临床模态融合
+  otehv2v2_use_clinical: true
+  otehv2v2_clinical_feature_dim: 3  # age + stage + grade
+  otehv2v2_num_slots_clinical: 4
+
+  # 功能 2：统一生存目标函数
+  otehv2v2_use_unified_objective: true
+  lambda_unified_rank: 0.15
+
+  # 功能 3：Slot 身份/状态解耦
+  otehv2v2_slot_disentangled: true
+
+  # 功能 4：Sinkhorn 路由机制
+  otehv2v2_slot_router: sinkhorn
+  otehv2v2_sinkhorn_max_iters: 20
+
+  # 功能 5：跨模态条件化
+  otehv2v2_slot_cross_modal_cond: true
+
+  # 自适应迭代次数（可选）
+  otehv2v2_slot_adaptive_iters: false
+  otehv2v2_convergence_threshold: 0.001

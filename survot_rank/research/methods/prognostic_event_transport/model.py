@@ -387,9 +387,26 @@ class OTEHV2RankEventV2(OTEHV2RankEvent):
         # 三模态 OT 融合模块（需求1，任务9.3）。
 
     def forward(self, **kwargs):
-        # 默认关闭时（临床模态 + 跨模态条件化均未启用）：直接复用父类前向逻辑，
-        # 保证与 OTEHV2RankEvent 完全一致的默认行为（需求6.7 的向后兼容性检查）。
-        if not self.otehv2v2_use_clinical and not self.otehv2v2_slot_cross_modal_cond:
+        # 只有当所有会影响【前向计算或损失计算】的 V2 开关都关闭时，才委托父类
+        # OTEHV2RankEvent.forward，保证与 V45 完全一致的默认行为（需求6.7 向后兼容）。
+        #
+        # 修复（关键）：此前的判断条件只检查 clinical 与 cross_modal_cond，导致
+        # `otehv2v2_use_unified_objective`（统一生存目标）与
+        # `otehv2v2_learnable_loss_weights`（可学习损失加权）这两个**纯损失侧**开关
+        # 在“只开自己、不开 clinical/cross_modal”时被提前 return 跳过，成为死开关——
+        # 表现为 abl_02_unified / abl_07_learnable_weights 的结果与 abl_00_baseline
+        # 完全一致。这两个开关只在下面的 V2 forward 损失分支里生效，因此必须把它们
+        # 也纳入“是否进入 V2 forward”的判断。
+        #
+        # 注意 slot 路由重设计类开关（disentangled/router/adaptive_iters）不在此列，
+        # 因为它们在 __init__ 阶段已把 slot attention 模块替换为 V2 版本，父类
+        # forward 调用被替换后的模块即可生效，无需进入 V2 forward。
+        if (
+            not self.otehv2v2_use_clinical
+            and not self.otehv2v2_slot_cross_modal_cond
+            and not self.otehv2v2_use_unified_objective
+            and not self.otehv2v2_learnable_loss_weights
+        ):
             return super().forward(**kwargs)
 
         if self.otehv2v2_use_clinical:
