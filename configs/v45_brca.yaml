@@ -1,5 +1,9 @@
 name: v45_blca
-description: Default V45 otehv2_rankevent BLCA 5-fold training config.
+description: 'Default V45 otehv2_rankevent BLCA 5-fold training config. alpha_surv=0.15（历史网格搜索
+  v45_best_blca 验证过的值，2026-07-06 fold-3 smoke search 发现 alpha=1.0 让 NLL loss 完全丢弃删失病人的贡献，
+  在事件时间长尾/高方差的 fold 上训练不稳定，导致折间 std 明显偏大； alpha=0.15 时 std 减半，是当前已验证的最优单点，不是原始默认 0.0）。
+
+  '
 data:
   study: brca
   data_root_dir: /data/CPathPatchFeature
@@ -24,7 +28,7 @@ train:
   gpu: 0
   num_workers: 4
   bag_loss: nll_surv
-  alpha_surv: 1.0
+  alpha_surv: 0.15
   min_free_space_gb: 2.0
 slot:
   slot_num_wsi: 8

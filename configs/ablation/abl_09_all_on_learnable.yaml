@@ -32,7 +32,7 @@ train:
   gpu: 0
   num_workers: 4
   bag_loss: nll_surv
-  alpha_surv: 1.0
+  alpha_surv: 0.15
   min_free_space_gb: 2.0
 slot:
   slot_num_wsi: 8
