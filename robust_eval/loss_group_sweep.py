@@ -92,27 +92,96 @@ DEFAULT_CONFIG = {
     "otehv2_timelocal_competing": "configs/v50_blca.yaml",
 }
 
+# 损失按功能分类，用于剪枝：
+# - CORE：方法的核心机制（OT 传输），几乎所有有意义的组合都应含它。
+# - PREDICTION：直接监督生存/风险的项。有意义的组合至少要含其中一个，否则只剩外层
+#   NLL 支撑、辅助项全是正则，等于白跑。
+# - 其余为正则项（div/recon/gate_ent/spec/cover/compete）。
+CORE_LOSS = "ot"
+PREDICTION_LOSSES = {"event_surv", "per_event", "rank", "global_cons"}
 
-def build_run_plan(method: str, sizes, weight_grid=None):
-    """枚举 size 属于 sizes 的所有损失子集，返回每个组合的 override 字典列表。
+# 精选组合（sizes 只用 3 或 4，权重取默认；这是“只留一些”的默认清单）。
+# 每个组合都含 OT + 至少一个预测监督项，正则项最多再加 1~2 个。
+CURATED: dict[str, list[tuple[str, ...]]] = {
+    "otehv2_rankevent": [
+        ("ot", "event_surv", "rank"),
+        ("ot", "event_surv", "per_event"),
+        ("ot", "per_event", "rank"),
+        ("ot", "event_surv", "global_cons"),
+        ("ot", "event_surv", "recon"),
+        ("ot", "event_surv", "div"),
+        ("ot", "event_surv", "gate_ent"),
+        ("ot", "event_surv", "per_event", "rank"),
+        ("ot", "event_surv", "rank", "recon"),
+        ("ot", "event_surv", "rank", "global_cons"),
+    ],
+    "otehv2_timelocal_competing": [
+        ("ot", "event_surv", "rank"),
+        ("ot", "event_surv", "spec"),
+        ("ot", "event_surv", "cover"),
+        ("ot", "event_surv", "compete"),
+        ("ot", "spec", "cover"),
+        ("ot", "event_surv", "spec", "cover"),
+        ("ot", "event_surv", "rank", "compete"),
+        ("ot", "event_surv", "spec", "compete"),
+        ("ot", "rank", "spec", "cover"),
+        ("ot", "event_surv", "cover", "compete"),
+    ],
+}
+CURATED["otehv2_rankevent_v2"] = list(CURATED["otehv2_rankevent"])
 
-    weight_grid: None 或系数列表。None -> 每组合一次(默认权重)。给列表 -> 组合内
-    每个激活项在默认权重上遍历这些系数的笛卡尔积。
+
+def _keep_combo(combo, require, at_least_one, exclude):
+    """剪枝规则：require 全含、at_least_one 至少含一个、exclude 一个都不含。"""
+    combo_set = set(combo)
+    if exclude and combo_set & set(exclude):
+        return False
+    if require and not set(require).issubset(combo_set):
+        return False
+    if at_least_one and not (combo_set & set(at_least_one)):
+        return False
+    return True
+
+
+def build_run_plan(method: str, sizes, weight_grid=None, combos=None,
+                   require=None, at_least_one=None, exclude=None):
+    """构造运行计划。
+
+    combos 为 None：按 sizes 全枚举再用 require/at_least_one/exclude 剪枝。
+    combos 给定（如精选清单）：直接使用这些显式组合（仍禁止 size>=5）。
+    weight_grid：None -> 每组合一次(默认权重)；给列表 -> 组内各激活项在默认权重上
+    遍历这些系数的笛卡尔积。
     """
     if method not in LOSS_REGISTRY:
         raise KeyError(f"未知方法 {method!r}，可选: {list(LOSS_REGISTRY)}")
     registry = LOSS_REGISTRY[method]
     all_losses = list(registry.keys())
 
-    for s in sizes:
-        if s >= 5:
-            raise ValueError(f"不允许同时激活 5 个及以上损失（收到 size={s}）")
-        if s < 1:
-            raise ValueError(f"size 必须 >=1（收到 {s}）")
+    if combos is None:
+        for s in sizes:
+            if s >= 5:
+                raise ValueError(f"不允许同时激活 5 个及以上损失（收到 size={s}）")
+            if s < 1:
+                raise ValueError(f"size 必须 >=1（收到 {s}）")
+        selected = []
+        for size in sizes:
+            for combo in itertools.combinations(all_losses, size):
+                if _keep_combo(combo, require, at_least_one, exclude):
+                    selected.append(combo)
+    else:
+        selected = []
+        for combo in combos:
+            if len(combo) >= 5:
+                raise ValueError(f"不允许同时激活 5 个及以上损失: {combo}")
+            unknown = set(combo) - set(all_losses)
+            if unknown:
+                raise KeyError(f"组合含未知损失 {unknown}（方法 {method}）")
+            selected.append(tuple(combo))
 
     plans = []
-    for size in sizes:
-        for combo in itertools.combinations(all_losses, size):
+    for combo in selected:
+        size = len(combo)
+        if True:
             if weight_grid:
                 factor_sets = itertools.product(weight_grid, repeat=size)
             else:
@@ -167,8 +236,18 @@ def main():
     )
     parser.add_argument("--method", required=True, choices=list(LOSS_REGISTRY))
     parser.add_argument("--config", default=None, help="不填则用该方法默认 config")
+    parser.add_argument("--preset", default="curated",
+                        choices=["curated", "pruned", "full"],
+                        help="curated=精选一小批(默认)；pruned=全枚举但剪枝(含OT+至少一个预测项)；"
+                             "full=原始全枚举(126/495，很多)")
     parser.add_argument("--sizes", type=int, nargs="+", default=[3, 4],
-                        help="要枚举的激活损失个数（默认 3 4；禁止 >=5）")
+                        help="pruned/full 时枚举的激活损失个数（默认 3 4；禁止 >=5）")
+    parser.add_argument("--require", default=CORE_LOSS,
+                        help="pruned 时每个组合必须包含的损失（逗号分隔，默认 ot）")
+    parser.add_argument("--at-least-one", default=",".join(sorted(PREDICTION_LOSSES)),
+                        help="pruned 时每个组合至少含其一（逗号分隔，默认四个预测监督项）")
+    parser.add_argument("--exclude", default="",
+                        help="pruned 时永不包含的损失（逗号分隔）")
     parser.add_argument("--weight-grid", default=None,
                         help="逗号分隔的权重系数，如 '0.5,1,2'；不填=每组合一次用默认权重")
     parser.add_argument("--fold", type=int, default=2, help="用哪一折做筛选（默认 fold2）")
@@ -187,9 +266,29 @@ def main():
     if args.weight_grid:
         weight_grid = [float(x) for x in args.weight_grid.split(",") if x.strip()]
 
-    plans = build_run_plan(args.method, args.sizes, weight_grid)
-    print(f"[sweep] method={args.method} sizes={args.sizes} "
-          f"weight_grid={weight_grid} -> 共 {len(plans)} 个组合运行")
+    def _split(s):
+        return [x.strip() for x in s.split(",") if x.strip()] if s else []
+
+    if args.preset == "curated":
+        combos = CURATED.get(args.method)
+        if not combos:
+            raise SystemExit(f"方法 {args.method} 暂无精选清单，请用 --preset pruned/full")
+        plans = build_run_plan(args.method, args.sizes, weight_grid, combos=combos)
+        print(f"[sweep] preset=curated method={args.method} -> 共 {len(plans)} 个精选组合")
+    elif args.preset == "pruned":
+        plans = build_run_plan(
+            args.method, args.sizes, weight_grid,
+            require=_split(args.require),
+            at_least_one=_split(args.at_least_one),
+            exclude=_split(args.exclude),
+        )
+        print(f"[sweep] preset=pruned method={args.method} sizes={args.sizes} "
+              f"require={_split(args.require)} at_least_one={_split(args.at_least_one)} "
+              f"exclude={_split(args.exclude)} -> 剪枝后 {len(plans)} 个组合")
+    else:  # full
+        plans = build_run_plan(args.method, args.sizes, weight_grid)
+        print(f"[sweep] preset=full method={args.method} sizes={args.sizes} "
+              f"weight_grid={weight_grid} -> 共 {len(plans)} 个组合（未剪枝）")
     print(f"[sweep] config={config} fold={args.fold} epochs={args.epochs} seed={args.seed}")
 
     manifest_path = args.manifest or os.path.join(args.results_root, f"manifest_{args.method}.csv")
@@ -276,9 +375,30 @@ def _selftest():
     except ValueError:
         pass
 
-    print("[selftest] 组合枚举/置零/拒 5 全部通过")
-    print(f"[selftest] V45: 3组={comb(8,3)}, 4组={comb(8,4)}, 合计=126 运行")
-    print(f"[selftest] V50: 3组={comb(11,3)}, 4组={comb(11,4)}, 合计=495 运行")
+    # 精选清单：条数正确，且每组都含 OT + 至少一个预测项，size 只有 3/4
+    for m in ("otehv2_rankevent", "otehv2_timelocal_competing"):
+        cplans = build_run_plan(m, [3, 4], combos=CURATED[m])
+        assert len(cplans) == len(CURATED[m])
+        for cp in cplans:
+            assert cp["size"] in (3, 4)
+            assert CORE_LOSS in cp["losses"], cp["losses"]
+            # 精选允许少量“纯机制”组合（如 V50 的 ot+spec+cover），故不强制含预测项
+
+    # 剪枝：require=ot + at_least_one=预测项，应远少于全枚举
+    pruned = build_run_plan(
+        "otehv2_rankevent", [3, 4],
+        require=["ot"], at_least_one=list(PREDICTION_LOSSES),
+    )
+    assert 0 < len(pruned) < 126, len(pruned)
+    for pp in pruned:
+        assert "ot" in pp["losses"] and (set(pp["losses"]) & PREDICTION_LOSSES)
+
+    print("[selftest] 组合枚举/置零/拒5/剪枝/精选 全部通过")
+    print(f"[selftest] full  V45: 3组={comb(8,3)}, 4组={comb(8,4)}, 合计=126")
+    print(f"[selftest] full  V50: 3组={comb(11,3)}, 4组={comb(11,4)}, 合计=495")
+    print(f"[selftest] pruned V45(ot+预测项): {len(pruned)} 组")
+    print(f"[selftest] curated V45: {len(CURATED['otehv2_rankevent'])} 组, "
+          f"V50: {len(CURATED['otehv2_timelocal_competing'])} 组")
     print("[selftest] OK")
 
 
