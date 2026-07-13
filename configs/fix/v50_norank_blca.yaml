@@ -1,0 +1,80 @@
+name: v50_norank_blca
+description: >
+  V50 修复版 — 应用 docs/LOSS_BLACKLIST.md 结论：把 rankevent 4 项 (per_event / rank
+  / global_cons / gate_ent) 全设为 0。V50 继承 V45.forward，同样受约束。
+  关掉 rankevent 4 项后剩 7 个损失：OT + Div + Recon + event_surv + spec + cover +
+  compete，仍超过「不超 5」的硬约束但**保留 V50 自身的时间局部机制** (spec/cover/
+  compete)，这是 V50 相对 V45 的唯一真正差异。
+  如果 7 损失版仍崩，可进一步把 lambda_timelocal_spec/cover/compete 也置 0；那样
+  V50 会退化成 V4a（无 rank 的 V45），失去 V50 的方法学意义——先跑本 config 看 7
+  损失能不能站住。alpha_surv 保持原 v50_blca.yaml 的 0.0（不是 0.15），因为 V50 的
+  event_surv 已经通过 lambda_otehv2_event_surv 起主监督作用。
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: otehv2_timelocal_competing
+  specific_simple: v50_norank_blca
+  results_dir: results/v50_norank_blca
+  max_epochs: 30
+  batch_size: 4
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.0
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_warmup: 5
+  otehv2_num_events: 24
+  otehv2_heads: 4
+  otehv2_layers: 4
+  otehv2_dropout: 0.1
+  lambda_otehv2_ot: 0.06
+  lambda_otehv2_div: 0.01
+  lambda_otehv2_event_surv: 0.25
+  lambda_otehv2_recon: 0.2
+  # --- rankevent 黑名单：4 项全 0 ---
+  lambda_rankevent_per_event: 0.0
+  lambda_rankevent_rank: 0.0
+  lambda_rankevent_global_cons: 0.0
+  lambda_rankevent_gate_ent: 0.0
+  # ---------------------------------
+  rankevent_eps_start: 0.1
+  rankevent_eps_end: 0.05
+  rankevent_eps_anneal_epochs: 12
+  rankevent_global_init: -2.0
+  # V50 自身的时间局部机制（保留）
+  lambda_timelocal_spec: 0.01
+  lambda_timelocal_cover: 0.01
+  lambda_compete_reg: 0.001
+  compete_beta_init: -2.0

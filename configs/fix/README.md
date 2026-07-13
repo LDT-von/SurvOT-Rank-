@@ -10,12 +10,28 @@
 
 ## 病灶 → 修法对照
 
+### A. 训练不稳定类（正则化/早停修复）
+
 | 方法 | 原版病灶 | 修复要点（除通用配方外的额外改动） |
 |---|---|---|
 | **RG-ET** `rank_guided_event_transport_fix_blca.yaml` | 过拟合 + IBS 从 0.25 爆到 0.75、生存分布崩溃 | `rg_lambda_rank` 0.15→0.05（削弱 rank 主导） |
 | **CATE-T** `censoring_aware_temporal_evidence_transport_fix_blca.yaml` | 标准过拟合 (train 0.89 / val 0.64)，IBS 稳 | 只补正则化，不动 catet_lambda_* |
 | **DCT** `distributional_counterfactual_transport_fix_blca.yaml` | 未收敛，best@ep29 还在爬 | `max_epochs` 30→60，`early_stop_warmup` 25 |
 | **Faithful** `faithful_evidence_transport_fix_blca.yaml` | train 欠拟合 + val 单峰 + IBS 剧烈震荡 | `fet_lambda_sparse/faith` 各减半（弱化 keep/removed 拉扯），激进早停 warmup=3 |
+
+### B. 损失黑名单类（rankevent 4 项证伪，全设 0）
+
+详见 [`docs/LOSS_BLACKLIST.md`](../../docs/LOSS_BLACKLIST.md)。V4a/V4b 5-fold 证明 4 项 rankevent
+损失为负贡献（V45 0.6013 → V4a/V4b 0.7007-0.7095，涨 +0.10）。
+
+| 方法 | 原损失数 | 修复后损失数 | Config |
+|---|---|---|---|
+| **V45** | 8 | 4 (OT + Div + Recon + event_surv) | `v45_norank_blca.yaml` |
+| **V45v2** | 8 | 4（默认路径同 V45） | `v45v2_norank_blca.yaml` |
+| **V50** | 11 | 7（保留 spec/cover/compete 三项时间局部机制） | `v50_norank_blca.yaml` |
+
+**注意**：这三份用**完整 5-fold**（`k_start:0 k_end:5`），因为 V4a/V4b 5-fold 已跑过、
+可直接对比；不像 A 组是 fold2 快速迭代。
 
 ## 用法
 
