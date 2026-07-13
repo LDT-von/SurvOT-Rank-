@@ -45,6 +45,10 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "faithful_evidence_transport"),
         "FaithfulEvidenceTransport",
     ),
+    "distributional_counterfactual_transport": (
+        os.path.join("survot_rank", "research", "methods", "distributional_counterfactual_transport"),
+        "DistributionalCounterfactualTransport",
+    ),
 }
 
 METHOD_ALIASES = {

@@ -17,6 +17,7 @@ METHOD_CHOICES = [
     "rank_guided_event_transport",
     "stagewise_prognostic_transport",
     "faithful_evidence_transport",
+    "distributional_counterfactual_transport",
 ]
 
 
@@ -160,6 +161,15 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fet_lambda_faith", type=float, default=0.05)
     parser.add_argument("--fet_keep_ratio", type=float, default=0.25)
     parser.add_argument("--fet_faith_margin", type=float, default=0.05)
+
+    # Distributional counterfactual transport method.
+    parser.add_argument("--dct_num_stages", type=int, default=4)
+    parser.add_argument("--dct_lambda_ot", type=float, default=0.06)
+    parser.add_argument("--dct_lambda_rank", type=float, default=0.05)
+    parser.add_argument("--dct_lambda_cf", type=float, default=0.10)
+    parser.add_argument("--dct_lambda_proto", type=float, default=0.01)
+    parser.add_argument("--dct_cf_margin", type=float, default=0.05)
+    parser.add_argument("--dct_mix_ratio", type=float, default=0.50)
 
     return parser
 
