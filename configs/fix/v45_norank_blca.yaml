@@ -1,0 +1,74 @@
+name: v45_norank_blca
+description: >
+  V45 修复版 — 应用 docs/LOSS_BLACKLIST.md 的结论：把 rankevent 4 项黑名单损失
+  (per_event / rank / global_cons / gate_ent) 全设为 0。这样 V45 forward 实际只
+  计算 4 个损失 (OT + Div + Recon + event_surv)，与 V4a/V4b 5-fold mean 0.7007–0.7095
+  的成功配置一致。
+  与 configs/v2_norank_blca.yaml 的区别：那份用 method=ot_event_hazard_v2 (V31 骨架)，
+  完全不实例化 V45 的 global_head/global_scale 分支；本文件保留 method=otehv2_rankevent
+  (V45)，让 global_head 结构存在但不受 global_cons 监督约束，用于验证「V45 的架构增量
+  是否也无用」这个额外问题。
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: otehv2_rankevent
+  specific_simple: v45_norank_blca
+  results_dir: results/v45_norank_blca
+  max_epochs: 30
+  batch_size: 4
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_warmup: 5
+  otehv2_num_events: 24
+  otehv2_heads: 4
+  otehv2_layers: 4
+  otehv2_dropout: 0.1
+  lambda_otehv2_ot: 0.06
+  lambda_otehv2_div: 0.01
+  lambda_otehv2_event_surv: 0.25
+  lambda_otehv2_recon: 0.2
+  # --- rankevent 黑名单：4 项全 0 ---
+  lambda_rankevent_per_event: 0.0
+  lambda_rankevent_rank: 0.0
+  lambda_rankevent_global_cons: 0.0
+  lambda_rankevent_gate_ent: 0.0
+  # ---------------------------------
+  rankevent_eps_start: 0.1
+  rankevent_eps_end: 0.05
+  rankevent_eps_anneal_epochs: 12
+  rankevent_global_init: -2.0
