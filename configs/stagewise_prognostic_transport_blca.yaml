@@ -1,0 +1,54 @@
+name: stagewise_prognostic_transport_blca
+description: Stage-specific censoring-aware prognostic transport on BLCA DSS.
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: stagewise_prognostic_transport
+  specific_simple: stagewise_prognostic_transport_blca
+  results_dir: results/stagewise_prognostic_transport_blca
+  max_epochs: 30
+  batch_size: 4
+  seed: 3
+  lr: 0.0005
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_heads: 4
+  otehv2_layers: 2
+  otehv2_dropout: 0.1
+  spt_num_stages: 4
+  spt_prog_cost: 0.20
+  spt_lambda_ot: 0.06
+  spt_lambda_rank: 0.05
+  spt_lambda_stage: 0.02
+  spt_stage_margin: 0.25
+  rg_eps_start: 0.10
+  rg_eps_anneal: 12

@@ -15,6 +15,7 @@ METHOD_CHOICES = [
     "prognostic_event_transport",
     "ot_event_hazard_v2",
     "rank_guided_event_transport",
+    "stagewise_prognostic_transport",
 ]
 
 
@@ -143,6 +144,14 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rg_stage_margin", type=float, default=0.25)
     parser.add_argument("--rg_eps_start", type=float, default=0.10)
     parser.add_argument("--rg_eps_anneal", type=int, default=12)
+
+    # Stagewise prognostic transport method.
+    parser.add_argument("--spt_num_stages", type=int, default=4)
+    parser.add_argument("--spt_prog_cost", type=float, default=0.20)
+    parser.add_argument("--spt_lambda_ot", type=float, default=0.06)
+    parser.add_argument("--spt_lambda_rank", type=float, default=0.05)
+    parser.add_argument("--spt_lambda_stage", type=float, default=0.02)
+    parser.add_argument("--spt_stage_margin", type=float, default=0.25)
 
     return parser
 

@@ -37,6 +37,10 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "rank_guided_event_transport"),
         "RankGuidedEventTransport",
     ),
+    "stagewise_prognostic_transport": (
+        os.path.join("survot_rank", "research", "methods", "stagewise_prognostic_transport"),
+        "StagewisePrognosticTransport",
+    ),
 }
 
 METHOD_ALIASES = {
