@@ -79,6 +79,20 @@ class TestDiscLabelBalance:
         factory = _FakeFactory(df, censorship_var="censorship_dss", label_col="survival_months_dss")
         assert factory.clinical_df["label"].isna().sum() == 0
 
+    def test_fold_bins_use_training_cases_only(self):
+        df = pd.DataFrame({
+            "case id": ["train_0", "train_1", "train_2", "train_3", "val_tail"],
+            "wsi": ["a", "b", "c", "d", "e"],
+            "survival_months_dss": [1.0, 2.0, 3.0, 4.0, 1000.0],
+            "censorship_dss": [0, 0, 0, 0, 1],
+        })
+        factory = _FakeFactory(df, censorship_var="censorship_dss", label_col="survival_months_dss")
+        factory.fit_label_bins(["train_0", "train_1", "train_2", "train_3"])
+
+        assert factory.bins[-1] == np.inf
+        assert factory.clinical_df.loc[4, "label"] == factory.n_bins - 1
+        assert np.allclose(factory.bins[1:-1], [1.75, 2.5, 3.25])
+
     def test_all_labels_within_valid_range(self):
         df = _make_synthetic_survival_df()
         factory = _FakeFactory(df, censorship_var="censorship_dss", label_col="survival_months_dss")

@@ -113,14 +113,14 @@ class SurvivalDatasetFactory:
         self.clinical_df = self.clinical_df.reset_index(drop=True)
 
         # discretize the label
-        uncensored_df = self._get_uncensored_data()
-        self._disc_label(uncensored_df)
+        # The training runner refits these labels from each fold's training split.
+        self._disc_label(self._get_uncensored_data())
 
     def _get_uncensored_data(self):
         uncensored_df = self.clinical_df[self.clinical_df[self.censorship_var] < 1]
         return uncensored_df
 
-    def _disc_label(self, uncensored_df):
+    def _legacy_disc_label(self, uncensored_df):
         # 修复历史 bug：原实现先用 pd.qcut 在未删失（uncensored）病人身上算出正确的
         # 等频分位数边界 q_bins，但紧接着又调用 pd.cut 对*全部*病人（含删失）做等宽
         # 分箱并覆盖掉 disc_labels/q_bins，导致第一行 qcut 的计算完全是死代码。
@@ -139,6 +139,47 @@ class SurvivalDatasetFactory:
                               right=False, include_lowest=True)
         self.clinical_df.insert(2, 'label', disc_labels.values.astype(int))
         self.bins = q_bins
+
+    def _disc_label(self, uncensored_df):
+        """Fit train-only quantile bins and apply them to all clinical rows."""
+        values = uncensored_df[self.label_col].dropna()
+        if values.nunique() < self.n_bins:
+            raise ValueError(
+                f"Cannot fit {self.n_bins} survival bins from "
+                f"{values.nunique()} unique uncensored times"
+            )
+
+        _, q_bins = pd.qcut(
+            values, q=self.n_bins, retbins=True, labels=False,
+            duplicates="drop",
+        )
+        if len(q_bins) - 1 != self.n_bins:
+            raise ValueError(
+                f"qcut produced {len(q_bins) - 1} bins; expected {self.n_bins}"
+            )
+
+        q_bins = q_bins.astype(float)
+        q_bins[0] = -np.inf
+        q_bins[-1] = np.inf
+        disc_labels = pd.cut(
+            self.clinical_df[self.label_col], bins=q_bins, labels=False,
+            right=False, include_lowest=True,
+        )
+        if disc_labels.isna().any():
+            raise ValueError("Survival binning produced NaN labels")
+
+        self.clinical_df["label"] = disc_labels.astype("int64").to_numpy()
+        self.bins = q_bins
+
+    def fit_label_bins(self, train_case_ids):
+        """Fit discrete-time labels using only uncensored training cases."""
+        train_case_ids = set(train_case_ids)
+        train_df = self.clinical_df[
+            self.clinical_df["case id"].isin(train_case_ids)
+        ]
+        if train_df.empty:
+            raise ValueError("Training split is empty; cannot fit survival bins")
+        self._disc_label(train_df[train_df[self.censorship_var] < 1])
 
     def _setup_signatures(self, rna_data_df):
         if self.signature == "six":

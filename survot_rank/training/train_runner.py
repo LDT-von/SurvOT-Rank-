@@ -202,6 +202,14 @@ def init_scheduler(args, optimizer):
 # ============================================================
 
 def get_split(args, dataset_factory, fold):
+    split_path = os.path.join(
+        dataset_factory.data_path,
+        "splits", "5fold", dataset_factory.study,
+        f"fold_{fold}.csv",
+    )
+    split_df = pd.read_csv(split_path)
+    dataset_factory.fit_label_bins(split_df["train"].dropna().tolist())
+
     train_data = SurvivalDataset(dataset_factory, args.data_root_dir, 'train', fold, args.encoding_dim)
     test_data = SurvivalDataset(dataset_factory, args.data_root_dir, 'val', fold, args.encoding_dim)
 
