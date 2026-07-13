@@ -41,6 +41,10 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "stagewise_prognostic_transport"),
         "StagewisePrognosticTransport",
     ),
+    "faithful_evidence_transport": (
+        os.path.join("survot_rank", "research", "methods", "faithful_evidence_transport"),
+        "FaithfulEvidenceTransport",
+    ),
 }
 
 METHOD_ALIASES = {

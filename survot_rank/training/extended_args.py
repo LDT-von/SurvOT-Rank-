@@ -16,6 +16,7 @@ METHOD_CHOICES = [
     "ot_event_hazard_v2",
     "rank_guided_event_transport",
     "stagewise_prognostic_transport",
+    "faithful_evidence_transport",
 ]
 
 
@@ -152,6 +153,13 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--spt_lambda_rank", type=float, default=0.05)
     parser.add_argument("--spt_lambda_stage", type=float, default=0.02)
     parser.add_argument("--spt_stage_margin", type=float, default=0.25)
+
+    # Faithful evidence transport method.
+    parser.add_argument("--fet_num_stages", type=int, default=4)
+    parser.add_argument("--fet_lambda_sparse", type=float, default=0.01)
+    parser.add_argument("--fet_lambda_faith", type=float, default=0.05)
+    parser.add_argument("--fet_keep_ratio", type=float, default=0.25)
+    parser.add_argument("--fet_faith_margin", type=float, default=0.05)
 
     return parser
 
