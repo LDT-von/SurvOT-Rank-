@@ -4,7 +4,7 @@
 >
 > 最后更新: 2026-07-13 | 代码版本: `836f2c6` (main, +V60 +queue scripts +grad_clip built-in)
 >
-> ## 队列状态: #1–#4 ✅ | #5 🔄 | #6–#8 ✅ | #9 🔄 (2/10) | #10 ⬜
+> ## 队列状态: #1–#8 ✅ (ot_v3 失败) | #9 🔄 (2/10) | #10 ⬜
 
 ---
 
@@ -20,16 +20,17 @@
 | 6 | v50 (Time-Local Competing) | ✅ fold2 完成 | **0.6749** | `v50_blca.yaml` |
 | 7 | CATE-T (Censoring-Aware) | ✅ fold2 完成 | 0.6405 | `censoring_aware_temporal_evidence_transport_blca.yaml` |
 | 8 | DCT (Distributional Counterfactual) | ✅ fold2 完成 | 0.6237 | `distributional_counterfactual_transport_blca.yaml` |
-| 9 | RG-ET + PCGrad | 🔄 进行中 (#5) | — | `rank_guided_event_transport_blca.yaml` + `pcgrad.py` |
-| 10 | **V2 — 关 rankevent** | ✅ fold2 完成 (#6) | **🏆 0.7254** | `v2_norank_blca.yaml` |
-| 11 | V4a — 关 rankevent + AdamW | ⬜ 排队 #7 | — | `v2_norank_blca.yaml` + `--set opt=adamW` |
-| 12 | ot_v3 (newSlotSPE #1, 0.7282) | ⬜ 排队 #8 | 0.7282 (newSlotSPE) | `--newslot_method ot_v3` |
+| 9 | RG-ET + PCGrad | ✅ 完成 (PCGrad 未集成, 实际=RG-ET rerun) | 0.6341 | `rank_guided_event_transport_blca.yaml` |
+| 10 | V2 — 关 rankevent | ✅ fold2 完成 (#6) | 0.7174 | `v2_norank_blca.yaml` |
+| 11 | **V4a — 关 rankevent + AdamW wd=5e-4** | ✅ fold2 完成 (#7) | **🏆 0.7254** | `v2_norank_blca.yaml` + `--set opt=adamW` |
+| 12 | ot_v3 (newSlotSPE #1, 0.7282) | ❌ 失败 | — | 缺 `04_optimal_transport_align/model_v3.py` |
 | 13 | V45 损失子集 curated | 🔄 部分 (2/10) #9 | — | 10 组, ~12.5h |
 | 14 | V50 损失子集 curated | ⬜ 排队 #10 | — | 10 组, ~12.5h |
 
 > 排队脚本：`bash scripts/queue_fold2.sh`（依次 10 个，fold2 only, 30ep）
 > #1–#8, #10 各 ~1h15m, #9, #13–#14 各 ~12.5h, 总计 ~35h
-> **🏆 V2 关 rankevent 是 fold2 目前最高分 (0.7254 @ ep12)**，超过 v45 8-loss 的 0.6013 达 +0.1241
+> **🏆 V4a (关 rankevent + AdamW) 是 fold2 目前最高分 (0.7254 @ ep12)**，超过 v45 8-loss 的 0.6013 达 +0.1241
+> 注意: V2 和 V4a 共用同一 results 目录 (`configs/v2_norank_blca.yaml`)，V2 先跑 (0.7174)，V4a 后覆盖 (0.7254)
 
 ### 损失子集扫描
 
@@ -241,7 +242,24 @@
 
 **Config**: `v2_norank_blca.yaml` | **Method**: `ot_event_hazard_v2` | **Losses**: OT + Div + Recon + NLL (砍掉全部 4 个 rankevent 辅助项)
 
-这是消融实验中最重要的验证：V45 的 rankevent 项 (per-event NLL, Cox rank, global residual, gate entropy) 是否反而拖累了模型？
+### seed=3, 30 epochs, fold2 only
+
+| Fold | Ep | val_cidx best | best @ | val_cidx last5 | val_ipcw best | val_IBS best | val_iauc best |
+|------|----|--------------|--------|---------------|--------------|-------------|--------------|
+| 2 | 30 | **0.7174** | **12** | — | — | — | — |
+
+> **注意**: 当前磁盘上的 epoch_curve CSV 已被 V4a 后续运行覆盖（两者共用同一个 `results_dir`），原始 V2 的逐 epoch 数据已丢失。以上 0.7174 来自队列日志。
+>
+> **分析:**
+> - best 0.7174 @ epoch 12 — fold2 第二高。
+> - 仅 4 loss 砍掉全部 rankevent 项，与 newSlotSPE 的 5-fold V2 结论（0.7100）方向一致。
+> - 对比 V4a 的 0.7254，AdamW 的 weight_decay=5e-4 提供了约 +0.008 的增量。
+
+---
+
+## 12b. V4a — 关 rankevent + AdamW wd=5e-4
+
+**Config**: `v2_norank_blca.yaml` + `--set opt=adamW --set reg=0.0005` | **Method**: `ot_event_hazard_v2`
 
 ### seed=3, 30 epochs, fold2 only
 
@@ -265,13 +283,11 @@
 | 20 | 0.6749 | 0.7252 | 0.2640 | 0.9568 |
 | 21–29 | 0.648–0.660 | 0.705–0.714 | 0.263–0.265 | 0.902–0.956 |
 
-> **分析 — 单峰爆发 + 稳定平台，fold2 绝对冠军：**
+> **分析 — fold2 绝对冠军:**
 > - **best 0.7254 @ epoch 12** — fold2 历史最高，比 v45 8-loss (0.6013) 高 +0.1241，比 Faithful (0.6837) 高 +0.0417。
 > - epoch 6–14 区间出现多个 0.68–0.72 的尖峰，之后在 0.65–0.66 区间稳定平台。
-> - train loss 约 1.00，远低于其他方法的 1.04+，说明 4-loss 比 8/11-loss 更容易优化。
-> - 砍掉 rankevent 的 4 项后 fold2 反而表现更好，与 newSlotSPE 的 5-fold 结论一致（V2: 0.7100 vs V45: 0.7105）。
-> - **关键假设**：rankevent 项在 fold2 这种难 split 上引入的噪声 > 信号，砍掉后 backbone 的 OT+fused NLL 反而能学到更稳定的表示。
-> - 峰值后降到 0.66 平台（而非崩溃到 0.50），说明 4-loss 结构比多 loss 版本更稳定。
+> - AdamW wd=5e-4 相比 V2 纯 Adam 提升了约 +0.008。
+> - 砍掉 rankevent 的 4 项 + AdamW 正则化在 fold2 上表现最优。
 
 ---
 
@@ -304,12 +320,12 @@
 | v50 30ep no seed | 11 | 30 | None | no | 0.6749 | 0.6198 | 0.7758 | ⚠️ (train 晚于 val 爬升) |
 | CATE-T 30ep no seed | ? | 30 | None | no | 0.6405 | 0.5950 | 0.8926 | ✅ (标准过拟合) |
 | DCT 30ep no seed | ? | 30 | None | no | 0.6237 | 0.5936 | 0.8642 | ✅ (未收敛,持续上升) |
-| **V2 关 rankevent** | **4** | **30** | **3** | **no** | **🏆 0.7254** | **0.6581** | **0.5488** | **⚠️ (单峰, 后期平台)** |
-| RG-ET+PCGrad | 3+PC | 30 | None | yes | 🔄 | 🔄 | 🔄 | 🔄 |
-| V4a (norank+AdamW) | 4 | — | — | — | ⬜ | ⬜ | ⬜ | ⬜ |
-| ot_v3 (newSlotSPE) | 5 | — | — | — | ⬜ | ⬜ | ⬜ | ⬜ |
+| **V2 关 rankevent** | **4** | **30** | **3** | **no** | **0.7174** | — | — | ✅ |
+| **V4a norank+AdamW** | **4** | **30** | **3** | **no** | **🏆 0.7254** | **0.6581** | **0.5488** | **⚠️ (单峰, 后期平台)** |
+| RG-ET+PCGrad | 3 | 30 | 3 | no | 0.6341 | — | — | ✅ (实际=RG-ET rerun) |
+| ot_v3 (newSlotSPE) | 5 | — | — | — | ❌ (file not found) | ❌ | ❌ | ❌ |
 
-> **🏆 V2 以 0.7254 创 fold2 新高，是唯一超 0.70 的方法** — 仅用 4 loss (OT + Div + Recon + NLL)，砍掉全部 rankevent 辅助项。
+> **🏆 V4a 以 0.7254 创 fold2 新高** — 仅用 4 loss + AdamW wd=5e-4；V2 同配置但纯 Adam 得 0.7174。
 
 ---
 
