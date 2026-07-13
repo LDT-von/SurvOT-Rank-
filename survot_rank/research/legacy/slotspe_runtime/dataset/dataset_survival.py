@@ -357,10 +357,16 @@ class SurvivalDataset(Dataset):
         wsi = self.load_wsi(slides)
         genes = self.load_genes(case_id)
 
-        # sample from the patches
-        if self.dataset_factory.num_patches is not None and self.split_key == 'train':
+        # Keep train and evaluation inputs at the same token count. Training uses
+        # random patches; evaluation uses deterministic evenly spaced patches.
+        if self.dataset_factory.num_patches is not None:
             n_samples = min(self.dataset_factory.num_patches, wsi.size(0))
-            patch_idx = np.sort(np.random.choice(wsi.size(0), n_samples, replace=False))
+            if self.split_key == 'train':
+                patch_idx = np.sort(np.random.choice(wsi.size(0), n_samples, replace=False))
+            else:
+                patch_idx = np.floor(
+                    np.arange(n_samples) * wsi.size(0) / n_samples
+                ).astype(np.int64)
             wsi = wsi[patch_idx, :]
 
             if n_samples < self.dataset_factory.num_patches:
