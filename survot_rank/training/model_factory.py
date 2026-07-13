@@ -53,6 +53,10 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "censoring_aware_temporal_evidence_transport"),
         "CensoringAwareTemporalEvidenceTransport",
     ),
+    "v60_ot_event_rank": (
+        os.path.join("survot_rank", "research", "methods", "v60_ot_event_rank"),
+        "V60OTEventRank",
+    ),
 }
 
 METHOD_ALIASES = {
@@ -62,6 +66,7 @@ METHOD_ALIASES = {
     "prognostic_event_transport": "otehv2_rankevent",
     "45v2": "otehv2_rankevent_v2",
     "50": "otehv2_timelocal_competing",
+    "60": "v60_ot_event_rank",
 }
 
 

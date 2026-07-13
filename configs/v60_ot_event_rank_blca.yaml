@@ -1,0 +1,15 @@
+# V60: stable log-domain OT-event backbone with compact event ranking.
+survot_method: v60_ot_event_rank
+dataset: blca
+v60_num_events: 24
+v60_lambda_per_event: 0.15
+v60_lambda_rank: 0.15
+v60_rank_margin: 0.0
+v60_rank_max_pairs: 4096
+otehv2_eps: 0.05
+otehv2_iter: 40
+otehv2_warmup: 8
+lambda_otehv2_ot: 0.06
+lambda_otehv2_div: 0.005
+lambda_otehv2_event_surv: 0.0
+lambda_otehv2_recon: 0.0
