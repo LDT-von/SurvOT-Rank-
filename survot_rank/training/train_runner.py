@@ -208,7 +208,12 @@ def get_split(args, dataset_factory, fold):
         f"fold_{fold}.csv",
     )
     split_df = pd.read_csv(split_path)
-    dataset_factory.fit_label_bins(split_df["train"].dropna().tolist())
+    # V51 修复 (2026-07-14): 全局分箱替代 fold-aware 分箱。
+    # 原实现每折调用 fit_label_bins() 用当前 fold 的训练集重新计算分位分箱边界，
+    # 导致不同 fold 的 OT plan / event embedding 与不同的 bin 定义交互，
+    # fold2 从 newSlotSPE 全局分箱的 0.7282 掉到 0.6013（-0.127）。
+    # 改为所有 fold 共用 __init__ 阶段从全体未删失数据算出的全局 bins。
+    # dataset_factory.fit_label_bins(split_df["train"].dropna().tolist())
 
     train_data = SurvivalDataset(dataset_factory, args.data_root_dir, 'train', fold, args.encoding_dim)
     test_data = SurvivalDataset(dataset_factory, args.data_root_dir, 'val', fold, args.encoding_dim)
