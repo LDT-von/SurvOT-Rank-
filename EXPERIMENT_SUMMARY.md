@@ -4,7 +4,7 @@
 >
 > 最后更新: 2026-07-13 | 代码版本: `836f2c6` (main, +V60 +queue scripts +grad_clip built-in)
 >
-> ## 队列状态: #1–#8 ✅ (ot_v3 失败) | #9 🔄 (2/10) | #10 ⬜
+> ## 队列状态: #1–#8 ✅ (ot_v3 失败) | #9、#10 ❌ 已终止
 
 ---
 
@@ -24,8 +24,8 @@
 | 10 | V2 — 关 rankevent | ✅ fold2 完成 (#6) | 0.7174 | `v2_norank_blca.yaml` |
 | 11 | **V4a — 关 rankevent + AdamW wd=5e-4** | ✅ fold2 完成 (#7) | **🏆 0.7254** | `v2_norank_blca.yaml` + `--set opt=adamW` |
 | 12 | ot_v3 (newSlotSPE #1, 0.7282) | ❌ 失败 | — | 缺 `04_optimal_transport_align/model_v3.py` |
-| 13 | V45 损失子集 curated | 🔄 部分 (2/10) #9 | — | 10 组, ~12.5h |
-| 14 | V50 损失子集 curated | ⬜ 排队 #10 | — | 10 组, ~12.5h |
+| 13 | V45 损失子集 curated | ❌ 已终止 (2/10 完成) #9 | 0.6165 / 0.6125 | 随机组合无意义，且 #1–#8 已提供明确答案 |
+| 14 | V50 损失子集 curated | ❌ 已终止 (未开始) #10 | — | V50 fold2 0.6749 不如 V4a 0.7254，无需扫描 |
 
 > 排队脚本：`bash scripts/queue_fold2.sh`（依次 10 个，fold2 only, 30ep）
 > #1–#8, #10 各 ~1h15m, #9, #13–#14 各 ~12.5h, 总计 ~35h
@@ -329,17 +329,20 @@
 
 ---
 
-## 12. V45 损失子集扫描 (curated, fold2, seed=3, 30ep) — 进行中 (2/10)
+## 12. V45 损失子集扫描 (curated, fold2, seed=3, 30ep) — ❌ 已终止
 
-> 工具: `robust_eval/loss_group_sweep.py --preset curated`
+> 原计划 10 组枚举 V45 损失组合，2 组完成后判定无继续价值，手动 kill。
 
-| 组合 | val_cidx best | ep | 完成? |
-|------|-------------|----|-------|
-| n3: OT + event_surv + rank | 0.6165 | 0 | ✅ |
-| n3: OT + event_surv + per_event | 0.6125 | 0 | ✅ |
-| 剩余 8 组 | — | — | 🔄 |
+| 组合 | val_cidx best | 说明 |
+|------|-------------|------|
+| n3: OT + event_surv + rank | 0.6165 | 远低于 V4a 0.7254 |
+| n3: OT + event_surv + per_event | 0.6125 | 远低于 V4a 0.7254 |
+| 剩余 8 组 | ❌ 终止 | — |
 
-> 注意: 这些 cidx 从 epoch 0 开始，说明 loss sweep 的 fold2 起点就极低，30ep 可能不够。待全部完成后重新汇总。
+**终止原因:**
+- 已完成 2 组的 cidx (0.61–0.62) 远不如 V4a 的 0.7254 + V2 的 0.7174，差距达 0.10+。
+- 损失子集扫描本质是随机组合穷举，而 #1–#8 的方法对比 + #10–#11 的消融已明确指向最佳策略：**关 rankevent + AdamW + 4-loss**。
+- 继续跑 10 组 V45 / 10 组 V50 只是在已有结论上加噪声，不产生新信息。
 
 ---
 
