@@ -190,6 +190,8 @@ def _process_data_and_forward(args, model, data, device, test=False):
         input_args['y'] = y_disc
         input_args['c'] = c
 
+    input_args['event_time'] = event_time
+
     if getattr(args, "otehv2v2_use_clinical", False) and x_clinical is not None:
         input_args["x_clinical"] = x_clinical
 

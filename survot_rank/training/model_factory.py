@@ -33,6 +33,10 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "prognostic_event_transport"),
         "OTEHTimeLocalCompeting",
     ),
+    "rank_guided_event_transport": (
+        os.path.join("survot_rank", "research", "methods", "rank_guided_event_transport"),
+        "RankGuidedEventTransport",
+    ),
 }
 
 METHOD_ALIASES = {

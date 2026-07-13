@@ -1,0 +1,56 @@
+name: rank_guided_event_transport_blca
+description: Compact rank-guided prognostic event transport on BLCA DSS.
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: rank_guided_event_transport
+  specific_simple: rank_guided_event_transport_blca
+  results_dir: results/rank_guided_event_transport_blca
+  max_epochs: 30
+  batch_size: 4
+  seed: 3
+  lr: 0.0005
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_heads: 4
+  otehv2_layers: 4
+  otehv2_dropout: 0.1
+  rg_num_events: 4
+  rg_prog_cost: 0.20
+  rg_lambda_ot: 0.06
+  rg_lambda_rank: 0.15
+  rg_lambda_stage: 0.02
+  rg_rank_margin: 0.0
+  rg_rank_max_pairs: 4096
+  rg_stage_margin: 0.25
+  rg_eps_start: 0.10
+  rg_eps_anneal: 12

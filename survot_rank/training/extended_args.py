@@ -14,6 +14,7 @@ METHOD_CHOICES = [
     "pet",
     "prognostic_event_transport",
     "ot_event_hazard_v2",
+    "rank_guided_event_transport",
 ]
 
 
@@ -130,6 +131,18 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--otehv2v2_slot_adaptive_iters", action="store_true", default=False)
     parser.add_argument("--otehv2v2_sinkhorn_max_iters", type=int, default=20)
     parser.add_argument("--otehv2v2_convergence_threshold", type=float, default=0.0)
+
+    # Rank-guided event transport method.
+    parser.add_argument("--rg_num_events", type=int, default=4)
+    parser.add_argument("--rg_prog_cost", type=float, default=0.20)
+    parser.add_argument("--rg_lambda_ot", type=float, default=0.06)
+    parser.add_argument("--rg_lambda_rank", type=float, default=0.15)
+    parser.add_argument("--rg_lambda_stage", type=float, default=0.02)
+    parser.add_argument("--rg_rank_margin", type=float, default=0.0)
+    parser.add_argument("--rg_rank_max_pairs", type=int, default=4096)
+    parser.add_argument("--rg_stage_margin", type=float, default=0.25)
+    parser.add_argument("--rg_eps_start", type=float, default=0.10)
+    parser.add_argument("--rg_eps_anneal", type=int, default=12)
 
     return parser
 
