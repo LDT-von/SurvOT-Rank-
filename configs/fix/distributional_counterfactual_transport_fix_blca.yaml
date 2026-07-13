@@ -1,0 +1,76 @@
+name: distributional_counterfactual_transport_fix_blca
+description: >
+  DCT 修复版 — 针对原版 fold2 30ep「val_best 出现在最后一个 epoch (0.6237 @ep29)、
+  仍在缓慢爬升、IBS/iAUC 全程健康」的**未收敛**问题。这与 RG-ET/CATE-T 的过拟合
+  相反，DCT 是训得不够，直接砍训练反而更糟。
+  修法（4 项）：
+    1. max_epochs 30 -> 60 — 让曲线跑到平台期，判断真实峰值在哪
+    2. reg 0.00001 -> 0.0005 — 补上正则，防止延长后转向过拟合（V4a 配方）
+    3. early stop patience=8 min_delta=0.001 **warmup=25** — warmup 大于原 best 位置，
+       仅在收敛平台后触发；避免延长的意义被过早停机抹掉
+    4. otehv2_dropout 0.1 -> 0.15 — 轻微加大，配合延长训练的稳定性
+  其余 dct_lambda_* 保持不变，因为原分数增长趋势健康、损失结构没崩。
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 2
+  k_end: 3
+
+train:
+  survot_method: distributional_counterfactual_transport
+  specific_simple: distributional_counterfactual_transport_fix_blca
+  results_dir: results/distributional_counterfactual_transport_fix_blca
+  max_epochs: 60
+  batch_size: 4
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+  early_stop_patience: 8
+  early_stop_min_delta: 0.001
+  early_stop_metric: val_cindex
+  early_stop_warmup: 25
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 3
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_heads: 4
+  otehv2_layers: 2
+  otehv2_dropout: 0.15
+  dct_num_stages: 4
+  dct_lambda_ot: 0.06
+  dct_lambda_rank: 0.05
+  dct_lambda_cf: 0.10
+  dct_lambda_proto: 0.01
+  dct_cf_margin: 0.05
+  dct_mix_ratio: 0.50
+  fet_lambda_sparse: 0.0
+  fet_lambda_faith: 0.0
+  spt_prog_cost: 0.20
+  rg_eps_start: 0.10
+  rg_eps_anneal: 12

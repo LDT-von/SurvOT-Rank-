@@ -1,0 +1,73 @@
+name: rank_guided_event_transport_fix_blca
+description: >
+  RG-ET 修复版 — 针对原版 fold2 30ep 出现的「train 0.86 / val 0.58 / IBS 0.25→0.75
+  生存分布崩塌」问题。原版病因：3 loss 里 rank 后期主导，hazard sigmoid 被推到极端。
+  修法（4 项，全部基于 V4a 已验证配方）：
+    1. opt=adamW + reg=5e-4      — 打开真正的 weight decay（V4a 增益 +0.08 已证）
+    2. otehv2_dropout 0.1 -> 0.2 — 抑制事件 Transformer 过拟合
+    3. rg_lambda_rank 0.15 -> 0.05 — 削弱 rank loss 主导，减小 hazard 被推极端
+    4. early stop patience=5 min_delta=0.001 warmup=5 — RG-ET epoch 9 就达峰值，
+       之后是有害训练；早停可保留峰值、避免 IBS 崩溃
+  其余保持与原版一致。默认只跑 fold2 用于快速迭代，跑完确认修复有效再上 5-fold。
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 2
+  k_end: 3
+
+train:
+  survot_method: rank_guided_event_transport
+  specific_simple: rank_guided_event_transport_fix_blca
+  results_dir: results/rank_guided_event_transport_fix_blca
+  max_epochs: 30
+  batch_size: 4
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+  early_stop_patience: 5
+  early_stop_min_delta: 0.001
+  early_stop_metric: val_cindex
+  early_stop_warmup: 5
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_heads: 4
+  otehv2_layers: 4
+  otehv2_dropout: 0.2
+  rg_num_events: 4
+  rg_prog_cost: 0.20
+  rg_lambda_ot: 0.06
+  rg_lambda_rank: 0.05
+  rg_lambda_stage: 0.02
+  rg_rank_margin: 0.0
+  rg_rank_max_pairs: 4096
+  rg_stage_margin: 0.25
+  rg_eps_start: 0.10
+  rg_eps_anneal: 12

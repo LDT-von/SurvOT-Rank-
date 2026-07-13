@@ -1,0 +1,83 @@
+name: faithful_evidence_transport_fix_blca
+description: >
+  Faithful Evidence Transport 修复版 — 针对原版最诡异的一组症状：
+    - train_max 仅 0.62（欠拟合训练集）
+    - val_best 0.6837 出现在 epoch 7（单点尖峰）
+    - IBS 后期剧烈震荡 (0.21→0.53→0.56→0.45→0.60→0.36)
+    - val_last5 掉到 0.5301（best→last5 掉 0.154，最严重）
+  病因假设：fet_lambda_sparse (0.01) + fet_lambda_faith (0.05) 两个「证据必须稀疏
+  + 保留/删除风险差要大」的目标，把 hazard 输出在 keep-plan 与 removed-plan 两个
+  完全不同的传输计划之间来回拉扯，导致 hazard 分布震荡；train 反而学不进主监督。
+  修法（4 项）：
+    1. opt=adamW + reg=0.0005 — 原 config 没设 opt，走默认 adam（wd 死参数）
+    2. fet_lambda_sparse 0.01 -> 0.005， fet_lambda_faith 0.05 -> 0.02
+       — 各减半，减弱 keep/removed 拉扯，让主监督占主导
+    3. otehv2_dropout 0.1 -> 0.15 — 轻微加大
+    4. early stop patience=3 min_delta=0.001 **warmup=3**
+       — 峰值 epoch 7 就出现且极不稳定，激进早停是唯一能抓住有效峰的手段
+  spt_lambda_* 三项不动，因为它们是父类 (Stagewise) 的 OT/rank/stage，与不稳定
+  无直接关系。
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 2
+  k_end: 3
+
+train:
+  survot_method: faithful_evidence_transport
+  specific_simple: faithful_evidence_transport_fix_blca
+  results_dir: results/faithful_evidence_transport_fix_blca
+  max_epochs: 30
+  batch_size: 4
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+  early_stop_patience: 3
+  early_stop_min_delta: 0.001
+  early_stop_metric: val_cindex
+  early_stop_warmup: 3
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_heads: 4
+  otehv2_layers: 2
+  otehv2_dropout: 0.15
+  fet_num_stages: 4
+  spt_prog_cost: 0.20
+  spt_lambda_ot: 0.06
+  spt_lambda_rank: 0.05
+  spt_lambda_stage: 0.02
+  spt_stage_margin: 0.25
+  fet_lambda_sparse: 0.005
+  fet_lambda_faith: 0.02
+  fet_keep_ratio: 0.25
+  fet_faith_margin: 0.05
+  rg_eps_start: 0.10
+  rg_eps_anneal: 12
