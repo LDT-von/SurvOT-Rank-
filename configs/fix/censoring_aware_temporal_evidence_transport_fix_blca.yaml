@@ -1,0 +1,75 @@
+name: censoring_aware_temporal_evidence_transport_fix_blca
+description: >
+  CATE-T 修复版 — 针对原版 fold2 30ep 「train 0.89 vs val 0.64、IBS 稳定但 val
+  持续退化」的标准过拟合问题。原版 config 已用 adamW，但 reg=1e-5 太小、dropout=0.1
+  也不够抑制 305 样本上的过拟合。
+  修法（3 项，基于 V4a 配方 + CATE-T 特性）：
+    1. reg 0.00001 -> 0.0005 — 真正生效的 weight decay 强度
+    2. otehv2_dropout 0.1 -> 0.2 — 减小事件 Transformer 记忆容量
+    3. early stop patience=5 min_delta=0.001 warmup=5 — 峰值在 epoch 8，
+       之后 val 缓慢退化到 0.60，早停可保留 0.64 峰值
+  不动 catet_lambda_* 三项（rank/OT/intervention），因为 IBS 全程稳定，问题
+  不在损失结构、而在优化正则化不足。
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 2
+  k_end: 3
+
+train:
+  survot_method: censoring_aware_temporal_evidence_transport
+  specific_simple: censoring_aware_temporal_evidence_transport_fix_blca
+  results_dir: results/censoring_aware_temporal_evidence_transport_fix_blca
+  max_epochs: 30
+  batch_size: 4
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+  early_stop_patience: 5
+  early_stop_min_delta: 0.001
+  early_stop_metric: val_cindex
+  early_stop_warmup: 5
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 3
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_heads: 4
+  otehv2_layers: 2
+  otehv2_dropout: 0.2
+  catet_num_stages: 4
+  catet_prog_cost: 0.20
+  catet_lambda_ot: 0.04
+  catet_lambda_rank: 0.08
+  catet_lambda_intervention: 0.05
+  catet_keep_ratio: 0.25
+  catet_intervention_margin: 0.05
+  catet_rank_margin: 0.0
+  catet_rank_max_pairs: 4096
+  rg_eps_start: 0.10
+  rg_eps_anneal: 12
