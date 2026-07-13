@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- encoding: utf-8 -*-
 """Unified training runner for the cleaned SurvOT-Rank framework."""
 
@@ -274,11 +274,16 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
         loss = (loss_surv + slot_loss) / accumulation_steps
         loss.backward()
 
+        grad_clip = float(getattr(args, "grad_clip_norm", 0.0) or 0.0)
         if args.batch_size != 1:
+            if grad_clip > 0.0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
             optimizer.zero_grad()
         else:
             if (batch_idx + 1) % accumulation_steps == 0:
+                if grad_clip > 0.0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
                 optimizer.step()
                 optimizer.zero_grad()
 

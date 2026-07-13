@@ -1,0 +1,54 @@
+name: v2_norank_blca
+description: >
+  V2 ablation from newSlotSPE — 彻底关闭 rankevent 4 个辅助损失，仅保留
+  OT + Div + Recon + NLL 父类 4 项。在 newSlotSPE 环境下 5-fold mean=0.7100
+  (vs V0 baseline 0.6993)，是消融实验中最优配置。batch=4, lr=5e-4。
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: ot_event_hazard_v2
+  specific_simple: runall_otehv2_norank_30ep
+  results_dir: results/v2_norank_blca
+  max_epochs: 30
+  batch_size: 4
+  lr: 0.0005
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_warmup: 5
+  otehv2_num_events: 24
+  otehv2_heads: 4
+  otehv2_layers: 4
+  otehv2_dropout: 0.1
+  lambda_otehv2_ot: 0.06
+  lambda_otehv2_div: 0.01
+  lambda_otehv2_event_surv: 0.25
+  lambda_otehv2_recon: 0.2

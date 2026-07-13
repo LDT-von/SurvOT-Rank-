@@ -48,37 +48,11 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 
 def _install_grad_clip_patch() -> None:
-    """包装 train_runner.init_optimizer，为其返回的优化器注入梯度裁剪。
+    """梯度裁剪已内置在 train_runner.train_one_epoch 中（读取 args.grad_clip_norm）。
 
-    优化器的 ``step`` 被替换为「先 clip_grad_norm_ 再原始 step」。裁剪阈值从
-    ``args.grad_clip_norm`` 读取（由启动器在解析后手动挂到 args 上，因此不需要
-    改 extended_args）。阈值 <=0 时不裁剪，行为与原始一致。
+    不再 monkey-patch optimizer.step，避免 PyTorch 2.x + Python 3.11+ 的 __func__ 报错。
     """
-    import torch
-    import survot_rank.training.train_runner as tr
-
-    if getattr(tr, "_stable_grad_clip_installed", False):
-        return
-
-    original_init_optimizer = tr.init_optimizer
-
-    def init_optimizer_with_clip(args, model):
-        optimizer = original_init_optimizer(args, model)
-        max_norm = float(getattr(args, "grad_clip_norm", 0.0) or 0.0)
-        if max_norm > 0.0:
-            params = [p for group in optimizer.param_groups for p in group["params"]]
-            original_step = optimizer.step
-
-            def step_with_clip(*step_args, **step_kwargs):
-                torch.nn.utils.clip_grad_norm_(params, max_norm)
-                return original_step(*step_args, **step_kwargs)
-
-            optimizer.step = step_with_clip
-            print(f"[stable] gradient clipping enabled: max_norm={max_norm}")
-        return optimizer
-
-    tr.init_optimizer = init_optimizer_with_clip
-    tr._stable_grad_clip_installed = True
+    pass
 
 
 def _build_parsed_args(config_path: str, overrides: list[str]):
