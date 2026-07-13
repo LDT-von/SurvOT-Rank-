@@ -18,6 +18,7 @@ METHOD_CHOICES = [
     "stagewise_prognostic_transport",
     "faithful_evidence_transport",
     "distributional_counterfactual_transport",
+    "censoring_aware_temporal_evidence_transport",
 ]
 
 
@@ -170,6 +171,17 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dct_lambda_proto", type=float, default=0.01)
     parser.add_argument("--dct_cf_margin", type=float, default=0.05)
     parser.add_argument("--dct_mix_ratio", type=float, default=0.50)
+
+    # Censoring-aware temporal evidence transport mainline.
+    parser.add_argument("--catet_num_stages", type=int, default=4)
+    parser.add_argument("--catet_prog_cost", type=float, default=0.20)
+    parser.add_argument("--catet_lambda_ot", type=float, default=0.04)
+    parser.add_argument("--catet_lambda_rank", type=float, default=0.08)
+    parser.add_argument("--catet_lambda_intervention", type=float, default=0.05)
+    parser.add_argument("--catet_keep_ratio", type=float, default=0.25)
+    parser.add_argument("--catet_intervention_margin", type=float, default=0.05)
+    parser.add_argument("--catet_rank_margin", type=float, default=0.0)
+    parser.add_argument("--catet_rank_max_pairs", type=int, default=4096)
 
     return parser
 
