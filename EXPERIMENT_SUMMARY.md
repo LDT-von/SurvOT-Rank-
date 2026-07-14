@@ -2,7 +2,7 @@
 
 > **此文件是 SurvOT-Rank 所有实验分数的唯一权威来源。所有新实验结果只在此追加，不再使用其他 SUMMARY/REPORT 文件。**
 >
-> 最后更新: 2026-07-14 | 代码版本: `4418bfb`
+> 最后更新: 2026-07-14 02:40 CST | 代码版本: `0d645dc`
 
 ---
 
@@ -192,15 +192,15 @@ train-val gap: **-0.0519** (train < val → 模型正则化有效)
 
 ### 5-fold 结果 (全局等频分箱 B, seed=random, 30ep)
 
-| # | 方法 | 状态 | 5-fold last5 | 分箱 | 备注 |
-|---|------|:---:|:------------:|:---:|------|
-| 1 | **v45_norank** | ✅ | **0.6406** | B | fold2 ver2: 0.6637 (+0.062 vs 旧) |
-| 2 | v45v2_norank | 🔄 fold1 | — | B | fold0=0.7433/0.5953 |
-| 3 | v50_norank | ⏳ | — | B | |
-| 4 | rg_et_fix | ⏳ | — | B | |
-| 5 | catet_fix | ⏳ | — | B | |
-| 6 | dct_fix | ⏳ | — | B | |
-| 7 | faithful_fix | ⏳ | — | B | |
+| # | 方法 | 状态 | f0/f1 best | 备注 |
+|---|------|:---:|:----------:|------|
+| 1 | **v45_norank** | ✅ | 0.7361/0.7094 | last5=0.6406, fold2 ver2=0.6637 |
+| 2 | v45v2_norank | 🔄 | 0.7433/0.7437 | fold2=0.5685, fold3-4 进行中 |
+| 3 | v50_norank | ⏳ | — | |
+| 4 | rg_et_fix | ⏳ | — | |
+| 5 | catet_fix | ⏳ | — | |
+| 6 | dct_fix | ⏳ | — | |
+| 7 | faithful_fix | ⏳ | — | |
 
 ### V51 SlimBridge 5-fold (newSlotSPE, 全局等频分箱 B)
 
@@ -209,9 +209,9 @@ train-val gap: **-0.0519** (train < val → 模型正则化有效)
 | 0 | 0.7433 | 5 | 0.7118 | 0.7385 | 3 | 0.6599 |
 | 1 | 0.7191 | 4 | 0.6552 | 0.7014 | 4 | 0.6374 |
 | 2 | 0.5821 | 16 | 0.5560 | 0.5689 | 15 | 0.5388 |
-| 3 | 0.6650 | 11 | 0.6157 | 0.6404 | 3 | 0.6249 |
-| 4 | 0.6837 | 11 | 0.5645 | 🔄 | — | — |
-| **mean** | | | **0.6207** | | | **0.6153** (4f) |
+| 3 | 0.6650 | 11 | 0.6157 | 0.6459 | 5 | 🔄 (ep23/30) |
+| 4 | 0.6837 | 11 | 0.5645 | ⏳ | — | — |
+| **mean** | | | **0.6207** | | | **0.6637** (3f done) |
 
 > ❌ fold2 两个种子一致崩溃 (<0.6), SlimBridge 架构不可用
 
@@ -239,6 +239,30 @@ train-val gap: **-0.0519** (train < val → 模型正则化有效)
 
 > ✅ fold2 0.6013→0.6637 (+0.062)
 > peak bias +0.044, fold3 最难
+
+### 2. v45v2_norank — 关 rankevent + clinical, 8-loss → 🔄 进行中
+
+> 启动: 2026-07-14 01:16 | seed=random | 5-fold 并行
+
+| Fold | 最佳ep | best | 状态 |
+|:----:|:------:|:----:|:---:|
+| 0 | 2 | **0.7433** | ✅ |
+| 1 | 5 | **0.7437** | ✅ |
+| 2 | 2 | 0.5685 | 🔄 (ep4/30) |
+| 3 | — | — | 🔄 |
+| 4 | — | — | 🔄 |
+
+> fold0/1 完成，fold2 又现坏折(0.5685≈V51 fold2=0.5689，BLCA fold2 本身问题)
+
+### 3. 剩余 fix 队列
+
+| 顺序 | 方法 | 状态 | 备注 |
+|:--:|---|:--:|---|
+| 3 | v50_norank | ⏳ | 关 rankevent, time-local |
+| 4 | rg_et_fix | ⏳ | RG-ET 全局分箱修复 |
+| 5 | catet_fix | ⏳ | CATE-T 全局分箱修复 |
+| 6 | dct_fix | ⏳ | DCT 全局分箱修复 |
+| 7 | faithful_fix | ⏳ | Faithful 全局分箱修复 |
 
 ---
 
@@ -585,16 +609,25 @@ train-val gap: **-0.0519** (train < val → 模型正则化有效)
 - 继续跑 10 组 V45 / 10 组 V50 只是在已有结论上加噪声，不产生新信息。
 
 ---
-## 14. 当前运行队列 (2026-07-14 凌晨)
+## 14. 当前运行队列 (2026-07-14 02:40 CST)
 
 | 状态 | 方法 | 备注 |
 |:--:|---|------|
 | ✅ | V51 SlimBridge seed3 | 5-fold done, fold2 崩溃 (0.58) |
-| 🔄 | V51 SlimBridge seed5 | fold0-1 done, fold2-4 进行中 |
-| ⏳ | V60 OT Event Rank | 等 V51 完成后启动 |
+| 🔄 | V51 SlimBridge seed5 | fold0-2 done, fold3 ep23/30, fold4 排队 |
+| ⏳ | V60 OT Event Rank | 等 V51 seed5 完成后启动 |
 | ✅ | v45_norank (5-fold seed=random) | 完成, last5=0.6406 |
-| ⏳ | v45v2_norank, v50_norank | 等 V51/V60 完成后 |
-| ⏳ | 批次2 (rg_et/catet/dct/faithful fix) | 等批次1完成后 |
+| 🔄 | v45v2_norank (5-fold seed=random) | fold0-1 done (0.7433/0.7437), fold2-4 进行中 |
+| ⏳ | v50_norank | 等 v45v2_norank 完成后 |
+| ⏳ | 剩余 fix (rg_et/catet/dct/faithful) | 排队中 |
+
+### 进程详情 (2026-07-14 02:40)
+
+```
+V51 seed5:   PID 3399992 + 4 workers (3813191-3813194) | fold3 Epoch 23/30 | best=0.6459@ep5
+v45v2 fix:   PID 3684865 + 4 workers (3813763-3813766) | fold2 Epoch 4/30  | fold0=0.7433@ep2, fold1=0.7437@ep5
+```
+> ⚠️ 两个队列共 10 进程同时抢 GPU
 
 ## 15. 运行环境
 
