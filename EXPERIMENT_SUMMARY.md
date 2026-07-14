@@ -1,540 +1,132 @@
 # 分数结果 — 唯一数据源
 
-> **此文件是 SurvOT-Rank 所有实验分数的唯一权威来源。所有新实验结果只在此追加，不再使用其他 SUMMARY/REPORT 文件。**
+> 此文件是 SurvOT-Rank 所有实验分数的唯一权威来源。新实验结果只在此追加。
 >
-> 最后更新: 2026-07-14 02:40 CST | 代码版本: `0d645dc`
+> 最后更新: 2026-07-14 | 代码版本: `765d8d4`
 
 ---
 
-## newSlotSPE / SlotSPE 全部方法 5-fold 详细 (等宽分箱A, seed=3, 30ep, 按 avg best 排名)
+## 0. 读者须知（先看这一节）
 
-> 分箱: **等宽 A** (bins={310,50,16,4}), c-index 虚高 ~0.05; V51 例外=等频 B
-> 格式: `best(ep)/last5`; **排名按 avg best (= 论文上报标准)**
+### 0.1 三种分箱口径，数字不能跨口径比较
 
-### SlotSPE 5-fold 总排名 (按 avg best, top 15)
+| 代号 | 实现 | bin 分布 (BLCA n=380) | 使用范围 |
+|:---:|---|---|---|
+| **A** 等宽 (bug) | `pd.cut(bins=4)`，SlotSPE 官方原始实现 | `{310,50,16,4}` 82%/13%/4%/1% — 近似二分类，c-index 虚高 ~0.05–0.07 | newSlotSPE 早期全部方法（§4 SlotSPE 家族表、§5 消融 V0-V4a）|
+| **A\*** fold-aware 等频 | 每个 fold 用自己训练集重新 `pd.qcut` | 各 fold 边界不同，fold2 边界异常导致该折系统性偏低 | SurvOT-Rank 2026-07-13 前的全部 fold2-only 探索结果（§2 大部分条目、旧版 V4a/V2/CATE-T/DCT/Faithful/v50/RG-ET/Stagewise）|
+| **B** 全局等频（当前，已修复） | 全体数据一次 `pd.qcut(未删失)` → `pd.cut` | `{69,76,82,153}` 18%/20%/22%/40%，bin3 大是删失率 66% 的自然结果 | 2026-07-14 起的新结果（§3 v45_norank / v45v2_norank / V51 SlimBridge）|
 
-| # | 方法 | f0 best(ep)/last5 | f1 best(ep)/last5 | f2 best(ep)/last5 | f3 best(ep)/last5 | f4 best(ep)/last5 | **avg best** |
-|---|---|---|---|---|---|---|---|
-| 1 | **ot_v3** | 0.7353(1)/0.6960 | 0.7242(1)/0.6796 | 0.6869(25)/0.6314 | 0.7421(8)/0.6754 | 0.7527(24)/0.6391 | **0.7282** |
-| 2 | ot_v2 | 0.7353(1)/0.6160 | 0.7090(1)/0.5856 | 0.6950(1)/0.5566 | 0.7191(28)/0.6739 | 0.7295(23)/0.6984 | **0.7176** |
-| 3 | V45 seed5 | 0.7338(10)/0.6830 | 0.7107(3)/0.6075 | 0.7398(12)/0.7045 | 0.6546(8)/0.5800 | 0.7402(7)/0.7284 | **0.7158** |
-| 4 | surgfix | 0.7171(1)/0.5919 | 0.7073(1)/0.6117 | 0.7126(14)/0.6347 | 0.7257(9)/0.6444 | 0.7153(10)/0.6418 | **0.7156** |
-| 5 | **V45 主跑** | 0.7124(1)/0.6149 | 0.7191(1)/0.5794 | 0.7282(16)/0.7127 | 0.6787(14)/0.6044 | 0.7140(21)/0.7076 | **0.7105** |
-| 6 | strongot | 0.7013(2)/0.6605 | 0.7246(2)/0.6012 | 0.7122(11)/0.6844 | 0.6656(7)/0.6261 | 0.7353(8)/0.6649 | **0.7078** |
-| 7 | contrastive_v2 | 0.6759(4)/0.6184 | 0.7107(2)/0.5251 | 0.7486(22)/0.7074 | 0.7016(7)/0.6338 | 0.7011(3)/0.6053 | **0.7076** |
-| 8 | capacity | 0.7258(13)/0.7199 | 0.7335(4)/0.6595 | 0.7090(15)/0.6745 | 0.6787(27)/0.6760 | 0.6904(6)/0.6180 | **0.7075** |
-| 9 | lrhalf | 0.7036(2)/0.5623 | 0.7547(4)/0.4071 | 0.6805(9)/0.6570 | 0.6951(16)/0.5013 | 0.7037(9)/0.7019 | **0.7075** |
-| 10 | eta1e5 | 0.7009(2)/0.6593 | 0.7250(2)/0.6039 | 0.7062(15)/0.6893 | 0.6601(7)/0.6326 | 0.7371(8)/0.6604 | **0.7059** |
-| 11 | rankcox | 0.7139(2)/0.5928 | 0.7208(2)/0.5465 | 0.7202(12)/0.6938 | 0.6585(14)/0.5447 | 0.7117(8)/0.6783 | **0.7050** |
-| 12 | crosst | 0.7060(4)/0.6338 | 0.6929(4)/0.5450 | 0.7126(10)/0.7015 | 0.6874(13)/0.6672 | 0.7180(13)/0.7109 | **0.7034** |
-| 13 | adaptive_marginal | 0.7203(0)/0.5612 | 0.7217(1)/0.5390 | 0.6285(24)/0.5546 | 0.7082(22)/0.6040 | 0.7358(9)/0.5717 | **0.7029** |
-| 14 | epsanneal | 0.7179(2)/0.6714 | 0.7208(3)/0.5810 | 0.7114(18)/0.7013 | 0.6645(13)/0.6452 | 0.6984(8)/0.6858 | **0.7026** |
-| 15 | V45 alt | 0.6926(1)/0.6300 | 0.7090(4)/0.5860 | 0.7102(23)/0.6986 | 0.6426(4)/0.5196 | 0.7411(18)/0.7279 | **0.6991** |
+**结论：A 的分数比 B 系统性偏高（任务更简单）；A\* 的 fold2 分数系统性偏低（分箱边界问题）。跨口径比较（比如说"V4a (A\*) 0.7254 是全场最高"）没有意义，必须在同一口径内比较。**
 
-### contrastive_v2 分析
+### 0.2 Seed 政策
 
-**代码**: ❌ 已删除 (`02_contrastive_slot_register/model_v2.py`)
+- **探索阶段**（快速试方向、判断能不能拟合）：可以用 `seed=None`，反馈快、不会被单个幸运种子误导。
+- **要写进结论/正式对比的数字**：必须固定 seed，最好 3 个不同 seed（如 3/5/1）取跨 seed 均值。已发表 baseline（SlotSPE/PIBD 等）官方脚本均跑 3 个固定 seed。
+- 本文件里标注 `seed=None/random` 的数字**均为探索性**，不作为最终结论；标注具体 seed 数字（如 `seed=3`）用于对比但仍建议补充其他 seed。
 
-**内容**: SlotSPE + register tokens (4 WSI + 4 omic) 跨模态对比学习
-损失 = NLL + decoder + recon + diversity(0.05) + attn(0.02) + contrast(0.1, warmup 5ep)
+### 0.3 best vs last5
 
-| fold | best(ep)/last5 | |
-|:---:|:---:|---|
-| 0 | 0.6759(4)/0.6184 | early peak→衰减 |
-| 1 | 0.7107(2)/0.5251 | ep2 peak, **last5 崩→过拟合** |
-| 2 | 0.7486(22)/0.7074 | 唯一好 fold, peak bias 仅 0.04 |
-| 3 | 0.7016(7)/0.6338 | ok |
-| 4 | 0.7011(3)/0.6053 | early peak→衰减 |
-
-> avg best=0.7076 ≈ 基准(0.7105), 但 fold1 不稳定。不恢复。
-
-### V51 SlimBridge (等频 B)
-
-| 版本 | f0 best(ep)/last5 | f1 best(ep)/last5 | f2 best(ep)/last5 | f3 best(ep)/last5 | f4 best(ep)/last5 | **avg best** |
-|---|---|---|---|---|---|---|
-| seed3 | 0.7433(5)/0.7118 | 0.7191(4)/0.6552 | 0.5821(16)/0.5560 | 0.6650(11)/0.6157 | 0.6837(11)/0.5645 | **0.6786** |
-| seed5 | 0.7385(3)/0.6599 | 0.7014(4)/0.6374 | 0.5689(15)/0.5388 | 0.6459(5)/0.6249 | — | **0.6637** |
-
-> fold2 崩溃, SlimBridge 不可用. 全部 SlotSPE=等宽A(c-index 虚高~0.05); V51=等频B
+- **best**：整条 30-epoch 曲线里验证集 C-index 的最大值 —— 会挑中噪声峰值，存在乐观偏差（+0.04~0.07，`robust_eval/honest_report.py` 已实测）。
+- **last5**：最后 5 个 epoch 的均值 —— 更诚实的收敛水平，本文件优先参考这一列。
+- 只有 `best` 的条目是尚未补算 `last5` 的历史数据，不代表该方法没有过拟合问题。
 
 ---
 
-## 如何监控训练
+## 1. 当前最可信结论（分箱 B，全局分箱修复后）
 
-### 核心命令
+> 这是目前唯一在正确分箱下跑完 5-fold 的数据，作为项目当前基准。
 
-```bash
-# ★ 最常用: 看每个 epoch 的 real-time 指标
-tail -f <LOG_FILE> | grep "val cindex"
+### v45_norank — 关闭 4 项 rankevent 黑名单损失（`configs/fix/v45_norank_blca.yaml`, seed=None, 5-fold, 30ep）
 
-# 输出示例:
-# [Epoch 19] val cindex=0.6486 ipcw=0.5363 IBS=0.3909 iauc=0.7859
-# [Epoch 20] val cindex=0.5634 ipcw=0.6002 IBS=0.4101 iauc=0.7181
-# [Epoch 21] val cindex=0.6006 ipcw=0.5130 IBS=0.3947 iauc=0.7307
-
-# 同时看 Fold 切换和 cindex (推荐)
-tail -f <LOG_FILE> | grep -E "Fold.*start|val cindex"
-
-# 看队列整体进度 (只显示方法级 start/done)
-tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
-```
-
-### 日志文件命名规则
-
-| 队列 | 日志路径 |
-|---|---|
-| fix 队列 (SurvOT-Rank) | `/data1/sweep_results_30ep/_logs/<TAG>_5fold.log` |
-| V51/V60 (run_v51_v60.sh) | `/data1/sweep_results_30ep/_logs/v51_slimbridge_seed<N>.log` |
-| 队列总控 | `/data1/sweep_results_30ep/_logs/fix_queue_now.log` |
-
-### 注意事项
-
-- **`fix_queue_now.log` 只显示"开始"和"完成"，不显示 epoch 进度。**
-  看每个方法的训练日志才能看到 epoch 级指标。
-- `grep "val cindex"` 输出格式统一: `[Epoch N] val cindex=X ipcw=Y IBS=Z iauc=W`
-- 如果输出为空，说明训练还没到第一个 val epoch，等几秒即可。
-
----
-
-## 分箱策略审计 (2026-07-14)
-
-### 三种分箱策略实测 (BLCA, 380人, 128未删失)
-
-| 策略 | 实现 | bin 0 | bin 1 | bin 2 | bin 3 |
-|---|---|---|---|---|---|
-| **A. 旧bug (等宽)** | `pd.cut(bins=4)` | **310 (82%)** [0,41) | 50 (13%) [41,82) | 16 (4%) [82,123) | 4 (1%) [123,164) |
-| **B. 现在 (修复后)** | `pd.qcut(uncensored)` → `pd.cut(bins=数组)` | 69 (18%) [0,8) | 76 (20%) [8,14) | 82 (22%) [14,21) | **153 (40%)** [21,∞) |
-| C. 等频 on 全体 | `pd.qcut(all)` → `pd.cut(bins=数组)` | 95 (25%) [0,11) | 94 (25%) [11,18) | 96 (25%) [18,30) | 95 (25%) [30,∞) |
-
-### 当前代码状态: 两个仓库一致，使用策略 B
-
-| 仓库 | `_disc_label` | `fit_label_bins` | 作用域 |
-|---|---|---|---|
-| SurvOT-Rank | ✅ 策略 B (`pd.qcut` uncensored → `pd.cut` with array ±inf) | ❌ 已注释 (全局分箱) | 全局 |
-| newSlotSPE | ✅ 策略 B (`pd.qcut` uncensored → `pd.cut` with array ±inf) | ❌ 不存在 (全局分箱) | 全局 |
-
-### 关于"等宽分箱虚高"的修正
-
-旧等宽分箱 `{310, 50, 16, 4}` 使任务退化近似"能否区分 0-40月 vs 40+月"二分类，
-因此 c-index 系统性偏高 ~0.05-0.07。这不是"造假"，而是**任务难度不同**。
-
-当前策略 B 用未删失分位数去切全体，导致 bin 3 [21,∞) 吞掉所有长生存删失病人 (40%)。
-这在**语义上是正确的**：存活 >21 月的病人就应该在"长期生存"组。
-40% 的分布反映了 BLCA 删失率 66.3% 的现实。
-不追求纯均衡分箱，因为删失病人的时间不是真实的生存时间。
-
----
-
-## 关键发现: 全局分箱修复验证
-
----
-
-### V51 SlimBridge seed3 (newSlotSPE, 修复后: 全局 + 等频分箱)
-
-| Fold | Best epoch | val_cidx (best) | val_cidx (last5) |
-|:----:|:----------:|:---------------:|:----------------:|
-| 0 | 5 | **0.7433** | 0.7118 |
-| 1 | 4 | 0.7191 | 0.6552 |
-| 2 | 16 | 0.5821 | 0.5560 |
-| 3 | 11 | 0.6650 | 0.6157 |
-| 4 | 11 | 0.6837 | 0.5645 |
-
-**5-fold last5 mean: 0.6207 ± 0.0581**
-5-fold best peak: 0.6786 ± 0.0554 (peak bias +0.06)
-
-> ❌ **fold2 仍然崩溃** (0.5821, last5=0.5560)。全局等频分箱修复了 V45 的 fold2 但没有修复 SlimBridge。
-> **结论：SlimBridge 的 fold2 崩溃是模型架构问题**（SlotBridge/Modality Dropout 机制），与分箱无关。
-
----
-
-### v45_norank (SurvOT-Rank, 修复后: 全局 + 等频分箱, seed=random, 5-fold)
-
-| Fold | Best epoch | val_cidx (best) | val_cidx (last5) | train_cidx (last) |
-|:----:|:----------:|:---------------:|:----------------:|:-----------------:|
-| 0 | 2 | **0.7361** | 0.6536 | 0.4126 |
+| Fold | 最佳 epoch | best | last5 | train_cidx(last) |
+|:---:|:---:|:---:|:---:|:---:|
+| 0 | 2 | 0.7361 | 0.6536 | 0.4126 |
 | 1 | 0 | 0.7094 | 0.6643 | 0.6486 |
 | 2 | 14 | 0.6765 | 0.6637 | 0.6830 |
 | 3 | 8 | 0.6273 | 0.6021 | 0.6113 |
 | 4 | 6 | 0.6744 | 0.6195 | 0.5882 |
+| **mean** | | **0.6848 ± 0.037** | **0.6406 ± 0.025** | — |
 
-**5-fold last5 mean: 0.6406 ± 0.0253**
-5-fold best peak: 0.6848 ± 0.0367 (peak bias +0.04)
-train-val gap: **-0.0519** (train < val → 模型正则化有效)
+- fold2 从旧分箱 A\* 的 0.6013 → 0.6637（+0.062），证明 fold2 崩溃主因是分箱边界，不是模型。
+- train-val gap 全部为负（train < val），说明 AdamW+wd=5e-4 的正则化生效，没有过拟合。
+- fold0 出现 epoch2 极端早峰（0.7361），说明 30ep 内峰值选择本身不够稳定，**last5 更可信**。
+- ⚠️ 用 seed=None 跑的，是探索性质；此结果值得用固定 seed(3,5) 复核（见 §6 待办）。
 
-> ✅ **fold2 恢复正常！** 从旧的 0.6013 (fold-aware) 提升到 0.6637 (全局分箱)，+0.062。
-> 但 fold0 出现 0.7361 @ epoch 2 的极端 early peak，表明 30ep 的峰值选择不可靠。
-> train < val 全部 fold 出现负 gap，说明 AdamW + wd=5e-4 正则化有效抑制了过拟合。
+### v45v2_norank — 关闭 rankevent + clinical（同一处方，5-fold, 30ep）🔄 进行中
 
----
+| Fold | 最佳 epoch | best | 状态 |
+|:---:|:---:|:---:|:---:|
+| 0 | 2 | 0.7433 | ✅ |
+| 1 | 5 | 0.7437 | ✅ |
+| 2 | 2 | 0.5685 | 🔄 ep4/30 |
+| 3 | — | — | 🔄 排队 |
+| 4 | — | — | 🔄 排队 |
 
-## 全部方法汇总 (2026-07-14)
+- fold2 又出现坏折（0.5685），和 V51 SlimBridge 的 fold2（0.5689，见下）几乎一致——**怀疑 fold2 本身（这一份数据划分）就是难折，不完全是分箱或模型问题**，需要在全部方法跑完 B 分箱后再下结论。
 
-> **分箱**: 旧方法用 fold-aware 等频(A*) 或等宽(A)，新方法用全局等频(B)。见上方分箱审计。
-> **种子**: all=seed=3，noseed=seed=None/random，见各列标注
-> **epoch**: 全部 30ep 除非标注
+### V51 SlimBridge（newSlotSPE，分箱 B，两个 seed）
 
-### Fold2 排名 (单折, 主要对比基线)
+| Fold | seed3 best/ep/last5 | seed5 best/ep/last5 |
+|:---:|:---:|:---:|
+| 0 | 0.7433 / 5 / 0.7118 | 0.7385 / 3 / 0.6599 |
+| 1 | 0.7191 / 4 / 0.6552 | 0.7014 / 4 / 0.6374 |
+| 2 | 0.5821 / 16 / 0.5560 | 0.5689 / 15 / 0.5388 |
+| 3 | 0.6650 / 11 / 0.6157 | 0.6459 / 5 / 🔄 ep23/30 |
+| 4 | 0.6837 / 11 / 0.5645 | 🔄 排队 |
+| **mean** | **best 0.6786 ± 0.055 / last5 0.6207 ± 0.058** | 🔄 未完（3 fold 时 0.6637）|
 
-| # | 方法 | 最佳ep | best | last5 | 分箱 | 种子 |
-|---|------|:------:|:----:|:-----:|:---:|:---:|
-| 1 | **V4a norank+AdamW wd=5e-4** | **12** | **🏆 0.7254** | 0.6581 | A* | 3 |
-| 2 | V2 norank (4-loss) | 12 | 0.7174 | — | A* | 3 |
-| 3 | Faithful Evidence Transport | 7 | 0.6837 | 0.5396 | A* | 3 |
-| 4 | v50 Time-Local Competing | 12 | 0.6749 | 0.6199 | A* | 3 |
-| 5 | Stagewise Prognostic Transport | 13 | 0.6741 | 0.6349 | A* | 3 |
-| 6 | CATE-T (Censoring-Aware) | 8 | 0.6405 | 0.6050 | A* | 3 |
-| 7 | RG-ET + PCGrad (=RG-ET rerun) | 29 | 0.6341 | 0.5616 | A* | 3 |
-| 8 | DCT (Counterfactual) | 29 | 0.6237 | 0.6037 | A* | 3 |
-| 9 | v45v2 + clinical (8-loss) | 8 | 0.6237 | — | A* | 3 |
-| 10 | v45 baseline (8-loss) | 5 | 0.6013 | 0.5026 | A* | 3 |
-| — | v45 8-loss seed=None | 0 | 0.6253 | 0.5768 | A* | None |
-| — | ot_v3 (newSlotSPE) | — | ❌ | — | — | — |
+- **两个 seed 的 fold2 都崩**（0.5821 / 0.5689，均 <0.60）——同一正确分箱下不同种子仍崩，说明 **SlimBridge 架构本身有问题（不是分箱造成的）**。这是排除架构假设的关键证据。
 
-### 5-fold 结果 (全局等频分箱 B, seed=random, 30ep)
+### 分箱修复前后对照（同方法，仅分箱不同）
 
-| # | 方法 | 状态 | f0/f1 best | 备注 |
-|---|------|:---:|:----------:|------|
-| 1 | **v45_norank** | ✅ | 0.7361/0.7094 | last5=0.6406, fold2 ver2=0.6637 |
-| 2 | v45v2_norank | 🔄 | 0.7433/0.7437 | fold2=0.5685, fold3-4 进行中 |
-| 3 | v50_norank | ⏳ | — | |
-| 4 | rg_et_fix | ⏳ | — | |
-| 5 | catet_fix | ⏳ | — | |
-| 6 | dct_fix | ⏳ | — | |
-| 7 | faithful_fix | ⏳ | — | |
+| 方法 | 分箱 A\*（旧）fold2 | 分箱 B（新）fold2 last5 | 差值 |
+|---|:---:|:---:|:---:|
+| v45_norank | 0.6013 (best) | 0.6637 (best) | +0.062 |
 
-### V51 SlimBridge 5-fold (newSlotSPE, 全局等频分箱 B)
-
-| Fold | seed3 best | seed3 ep | seed3 last5 | seed5 best | seed5 ep | seed5 last5 |
-|:----:|:----------:|:--------:|:-----------:|:----------:|:--------:|:-----------:|
-| 0 | 0.7433 | 5 | 0.7118 | 0.7385 | 3 | 0.6599 |
-| 1 | 0.7191 | 4 | 0.6552 | 0.7014 | 4 | 0.6374 |
-| 2 | 0.5821 | 16 | 0.5560 | 0.5689 | 15 | 0.5388 |
-| 3 | 0.6650 | 11 | 0.6157 | 0.6459 | 5 | 🔄 (ep23/30) |
-| 4 | 0.6837 | 11 | 0.5645 | ⏳ | — | — |
-| **mean** | | | **0.6207** | | | **0.6637** (3f done) |
-
-> ❌ fold2 两个种子一致崩溃 (<0.6), SlimBridge 架构不可用
-
-### V60 OT Event Rank
-
-⏳ 等 V51 seed5 完成后自动启动
+⚠️ **待办**：还没有跑过"v45 全 8 损失 + 分箱 B"的对照，无法确定 0.6637 的涨幅有多少归因于分箱、多少归因于关 rankevent（见 §6）。
 
 ---
 
-## Fix 队列详细 (2026-07-14)
-
-> 分箱: **全部 B** (等频 on 未删失, 全局), bins={69,76,82,153}
-> 参数: 5-fold, 30ep, seed=None, 独立 results_dir `_5fold_noseed`
-
-### 1. v45_norank — 关 rankevent, 4-loss → 5-fold confirm
-
-| Fold | 最佳ep | best | last5 |
-|:----:|:------:|:----:|:-----:|
-| 0 | 2 | 0.7361 | 0.6536 |
-| 1 | 0 | 0.7094 | 0.6643 |
-| 2 | 14 | 0.6765 | 0.6637 |
-| 3 | 8 | 0.6273 | 0.6021 |
-| 4 | 6 | 0.6744 | 0.6195 |
-| **mean** | | 0.6848 | **0.6406 ± 0.025** |
-
-> ✅ fold2 0.6013→0.6637 (+0.062)
-> peak bias +0.044, fold3 最难
-
-### 2. v45v2_norank — 关 rankevent + clinical, 8-loss → 🔄 进行中
-
-> 启动: 2026-07-14 01:16 | seed=random | 5-fold 并行
-
-| Fold | 最佳ep | best | 状态 |
-|:----:|:------:|:----:|:---:|
-| 0 | 2 | **0.7433** | ✅ |
-| 1 | 5 | **0.7437** | ✅ |
-| 2 | 2 | 0.5685 | 🔄 (ep4/30) |
-| 3 | — | — | 🔄 |
-| 4 | — | — | 🔄 |
-
-> fold0/1 完成，fold2 又现坏折(0.5685≈V51 fold2=0.5689，BLCA fold2 本身问题)
-
-### 3. 剩余 fix 队列
-
-| 顺序 | 方法 | 状态 | 备注 |
-|:--:|---|:--:|---|
-| 3 | v50_norank | ⏳ | 关 rankevent, time-local |
-| 4 | rg_et_fix | ⏳ | RG-ET 全局分箱修复 |
-| 5 | catet_fix | ⏳ | CATE-T 全局分箱修复 |
-| 6 | dct_fix | ⏳ | DCT 全局分箱修复 |
-| 7 | faithful_fix | ⏳ | Faithful 全局分箱修复 |
-
----
-
-## 旧记录 (fold2-only, 2026-07-13)
->
-> ## 队列状态: #1–#8 ✅ (ot_v3 失败) | #9、#10 ❌ 已终止
-
----
-
-## 方法一览
-
-| # | 方法 | 状态 | val_cidx best (fold2) | 来源 config |
-|---|------|------|----------------------|-------------|
-| 1 | v45 — 8-loss baseline | ✅ 5-fold 完成 | 0.6013 | `v45_blca.yaml` |
-| 2 | v45v2 — 8-loss + clinical | ✅ 5-fold 完成 | 0.6237 | `v45v2_blca_clinical.yaml` |
-| 3 | Rank-Guided Event Transport — 3-loss | ✅ fold2 完成 | 0.6341 | `rank_guided_event_transport_blca.yaml` |
-| 4 | Stagewise Prognostic Transport | ✅ fold2 完成 | **0.6741** | `stagewise_prognostic_transport_blca.yaml` |
-| 5 | Faithful Evidence Transport | ✅ fold2 完成 | **0.6837** | `faithful_evidence_transport_blca.yaml` |
-| 6 | v50 (Time-Local Competing) | ✅ fold2 完成 | **0.6749** | `v50_blca.yaml` |
-| 7 | CATE-T (Censoring-Aware) | ✅ fold2 完成 | 0.6405 | `censoring_aware_temporal_evidence_transport_blca.yaml` |
-| 8 | DCT (Distributional Counterfactual) | ✅ fold2 完成 | 0.6237 | `distributional_counterfactual_transport_blca.yaml` |
-| 9 | RG-ET + PCGrad | ✅ 完成 (PCGrad 未集成, 实际=RG-ET rerun) | 0.6341 | `rank_guided_event_transport_blca.yaml` |
-| 10 | V2 — 关 rankevent | ✅ fold2 完成 (#6) | 0.7174 | `v2_norank_blca.yaml` |
-| 11 | **V4a — 关 rankevent + AdamW wd=5e-4** | ✅ fold2 完成 (#7) | **🏆 0.7254** | `v2_norank_blca.yaml` + `--set opt=adamW` |
-| 12 | ot_v3 (newSlotSPE #1, 0.7282) | ❌ 失败 | — | 缺 `04_optimal_transport_align/model_v3.py` |
-| 13 | V45 损失子集 curated | ❌ 已终止 (2/10 完成) #9 | 0.6165 / 0.6125 | 随机组合无意义，且 #1–#8 已提供明确答案 |
-| 14 | V50 损失子集 curated | ❌ 已终止 (未开始) #10 | — | V50 fold2 0.6749 不如 V4a 0.7254，无需扫描 |
-
-> 排队脚本：`bash scripts/queue_fold2.sh`（依次 10 个，fold2 only, 30ep）
-> #1–#8, #10 各 ~1h15m, #9, #13–#14 各 ~12.5h, 总计 ~35h
-> **🏆 V4a (关 rankevent + AdamW) 是 fold2 目前最高分 (0.7254 @ ep12)**，超过 v45 8-loss 的 0.6013 达 +0.1241
-> 注意: V2 和 V4a 共用同一 results 目录 (`configs/v2_norank_blca.yaml`)，V2 先跑 (0.7174)，V4a 后覆盖 (0.7254)
-
-### 损失子集扫描
-
-> 工具：`robust_eval/loss_group_sweep.py` — 枚举 V45/V50 损失组合，三档规模
-
-| preset | V45 | V50 | 说明 |
-|--------|:---:|:---:|------|
-| **`curated`（默认）** | **10** | **10** | 手工精选，必含 OT + 至少一个预测监督项 |
-| `pruned` | 52 | 130 | 全枚举 + 剪枝（必含 OT + 至少一个预测监督项） |
-| `full` | 126 | 495 | 原始全枚举（兜底） |
-
-> 用法：`--preset curated`（默认）| `--preset pruned` | `--preset full`
-> dry-run：`--dry-run` | 权重网格：`--weight-grid 0.5,1,2`
-
----
-
-## 1. v45 — 8-loss baseline
-
-**Config**: `v45_blca.yaml` | **Method**: `otehv2_rankevent` | **Losses**: OT + Div + Recon + GateEnt + NLL + PerEvent + CoxRank + GlobalCons
-
-### seed=3, 30 epochs, 5-fold (alpha_surv=0.15, fold-aware bins)
-
-| Fold | Ep | train_cidx | val_cidx | best @ | val_cidx last5 | val_ipcw | val_IBS | val_iauc |
-|------|----|-----------|---------|--------|---------------|---------|--------|---------|
-| 0 | 30 | 0.5370 | 0.7120 | 15 | 0.6887 | 0.6753 | 0.3478 | 0.8601 |
-| 1 | 30 | 0.6315 | 0.7411 | 3 | 0.7080 | 0.7114 | 0.1544 | 0.7806 |
-| 2 | 30 | 0.5365 | 0.6013 | 5 | 0.5026 | 0.6855 | 0.2534 | 0.8632 |
-| 3 | 30 | 0.5705 | 0.6995 | 6 | 0.6654 | 0.6363 | 0.1500 | 0.6380 |
-| 4* | 5 | 0.5152 | 0.6530 | 4 | 0.5988 | 0.6110 | 0.1488 | 0.8056 |
-
-> \* Fold 4 仅 5 epoch 后手动 kill（train_cidx=0.5152 < 0.5，bug 已确认）
-
-| Aggregate | Score |
-|-----------|-------|
-| val_cidx best | **0.6814 ± 0.0491** |
-| val_cidx last5 | 0.6327 ± 0.0748 |
-| train_cidx (mean of means) | **0.48** — 不如随机猜 |
-
-### seed=None, 30 epochs, fold2 only (grad_clip=1.0)
-
-| Fold | Ep | val_cidx | best @ | val_cidx last5 | train_cidx @29 | val_ipcw | val_IBS | val_iauc |
-|------|----|---------|--------|---------------|----------------|---------|--------|---------|
-| 2 | 30 | **0.6389** | **9** | 0.5844 | 0.8597 | 0.5541 | 0.7521 | 0.3875 |
-
-> **分析 — 重度过拟合 + 后期崩溃：**
-> - train_cidx 0.86 vs val 0.58: 差异 0.28，10 epoch 后梯度拉扯开始破坏泛化。
-> - epoch 9 达到峰值 0.6389 后持续下降，epoch 20 后 IBS 从 0.25 爆炸到 0.75，iAUC 从 0.84 崩塌到 0.39——**生存分布彻底崩溃**。
-> - 3-loss (OT+Rank+StageOrder) 方向冲突未消解，batch=4 下信号本就弱，30ep 反而让冲突累积到不可逆。
-> - 结论：grad_clip 只缓解梯度爆炸，不解决方向冲突。PCGrad（#5）是冲着这个问题来的。
-
----
-
-## 2. v45v2 — 8-loss + age/gender clinical features
-
-**Config**: `v45v2_blca_clinical.yaml` | **Method**: `otehv2_rankevent_v2`
-
-### seed=3, 30 epochs, 5-fold
-
-| Fold | Ep | val_cidx | best @ | val_ipcw | val_IBS | val_iauc |
-|------|----|---------|--------|---------|--------|---------|
-| 0 | 30 | 0.7417 | 14 | 0.4581 | 0.8828 | 0.8302 |
-| 1 | 30 | 0.7453 | 24 | 0.6801 | 0.4261 | 0.6910 |
-| 2 | 30 | 0.6237 | 8 | 0.5581 | 0.8884 | 0.4965 |
-| 3 | 30 | 0.7049 | 20 | 0.6313 | 0.4543 | 0.5897 |
-| 4 | 30 | 0.6441 | 15 | 0.6074 | 0.3131 | 0.6253 |
-
-| Aggregate | Score |
-|-----------|-------|
-| val_cidx | **0.6919 ± 0.0499** |
-
----
-
-## 3. Rank-Guided Event Transport — 3-loss
-
-**Config**: `rank_guided_event_transport_blca.yaml` | **Method**: `rank_guided_event_transport`
-**Losses**: OT + Ranking + StageOrder (砍掉 5 个辅助损失)
-
-### seed=1, 10 epochs, 5-fold, grad_clip=1.0 (quick_robust_eval)
-
-| Fold | Ep | train_cidx | val_cidx | best @ | val_cidx last5 | val_ipcw | val_IBS | val_iauc |
-|------|----|-----------|---------|--------|---------------|---------|--------|---------|
-| 0 | 10 | 0.5296 | 0.6965 | 5 | 0.6487 | 0.7790 | 0.3499 | 0.8604 |
-| 1 | 10 | 0.7501 | 0.7403 | 6 | 0.6335 | 0.7204 | 0.1572 | 0.8641 |
-| 2 | 10 | 0.6358 | 0.6037 | 8 | 0.5955 | 0.5899 | 0.2313 | 0.8932 |
-| 3 | 10 | 0.8136 | 0.6470 | 6 | 0.6350 | 0.5974 | 0.1451 | 0.9285 |
-| 4 | 10 | 0.7252 | 0.6859 | 8 | 0.6407 | 0.6439 | 0.1493 | 0.9326 |
-
-| Aggregate | Score |
-|-----------|-------|
-| val_cidx best | 0.6747 ± 0.0463 |
-| val_cidx last5 | **0.6307 ± 0.0205** |
-| train_cidx max | 0.53–0.81 (能拟合了) |
-
-#### 诚实报告 (last_k_mean, k=5)
-
-| Metric | robust | best (leak) | optimism gap |
-|--------|--------|-------------|--------------|
-| val_cindex ↑ | 0.6307 ± 0.0205 | 0.6747 ± 0.0518 | **+0.0440** |
-| val_cindex_ipcw ↑ | 0.5917 ± 0.0782 | 0.6661 ± 0.0817 | +0.0744 |
-| val_iauc ↑ | 0.6300 ± 0.1353 | 0.8958 ± 0.0343 | **+0.2658** |
-| val_IBS ↓ | 0.2289 ± 0.0805 | 0.2065 ± 0.0875 | +0.0223 |
-
-### seed=3, fold2 only (no grad_clip)
-
-| Fold | Ep | val_cidx | best @ | train_cidx max |
-|------|----|---------|--------|---------------|
-| 2 (25ep) | 25 | 0.6341 | 29 | 0.7285 |
-| 2 (3ep smoke) | 3 | 0.5592 | 0 | — |
-
-### seed=1, fold0 only, 30 epochs, grad_clip=1.0
-
-| Fold | Ep | val_cidx | best @ | val_cidx last5 |
-|------|----|---------|--------|---------------|
-| 0 | 30 | 0.6743 | 7 | 0.6520 |
-
----
-
-## 4. Stagewise Prognostic Transport
-
-**Config**: `stagewise_prognostic_transport_blca.yaml` | **Method**: `stagewise_prognostic_transport`
-
-### seed=3, fold2 only
-
-| Fold | Ep | val_cidx best | best @ | val_cidx last5 | train_cidx max | val_ipcw | val_IBS | val_iauc |
-|------|----|--------------|--------|---------------|---------------|---------|--------|---------|
-| 2 (old, early kill) | 8 | 0.5909 | 7 | — | 0.6026 | — | — | — |
-| **2 (rerun, 30ep)** | 30 | **0.6741** | 13 | — | **0.7886** | 0.6948 | 0.2198 | 0.7848 |
-
-> 完整 30 epoch 后 train_cidx 飙到 0.7886，模型能拟合了；best val 0.6741 @epoch 13，早停于 epoch 29
-
----
-
-## 5. Faithful Evidence Transport
-
-**Config**: `faithful_evidence_transport_blca.yaml` | **Method**: `faithful_evidence_transport`
-
-### seed=None, 30 epochs, fold2 only
-
-| Fold | Ep | val_cidx | best @ | val_cidx last5 | train_cidx @29 | val_ipcw | val_IBS | val_iauc |
-|------|----|---------|--------|---------------|----------------|---------|--------|---------|
-| 2 | 30 | **0.6837** | **7** | 0.5301 | 0.6165 | 0.5840 | 0.3203 | 0.7973 |
-
-> **分析 — 峰值最高但极不稳定：**
-> - best 0.6837 @ epoch 7，是目前 fold2 的绝对最高值。
-> - 但 IBS 在 epoch 20–28 剧烈震荡（0.21→0.53→0.56→0.45→0.60→0.36），模式完全无序。
-> - train_cidx 仅 0.5167→0.6165（缓慢爬升），没有过拟合迹象——不稳定似乎来自损失内部而非 train/val 差异。
-> - epoch 7 的 0.6837 是单点峰值，可信度低于 v50 的连续平台.
-
----
-
-## 6. Censoring-Aware Temporal Evidence Transport (CATE-T)
-
-**Config**: `censoring_aware_temporal_evidence_transport_blca.yaml` | **Method**: `censoring_aware_temporal_evidence_transport`
-
-### seed=None, 30 epochs, fold2 only
-
-| Fold | Ep | val_cidx | best @ | val_cidx last5 | train_cidx @29 | val_ipcw | val_IBS | val_iauc |
-|------|----|---------|--------|---------------|----------------|---------|--------|---------|
-| 2 | 30 | **0.6405** | **8** | 0.5950 | 0.8926 | 0.6918 | 0.1839 | 0.8163 |
-
-> **分析 — 标准过拟合模式，但比 RG-ET 干净：**
-> - train 爬到 0.89（21 个 epoch 0.73→0.89），val 从 peak 0.64 退化到 0.60。
-> - train/val 差异 0.30——信息泄漏量级和 RG-ET 一致。
-> - 但 IBS 全程健康（0.16–0.24），iAUC 0.57–0.87，**生存分布未崩塌**。
-> - 这意味着 CATE-T 的过拟合是"预测不准"而非"输出爆炸"——和 RG-ET 的 IBS→0.75 崩溃是本质不同的现象。
-
----
-
-## 7. Distributional Counterfactual Transport (DCT)
-
-**Config**: `distributional_counterfactual_transport_blca.yaml` | **Method**: `distributional_counterfactual_transport`
-
-### seed=None, 30 epochs, fold2 only
-
-| Fold | Ep | val_cidx | best @ | val_cidx last5 | train_cidx @29 | val_ipcw | val_IBS | val_iauc |
-|------|----|---------|--------|---------------|----------------|---------|--------|---------|
-| 2 | 30 | **0.6237** | **29** | 0.5936 | 0.8642 | 0.7101 | 0.2008 | 0.8539 |
-
-> **分析 — 未收敛，仍有上升趋势：**
-> - best @ epoch 29（最后 epoch），说明模型仍在学习，30 epoch 不够。
-> - train 0.86 vs val 0.62: 差异 0.24，标准过拟合但未崩塌。
-> - epoch 22–29 呈持续上升趋势（0.58→0.62），尚未进入平台期。
-> - IBS 全程健康（0.19–0.26），iAUC 0.71–0.88——生存分布稳定。
-> - 和 CATE-T 类似：过拟合是"预测不准"而非"输出爆炸"。
-> - 需更多 epoch（如 50–60）确认是否还能继续爬升，还是进平台期后开始退化。
-
----
-
-## 8. v50 — Time-Local Competing Event Hazards
-
-**Config**: `v50_blca.yaml` | **Method**: `otehv2_timelocal_competing` | **Losses**: 11 项 (含 OT + time-local 特有项)
-
-### seed=None, 30 epochs, fold2 only
-
-| Fold | Ep | val_cidx | best @ | val_cidx last5 | train_cidx @29 | val_ipcw | val_IBS | val_iauc |
-|------|----|---------|--------|---------------|----------------|---------|--------|---------|
-| 2 | 30 | **0.6749** | **12** | 0.6198 | 0.7758 | 0.5699 | 0.2387 | 0.8698 |
-
-> **分析 — 目前 fold2 最佳，且学习曲线极不寻常：**
-> - val 在 epoch 8–12 就达到峰值 0.64–0.67，但此时 train_cidx 仅 0.43–0.49（近乎随机）。
-> - train 直到 epoch 22 后才爬到 0.70+，val 反而从峰值退化到 0.62 震荡。
-> - 退化幅度轻微（IBS 全程 0.24–0.26 稳定，iAUC 全程 0.65–0.88），不存在 RG-ET 式的生存崩塌。
-> - epoch 23 有一次单 epoch spike（val 掉到 0.44），下一 epoch 恢复——可能是某个 batch 梯度伪逆。
-> - **关键假设**：time-local 机制提供了隐式正则化。model 在训练早期不过拟合时泛化最优（0.67+），后期 train 攀升反而稀释了这种正则。需验证早停（~12 epoch, train 未完） vs 完整过拟合（30 epoch）时 5-fold 是否有差异。
-
----
-
-## 12. V2 — 关 rankevent (4-loss: OT + Div + Recon + NLL)
-
-**Config**: `v2_norank_blca.yaml` | **Method**: `ot_event_hazard_v2` | **Losses**: OT + Div + Recon + NLL (砍掉全部 4 个 rankevent 辅助项)
-
-### seed=3, 30 epochs, fold2 only
-
-| Fold | Ep | val_cidx best | best @ | val_cidx last5 | val_ipcw best | val_IBS best | val_iauc best |
-|------|----|--------------|--------|---------------|--------------|-------------|--------------|
-| 2 | 30 | **0.7174** | **12** | — | — | — | — |
-
-> **注意**: 当前磁盘上的 epoch_curve CSV 已被 V4a 后续运行覆盖（两者共用同一个 `results_dir`），原始 V2 的逐 epoch 数据已丢失。以上 0.7174 来自队列日志。
->
-> **分析:**
-> - best 0.7174 @ epoch 12 — fold2 第二高。
-> - 仅 4 loss 砍掉全部 rankevent 项，与 newSlotSPE 的 5-fold V2 结论（0.7100）方向一致。
-> - 对比 V4a 的 0.7254，AdamW 的 weight_decay=5e-4 提供了约 +0.008 的增量。
-
----
-
-## 12b. V4a — 关 rankevent + AdamW wd=5e-4
-
-**Config**: `v2_norank_blca.yaml` + `--set opt=adamW --set reg=0.0005` | **Method**: `ot_event_hazard_v2`
-
-### seed=3, 30 epochs, fold2 only
-
-| Fold | Ep | val_cidx best | best @ | val_cidx last5 | val_ipcw best | val_IBS best | val_iauc best |
-|------|----|--------------|--------|---------------|--------------|-------------|--------------|
-| 2 | 30 | **🏆 0.7254** | **12** | 0.6581 | 0.6863 | 0.2713 | 0.9378 |
-
-**逐 epoch 曲线 (cidx ≥ 0.62):**
+## 2. Fold2 探索性结果（分箱 A\*，2026-07-13 之前，仅供方向参考）
+
+> ⚠️ 这些数字全部用旧的 fold-aware 分箱（A\*），已知该分箱会让 fold2 系统性偏低。**不要用这批数字做最终排名**，仅用于判断"哪些方法能拟合训练集""哪些方法输出稳定"这类和分箱无关的定性问题。
+
+### 排名表（按 best，仅供参考；last5 列更可信）
+
+| # | 方法 | 最佳ep | best | last5 | 损失数 | 种子 |
+|---|---|:---:|:---:|:---:|:---:|:---:|
+| 1 | V4a norank+AdamW wd=5e-4 | 12 | 0.7254 | 0.6581 | 4 | 3 |
+| 2 | V2 norank (Adam, 无 wd) | 12 | 0.7174 | — | 4 | 3 |
+| 3 | Faithful Evidence Transport | 7 | 0.6837 | 0.5301/0.5396* | 5 | None |
+| 4 | v50 Time-Local Competing | 12 | 0.6749 | 0.6198/0.6199* | 11 | None |
+| 5 | Stagewise Prognostic Transport | 13 | 0.6741 | 0.6349* | 3 | 3 |
+| 6 | CATE-T Censoring-Aware | 8 | 0.6405 | 0.5950/0.6050* | 3 | None |
+| 7 | RG-ET (+ PCGrad 未生效) | 9/29 | 0.6389/0.6341 | 0.5844/0.5616 | 3 | None/3 |
+| 8 | DCT Distributional Counterfactual | 29 | 0.6237 | 0.5936/0.6037* | 4 | None |
+| 9 | v45v2 + clinical (8-loss) | 8 | 0.6237 | — | 8 | 3 |
+| 10 | v45 baseline (8-loss) | 5 | 0.6013 | 0.5026 | 8 | 3 |
+| — | v45 8-loss (seed=None 对照) | 0 | 0.6253 | 0.5768 | 8 | None |
+| — | ot_v3 (newSlotSPE 迁移) | — | ❌ 缺文件 | — | — | — |
+
+\* 不同批次记录的 last5 有 ±0.01 的小差异（多次读取脚本口径略不同），量级不影响结论。
+
+### 各方法定性备注
+
+| 方法 | train_cidx (last) | 关键现象 |
+|---|:---:|---|
+| v45 baseline | 0.5152 | train<0.5，**无法拟合**（8 损失互相打架）|
+| RG-ET | 0.8597 | 能拟合，但 epoch 20 后 **IBS 从 0.25 崩到 0.75**，iAUC 崩到 0.39——生存分布彻底崩溃 |
+| Stagewise | 0.7886 | 能拟合，30ep 后仍平稳 |
+| Faithful | 0.6165 | 欠拟合（train 仅 0.62），val 单点尖峰 + **IBS 剧烈震荡**（0.21→0.60 反复）|
+| CATE-T | 0.8926 | 标准过拟合，但 IBS 全程健康（0.16–0.24），非崩溃型 |
+| DCT | 0.8642 | best 出现在最后一个 epoch（29），**未收敛**，30ep 不够 |
+| v50 | 0.7758 | 反直觉：val 在 train 还很低（0.43-0.49）时就达峰值，之后 train 追高但 val 反而退化，疑似 time-local 机制有隐式正则 |
+| V2/V4a | — | 关闭 rankevent 4 项后表现最好；AdamW+wd 比纯 Adam 再加约 +0.008 |
+
+### V4a 逐 epoch 曲线（fold2, 分箱 A\*, seed=3）
 
 | Ep | val_cidx | ipcw | IBS | iAUC |
-|----|---------|------|-----|------|
+|---|---|---|---|---|
 | 6 | 0.6197 | 0.7016 | 0.2540 | 0.8857 |
 | 7 | 0.6853 | 0.7579 | 0.2637 | 0.9111 |
 | 10 | 0.6493 | 0.7090 | 0.2675 | 0.8187 |
@@ -542,97 +134,158 @@ train-val gap: **-0.0519** (train < val → 模型正则化有效)
 | **12** | **0.7254** | 0.6863 | 0.2713 | 0.9378 |
 | 13 | 0.6926 | 0.7419 | 0.2650 | 0.8862 |
 | 14 | 0.6966 | 0.7055 | 0.2604 | 0.9299 |
-| 18 | 0.6769 | 0.7245 | 0.2704 | 0.9555 |
-| 19 | 0.6886 | 0.7335 | 0.2695 | 0.9126 |
-| 20 | 0.6749 | 0.7252 | 0.2640 | 0.9568 |
-| 21–29 | 0.648–0.660 | 0.705–0.714 | 0.263–0.265 | 0.902–0.956 |
+| 18–29 | 0.648–0.689 | 0.705–0.734 | 0.263–0.270 | 0.90–0.96 |
 
-> **分析 — fold2 绝对冠军:**
-> - **best 0.7254 @ epoch 12** — fold2 历史最高，比 v45 8-loss (0.6013) 高 +0.1241，比 Faithful (0.6837) 高 +0.0417。
-> - epoch 6–14 区间出现多个 0.68–0.72 的尖峰，之后在 0.65–0.66 区间稳定平台。
-> - AdamW wd=5e-4 相比 V2 纯 Adam 提升了约 +0.008。
-> - 砍掉 rankevent 的 4 项 + AdamW 正则化在 fold2 上表现最优。
+峰值后进入 0.65–0.66 的稳定平台，last5=0.6581 反映的正是这个平台，不是峰值。
 
----
+### 诚实报告示例（RG-ET, `honest_report.py --strategy last_k_mean`）
 
-## 9. newSlotSPE 消融 (config: `v45_blca.yaml`, seed=3)
+| Metric | robust (last5) | best (leak) | optimism gap |
+|---|:---:|:---:|:---:|
+| val_cindex ↑ | 0.6307 ± 0.0205 | 0.6747 ± 0.0518 | +0.0440 |
+| val_cindex_ipcw ↑ | 0.5917 ± 0.0782 | 0.6661 ± 0.0817 | +0.0744 |
+| val_iauc ↑ | 0.6300 ± 0.1353 | 0.8958 ± 0.0343 | +0.2658 |
+| val_IBS ↓ | 0.2289 ± 0.0805 | 0.2065 ± 0.0875 | +0.0223 |
 
-| 配置 | val_cidx | Fold 3 | 说明 |
-|------|---------|--------|------|
-| V0 baseline — 8-loss | 0.6993 ± 0.0218 | — | 等频分箱, alpha_surv=0.15 |
-| V1 wd=1e-4 + rank 降权 | 0.6991 ± 0.0323 | 0.6426 | 降权反而更差 |
-| V2 wd=5e-4 + **关 rankevent** | **0.7100 ± 0.0186** | 0.6896 | 关 4 个辅助损失的因果验证 |
-| V3 wd=1e-3 + 关 rankevent | =V2 (md5 一致) | — | wd 被 Adam 忽略 |
-| V4a AdamW + wd=5e-4 | =V2 (fold3 only) | — | AdamW wd 也未生效 |
+### v45v2+clinical 完整 5-fold（分箱 A\*, seed=3, 8-loss，早于损失黑名单修复）
 
-> `--reg` + `--opt adam` 时 bridge 未传 `weight_decay`，V1–V4 的 wd 实际均为 0
+| Fold | best | best@ | ipcw | IBS | iAUC |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| 0 | 0.7417 | 14 | 0.4581 | 0.8828 | 0.8302 |
+| 1 | 0.7453 | 24 | 0.6801 | 0.4261 | 0.6910 |
+| 2 | 0.6237 | 8 | 0.5581 | 0.8884 | 0.4965 |
+| 3 | 0.7049 | 20 | 0.6313 | 0.4543 | 0.5897 |
+| 4 | 0.6441 | 15 | 0.6074 | 0.3131 | 0.6253 |
+| **mean** | **0.6919 ± 0.0499** | | | | |
 
----
+### v45 8-loss 完整 5-fold（分箱 A\*, seed=3，损失黑名单修复前的原始基线）
 
-## 10. Fold 2 全量对比 (最难的 fold)
+| Fold | Ep | train_cidx | best | best@ | last5 | ipcw | IBS | iAUC |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 0 | 30 | 0.5370 | 0.7120 | 15 | 0.6887 | 0.6753 | 0.3478 | 0.8601 |
+| 1 | 30 | 0.6315 | 0.7411 | 3 | 0.7080 | 0.7114 | 0.1544 | 0.7806 |
+| 2 | 30 | 0.5365 | 0.6013 | 5 | 0.5026 | 0.6855 | 0.2534 | 0.8632 |
+| 3 | 30 | 0.5705 | 0.6995 | 6 | 0.6654 | 0.6363 | 0.1500 | 0.6380 |
+| 4\* | 5 | 0.5152 | 0.6530 | 4 | 0.5988 | 0.6110 | 0.1488 | 0.8056 |
+| **mean** | | **0.48 (不如随机)** | **0.6814 ± 0.049** | | 0.6327 ± 0.075 | | | |
 
-| 模型 | Loss | Ep | Seed | grad_clip | val_cidx best | val last5 | train_cidx max | 能拟合训练集? |
-|------|------|----|------|----------|--------------|----------|---------------|-------------|
-| v45 (batch) | 8 | 30 | 3 | no | 0.6013 | 0.5026 | 0.5365 | ❌ |
-| v45 (fold2) | 8 | 5 | None | yes | 0.6253 | 0.5768 | 0.5002 | ❌ |
-| v45v2+clinical | 8 | 30 | 3 | no | 0.6237 | — | — | ❌ |
-| RG-ET 25ep | 3 | 25 | 3 | no | 0.6341 | 0.5616 | 0.7285 | ✅ |
-| RG-ET 10ep | 3 | 10 | 1 | yes | 0.6037 | 0.5955 | 0.6358 | ✅ |
-| RG-ET 30ep no seed | 3 | 30 | None | yes | 0.6389 | 0.5844 | 0.8597 | ✅ → 💥 (IBS 崩塌) |
-| Stagewise (rerun) | ? | 30 | 3 | no | 0.6741 | — | 0.7886 | ✅ |
-| Faithful 30ep no seed | ? | 30 | None | no | 0.6837 | 0.5301 | 0.6165 | ✅ → ⚠️ (不稳定) |
-| v50 30ep no seed | 11 | 30 | None | no | 0.6749 | 0.6198 | 0.7758 | ⚠️ (train 晚于 val 爬升) |
-| CATE-T 30ep no seed | ? | 30 | None | no | 0.6405 | 0.5950 | 0.8926 | ✅ (标准过拟合) |
-| DCT 30ep no seed | ? | 30 | None | no | 0.6237 | 0.5936 | 0.8642 | ✅ (未收敛,持续上升) |
-| **V2 关 rankevent** | **4** | **30** | **3** | **no** | **0.7174** | — | — | ✅ |
-| **V4a norank+AdamW** | **4** | **30** | **3** | **no** | **🏆 0.7254** | **0.6581** | **0.5488** | **⚠️ (单峰, 后期平台)** |
-| RG-ET+PCGrad | 3 | 30 | 3 | no | 0.6341 | — | — | ✅ (实际=RG-ET rerun) |
-| ot_v3 (newSlotSPE) | 5 | — | — | — | ❌ (file not found) | ❌ | ❌ | ❌ |
-
-> **🏆 V4a 以 0.7254 创 fold2 新高** — 仅用 4 loss + AdamW wd=5e-4；V2 同配置但纯 Adam 得 0.7174。
+\* fold4 只跑 5ep 手动 kill（train_cidx=0.5152<0.5，bug 已在早期确认，无需跑完）。
 
 ---
 
-## 12. V45 损失子集扫描 (curated, fold2, seed=3, 30ep) — ❌ 已终止
+## 3. 损失黑名单验证（V2/V4a 系列，分箱 A\*，注意与 §1 的分箱 B 结果区分）
 
-> 原计划 10 组枚举 V45 损失组合，2 组完成后判定无继续价值，手动 kill。
+`docs/LOSS_BLACKLIST.md` 记录的完整依据。核心对照：
 
-| 组合 | val_cidx best | 说明 |
-|------|-------------|------|
-| n3: OT + event_surv + rank | 0.6165 | 远低于 V4a 0.7254 |
-| n3: OT + event_surv + per_event | 0.6125 | 远低于 V4a 0.7254 |
-| 剩余 8 组 | ❌ 终止 | — |
+| 版本 | 环境/分箱 | rankevent 4项 | wd | 5-fold mean±std |
+|---|---|:---:|:---:|:---:|
+| V0 (=v45 baseline) | newSlotSPE, 分箱 A | 全开 | 0（bug 未生效）| 0.6993 ± 0.0218 |
+| V1（降权）| newSlotSPE, 分箱 A | 降权 | 0 | 0.6991 ± 0.0323（更差）|
+| **V2**（关闭）| newSlotSPE, 分箱 A | **全 0** | 0 | **0.7100 ± 0.0186** |
+| V3 | newSlotSPE, 分箱 A | 全 0 | 0（同 V2，md5 一致）| =V2 |
+| **V4a**（关闭+AdamW）| newSlotSPE, 分箱 A | **全 0** | 5e-4 | **0.7007 ± 0.0348** |
+| **V4b**（关闭+AdamW）| newSlotSPE, 分箱 A | **全 0** | 1e-3 | **0.7095 ± 0.0203** |
 
-**终止原因:**
-- 已完成 2 组的 cidx (0.61–0.62) 远不如 V4a 的 0.7254 + V2 的 0.7174，差距达 0.10+。
-- 损失子集扫描本质是随机组合穷举，而 #1–#8 的方法对比 + #10–#11 的消融已明确指向最佳策略：**关 rankevent + AdamW + 4-loss**。
-- 继续跑 10 组 V45 / 10 组 V50 只是在已有结论上加噪声，不产生新信息。
+**方向结论**：关闭 rankevent 4 项在**分箱 A（等宽 bug）**下三次独立复现都不掉分（V2/V4a/V4b vs V0/V1），最好 +0.0107。**但注意这批数据全是分箱 A，尚未在正确分箱 B 下重新验证这个消融结论**——§1 的 v45_norank(B)=0.6406 只是"关 rankevent + 分箱 B"的结果，缺一个"不关 rankevent + 分箱 B"的对照组，见 §6 待办。
 
 ---
-## 14. 当前运行队列 (2026-07-14 02:40 CST)
 
-| 状态 | 方法 | 备注 |
-|:--:|---|------|
-| ✅ | V51 SlimBridge seed3 | 5-fold done, fold2 崩溃 (0.58) |
-| 🔄 | V51 SlimBridge seed5 | fold0-2 done, fold3 ep23/30, fold4 排队 |
-| ⏳ | V60 OT Event Rank | 等 V51 seed5 完成后启动 |
-| ✅ | v45_norank (5-fold seed=random) | 完成, last5=0.6406 |
-| 🔄 | v45v2_norank (5-fold seed=random) | fold0-1 done (0.7433/0.7437), fold2-4 进行中 |
-| ⏳ | v50_norank | 等 v45v2_norank 完成后 |
-| ⏳ | 剩余 fix (rg_et/catet/dct/faithful) | 排队中 |
+## 4. SlotSPE 家族历史排名（分箱 A，等宽 bug，仅供内部参考，不可与 B 比较）
 
-### 进程详情 (2026-07-14 02:40)
+> 来源：`newSlotSPE/重要文件/FINAL_SUMMARY.md`。36 个方法变体的完整消融，全部使用等宽分箱（c-index 系统性虚高 ~0.05-0.07），任务近似二分类。**这批数字不能作为最终论文对比基准**，仅体现"在旧分箱口径下各架构变体的相对排序"。
+
+### Top 15（按 avg best 排序）
+
+| # | 方法 | f0 | f1 | f2 | f3 | f4 | avg best |
+|---|---|---|---|---|---|---|:---:|
+| 1 | ot_v3 | 0.7353(1) | 0.7242(1) | 0.6869(25) | 0.7421(8) | 0.7527(24) | **0.7282** |
+| 2 | ot_v2 | 0.7353(1) | 0.7090(1) | 0.6950(1) | 0.7191(28) | 0.7295(23) | 0.7176 |
+| 3 | V45 seed5 | 0.7338(10) | 0.7107(3) | 0.7398(12) | 0.6546(8) | 0.7402(7) | 0.7158 |
+| 4 | surgfix | 0.7171(1) | 0.7073(1) | 0.7126(14) | 0.7257(9) | 0.7153(10) | 0.7156 |
+| 5 | V45 主跑 | 0.7124(1) | 0.7191(1) | 0.7282(16) | 0.6787(14) | 0.7140(21) | 0.7105 |
+| 6 | strongot (v9) | 0.7013(2) | 0.7246(2) | 0.7122(11) | 0.6656(7) | 0.7353(8) | 0.7078 |
+| 7 | contrastive_v2 | 0.6759(4) | 0.7107(2) | 0.7486(22) | 0.7016(7) | 0.7011(3) | 0.7076 |
+| 8 | capacity (v7) | 0.7258(13) | 0.7335(4) | 0.7090(15) | 0.6787(27) | 0.6904(6) | 0.7075 |
+| 9 | lrhalf (v11) | 0.7036(2) | 0.7547(4) | 0.6805(9) | 0.6951(16) | 0.7037(9) | 0.7075 |
+| 10 | eta1e5 | 0.7009(2) | 0.7250(2) | 0.7062(15) | 0.6601(7) | 0.7371(8) | 0.7059 |
+| 11 | rankcox (v47) | 0.7139(2) | 0.7208(2) | 0.7202(12) | 0.6585(14) | 0.7117(8) | 0.7050 |
+| 12 | crosst (v20) | 0.7060(4) | 0.6929(4) | 0.7126(10) | 0.6874(13) | 0.7180(13) | 0.7034 |
+| 13 | adaptive_marginal | 0.7203(0) | 0.7217(1) | 0.6285(24) | 0.7082(22) | 0.7358(9) | 0.7029 |
+| 14 | epsanneal (v49) | 0.7179(2) | 0.7208(3) | 0.7114(18) | 0.6645(13) | 0.6984(8) | 0.7026 |
+| 15 | V45 alt | 0.6926(1) | 0.7090(4) | 0.7102(23) | 0.6426(4) | 0.7411(18) | 0.6991 |
+| — | **SlotSPE 原始 baseline** | — | — | — | — | — | **0.7014 ± 0.0395** |
+
+括号内为最佳 epoch；表格值为 `best`，未整理 last5。
+
+### contrastive_v2 单独分析（代码已删除，仅存档结论）
+
+SlotSPE + register tokens（4 WSI + 4 omic）跨模态对比学习，损失 = NLL + decoder + recon + diversity(0.05) + attn(0.02) + contrast(0.1, warmup 5ep)。
+
+| fold | best(ep) | last5 | 现象 |
+|:---:|:---:|:---:|---|
+| 0 | 0.6759(4) | 0.6184 | early peak → 衰减 |
+| 1 | 0.7107(2) | 0.5251 | ep2 峰值，last5 崩溃（过拟合）|
+| 2 | 0.7486(22) | 0.7074 | 唯一好 fold，peak bias 仅 0.04 |
+| 3 | 0.7016(7) | 0.6338 | 正常 |
+| 4 | 0.7011(3) | 0.6053 | early peak → 衰减 |
+
+avg best=0.7076 ≈ baseline(0.7014)，但 fold1 不稳定，未继续跟进。
+
+---
+
+## 5. 已终止的实验（记录原因，避免重复浪费时间）
+
+| 实验 | 终止原因 |
+|---|---|
+| V45 损失子集扫描 curated（10 组）| 完成 2 组（`OT+event_surv+rank`=0.6165, `OT+event_surv+per_event`=0.6125）均远低于 V4a(A\*)=0.7254，判定继续扫描不会产生新信息，手动终止 |
+| V50 损失子集扫描 curated | 同上，未启动即终止 |
+| ot_v3 迁移到 SurvOT-Rank | 缺 `04_optimal_transport_align/model_v3.py`，未迁移该文件，失败 |
+| RG-ET + PCGrad | **PCGrad 从未真正接入训练循环**（monkey-patch 在 PyTorch 2.x 下 `__func__` 报错），标注"完成"的 0.6341 实际只是 RG-ET 重跑，不含 PCGrad 效果，此结论目前不存在数据 |
+
+---
+
+## 6. 待办（决定下一步实验优先级）
+
+1. **【最高优先级】v45 全 8 损失 + 分箱 B + 5-fold** 的对照实验缺失。现在只知道"关rankevent+分箱B"=0.6406，不知道"不关+分箱B"是多少，无法拆分"分箱修复"和"关损失"各自的贡献。
+2. **v45_norank / v45v2_norank 用的是 seed=None**，属于探索性数据，需要用固定 seed(3 和 5) 复核，才能把 §1 的结论写进正式报告。
+3. **V51 SlimBridge fold2 崩溃**已排除分箱因素（两个 seed 都崩），需深入检查 SlotBridge/Modality Dropout 机制本身。
+4. **PCGrad 尚未真正验证过**，`robust_eval/pcgrad.py` 写好但没接进训练循环，RG-ET 的 IBS 崩塌问题依然悬而未决。
+5. Fix 队列剩余：v50_norank / rg_et_fix / catet_fix / dct_fix / faithful_fix（全部分箱 B），排队中。
+
+---
+
+## 7. 当前运行环境与队列状态（2026-07-14，实时性最强，可能已过期）
 
 ```
-V51 seed5:   PID 3399992 + 4 workers (3813191-3813194) | fold3 Epoch 23/30 | best=0.6459@ep5
-v45v2 fix:   PID 3684865 + 4 workers (3813763-3813766) | fold2 Epoch 4/30  | fold0=0.7433@ep2, fold1=0.7437@ep5
+V51 seed5:   fold0-2 done, fold3 Epoch 23/30 (best=0.6459@ep5), fold4 排队
+v45v2 fix:   fold0=0.7433@ep2 done, fold1=0.7437@ep5 done, fold2 ep4/30 进行中, fold3-4 排队
+剩余队列:     v50_norank → rg_et_fix → catet_fix → dct_fix → faithful_fix
+V60:         等 V51 seed5 完成后自动启动
 ```
-> ⚠️ 两个队列共 10 进程同时抢 GPU
 
-## 15. 运行环境
+- **SurvOT-Rank**: `/home/ubuntu/SurvOT-Rank`（commit `983265a` 起，含全局分箱修复）
+- **newSlotSPE**: `/home/ubuntu/newSlotSPE`（分支 `feat/v51-slimbridge`，commit `6b0091c` 起，含等频分箱修复）
+- **Python**: conda env `trisurv`；**GPU**: gpu=0，⚠️ 两个队列曾同时抢 GPU（10 进程）
+- **数据**: 5-fold BLCA，`survival_months_dss`，Pathways 特征，n=380
 
-- **SurvOT-Rank**: `/home/ubuntu/SurvOT-Rank` (commit `983265a`, main, +全局分箱修复)
-- **newSlotSPE**: `/home/ubuntu/newSlotSPE` (commit `6b0091c`, feat/v51-slimbridge, +等频分箱修复)
-- **Python**: conda env `trisurv`
-- **GPU**: gpu=0
-- **数据**: 5-fold BLCA, `survival_months_dss`, Pathways, n=380
+### 监控命令
+
+```bash
+# 看某个训练的实时 epoch 指标
+tail -f <LOG_FILE> | grep -E "Fold.*start|val cindex"
+
+# 看队列级别的开始/完成（不含 epoch 进度）
+tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
+```
+
+日志路径规则：fix 队列 → `/data1/sweep_results_30ep/_logs/<TAG>_5fold.log`；V51/V60 → `.../v51_slimbridge_seed<N>.log`。
+
+---
+
+## 8. 工具
+
+- `robust_eval/honest_report.py`：诚实汇总（best vs last5 乐观偏差、IBS 校准告警、消融对比表）
+- `robust_eval/loss_group_sweep.py`：损失子集扫描器，`--preset curated`(默认10组)/`pruned`/`full`
+- `robust_eval/pcgrad.py`：PCGrad 梯度手术工具（**尚未接入训练循环，见 §6.4**）
+- `docs/LOSS_BLACKLIST.md`：rankevent 4 项损失黑名单的完整证据链
+- `configs/fix/README.md`：各修复版 config 的病灶→修法对照表
