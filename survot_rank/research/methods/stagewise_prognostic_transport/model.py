@@ -59,11 +59,12 @@ class StagewisePrognosticTransport(RankGuidedEventTransport):
             self._normalize_cost(euclidean_cost(slots_wsi, slots_omic)),
             self._normalize_cost(self._positive_dot_cost(slots_wsi, slots_omic)),
         ]
-        eps = getattr(self.args, "otehv2_eps", 0.05)
-        if epoch > 0:
-            start = float(getattr(self.args, "rg_eps_start", eps * 2.0))
-            frac = min(1.0, epoch / max(1, int(getattr(self.args, "rg_eps_anneal", 12))))
-            eps = start + frac * (eps - start)
+        # 单调退火：epoch 0 用软起点 start(=0.10)，随 epoch 单调收紧到 otehv2_eps(=0.05)。
+        # 去掉原 `if epoch > 0` guard，避免 epoch 0 直接落到最尖锐值造成的假峰与 epoch 间断。
+        end = getattr(self.args, "otehv2_eps", 0.05)
+        start = float(getattr(self.args, "rg_eps_start", end * 2.0))
+        frac = min(1.0, epoch / max(1, int(getattr(self.args, "rg_eps_anneal", 12))))
+        eps = start + frac * (end - start)
 
         plans = []
         distances = []

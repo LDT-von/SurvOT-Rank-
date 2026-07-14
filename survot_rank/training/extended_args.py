@@ -63,6 +63,13 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scheduler", type=str, default="cosine", choices=["cosine", "step"])
     parser.add_argument("--eta_min", type=float, default=1e-6)
     parser.add_argument("--step_size", type=int, default=10)
+    # 梯度累积 / LR warmup / 梯度裁剪（默认值 = 原有行为，不影响历史实验）。
+    parser.add_argument("--grad_accum_steps", type=int, default=1,
+                        help="累积多少个 micro-batch 再更新一次；有效 batch = batch_size * grad_accum_steps")
+    parser.add_argument("--warmup_epochs", type=int, default=0,
+                        help="cosine 前的线性 warmup epoch 数；0 = 无 warmup（原行为）")
+    parser.add_argument("--grad_clip_norm", type=float, default=0.0,
+                        help="梯度裁剪范数上限；0 = 不裁剪（原行为）")
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--only_test", action="store_true", default=False)
     parser.add_argument("--omic_missing", action="store_true", default=False)

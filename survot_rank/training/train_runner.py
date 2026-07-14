@@ -187,12 +187,26 @@ def init_optimizer(args, model):
 
 
 def init_scheduler(args, optimizer):
+    # warmup_epochs>0 时：前 warmup_epochs 个 epoch 用 LinearLR 从 0.1*lr 线性升到 lr，
+    # 之后接 Cosine。避免 cosine 在 epoch 0 就用峰值 lr 在 batch=4 上做又大又抖的跳跃，
+    # 这是"best 出现在 epoch 0-1"的优化层面主因之一。默认 0 = 原行为。
+    warmup_epochs = int(getattr(args, "warmup_epochs", 0) or 0)
     if args.scheduler == "step":
         return optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size)
     elif args.scheduler == "cosine":
-        return optim.lr_scheduler.CosineAnnealingLR(optimizer,
-                                                     T_max=args.max_epochs,
-                                                     eta_min=args.eta_min)
+        eta_min = getattr(args, "eta_min", 0.0)
+        cosine_epochs = max(1, args.max_epochs - warmup_epochs)
+        cosine = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=cosine_epochs, eta_min=eta_min
+        )
+        if warmup_epochs > 0:
+            warm = optim.lr_scheduler.LinearLR(
+                optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs
+            )
+            return optim.lr_scheduler.SequentialLR(
+                optimizer, schedulers=[warm, cosine], milestones=[warmup_epochs]
+            )
+        return cosine
     else:
         raise NotImplementedError
 
@@ -258,7 +272,13 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
     total_loss = 0.0
     all_risk_scores, all_censorships, all_event_times = [], [], []
 
-    accumulation_steps = 1 if args.batch_size != 1 else 32
+    # 梯度累积：batch=4 时通过累积 grad_accum_steps 个 micro-batch 再更新，
+    # 把"有效 batch"提到 4*grad_accum_steps（如 8 -> 32）。这是解决"NLL 在
+    # 小 batch 上过拟合、摧毁全局风险排序、导致 best 出现在最前几个 epoch"的
+    # 最高杠杆修复：有效 batch 变大后梯度方差下降，模型能学到全局一致的排序，
+    # 峰值会后移到中后段。默认 grad_accum_steps=1 = 原行为。
+    grad_accum = int(getattr(args, "grad_accum_steps", 1) or 1)
+    accumulation_steps = 32 if args.batch_size == 1 else max(1, grad_accum)
     total_batches = len(loader)
     smk = int(getattr(args, "max_smoke_batches", 0) or 0)
     n_batches = smk if smk > 0 else total_batches
@@ -279,18 +299,15 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
         loss = (loss_surv + slot_loss) / accumulation_steps
         loss.backward()
 
+        # 统一的累积更新：每 accumulation_steps 个 micro-batch 更新一次，
+        # 并在 epoch 最后一个 batch 冲刷残余梯度（避免尾部样本梯度丢失）。
         grad_clip = float(getattr(args, "grad_clip_norm", 0.0) or 0.0)
-        if args.batch_size != 1:
+        is_last_batch = (batch_idx + 1) == n_batches
+        if (batch_idx + 1) % accumulation_steps == 0 or is_last_batch:
             if grad_clip > 0.0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
             optimizer.zero_grad()
-        else:
-            if (batch_idx + 1) % accumulation_steps == 0:
-                if grad_clip > 0.0:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-                optimizer.step()
-                optimizer.zero_grad()
 
         total_loss += loss.item()
         risk, _ = _calculate_risk(logits)

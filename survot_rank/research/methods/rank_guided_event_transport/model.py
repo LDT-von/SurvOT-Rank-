@@ -75,11 +75,13 @@ class RankGuidedEventTransport(OTEventHazardV2Survival):
         ]
         costs = [cost + self.rg_prog_cost_weight * prognostic_cost for cost in costs]
 
-        eps = getattr(self.args, "otehv2_eps", 0.05)
-        if epoch > 0:
-            start = float(getattr(self.args, "rg_eps_start", eps * 2.0))
-            frac = min(1.0, epoch / max(1, int(getattr(self.args, "rg_eps_anneal", 12))))
-            eps = start + frac * (eps - start)
+        # 单调退火：epoch 0 用软起点 start(=0.10)，随 epoch 单调收紧到 otehv2_eps(=0.05)。
+        # 之前的 `if epoch > 0` guard 会让 epoch 0 直接落到终点值 0.05（最尖锐），
+        # epoch 1 又跳回 0.096（软），造成 plan 在首个 epoch 间断变化、假峰出现在 epoch 0。
+        end = getattr(self.args, "otehv2_eps", 0.05)
+        start = float(getattr(self.args, "rg_eps_start", end * 2.0))
+        frac = min(1.0, epoch / max(1, int(getattr(self.args, "rg_eps_anneal", 12))))
+        eps = start + frac * (end - start)
         plans = [
             log_sinkhorn_plan(cost, eps=eps, max_iter=self.ot_iter)
             for cost in costs
