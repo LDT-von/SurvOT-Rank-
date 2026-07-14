@@ -11,8 +11,10 @@
 | P0-1 | `v45_baseline_globalbin_blca` | v45 全 8 损失 + 分箱 B 对照 | v45_norank(分箱B)=0.6406 |
 | P0-2a | `v50_norank_seed3_blca` | 固定 seed=3 复核 0.6572 稳定性 | v50_norank(seed=22646)=0.6572 |
 | P0-2b | `v50_norank_seed5_blca` | 固定 seed=5 复核 0.6572 稳定性 | v50_norank(seed=22646)=0.6572 |
-| P0-3a | `v50_ablation_only_ot_eventsurv_blca` | 最小损失消融（仅 OT + EventSurv）| 全开版 |
-| P0-3b | `v50_ablation_spec_cover_blca` | 验证时间特化/覆盖贡献 | P0-3a |
+| P0-3a | `v50_ablation_only_ot_eventsurv` | stripped：仅 OT + EventSurv | — |
+| P0-3b | `v50_ablation_spec_only` | +Spec（时间特化）| P0-3a |
+| P0-3c | `v50_ablation_spec_cover` | +Cover（时间覆盖）| P0-3b |
+| P0-3d | `v50_ablation_full` | +Compete（全开）| P0-3c |
 
 ---
 
@@ -52,8 +54,8 @@ cd E:\SurvOT-Rank
 - 如果方差很大（>0.05）：说明 v50 对种子敏感，结论不可靠
 
 ### P0-3（v50 损失消融）
-- `P0-3a(仅OT+EventSurv)` < `P0-3b(+Spec+Cover)` < `全开`：说明时间局部机制有效
-- 反之需要重新审视 V50 的设计
+- `stripped` < `+spec` < `+cover` < `full`：说明时间局部机制逐层有效
+- 如果某一档没有增益，可以精简 V50 的设计
 
 ---
 

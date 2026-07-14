@@ -47,10 +47,13 @@ run_experiment "configs/p0_experiments/v45_baseline_globalbin_blca.yaml"
 run_experiment "configs/p0_experiments/v50_norank_seed3_blca.yaml"
 run_experiment "configs/p0_experiments/v50_norank_seed5_blca.yaml"
 
-# P0-3: v50 损失消融
-run_experiment "configs/p0_experiments/v50_ablation_only_ot_eventsurv_blca.yaml"
-run_experiment "configs/p0_experiments/v50_ablation_spec_cover_blca.yaml"
+# P0-3: v50 损失消融（四档：stripped → spec_only → spec_cover → full）
+run_experiment "configs/p0_experiments/v50_ablation_only_ot_eventsurv_blca.yaml"  # stripped
+run_experiment "configs/p0_experiments/v50_ablation_spec_only_blca.yaml"          # +spec
+run_experiment "configs/p0_experiments/v50_ablation_spec_cover_blca.yaml"         # +cover
+run_experiment "configs/p0_experiments/v50_ablation_full_blca.yaml"               # +compete (full)
 
 echo "=============================================="
 echo "[P0] All experiments completed!"
+echo "共 14 次训练 × 2 折 = 28 次运行"
 echo "=============================================="
