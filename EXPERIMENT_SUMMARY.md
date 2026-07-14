@@ -6,6 +6,43 @@
 
 ---
 
+## 如何监控训练
+
+### 核心命令
+
+```bash
+# ★ 最常用: 看每个 epoch 的 real-time 指标
+tail -f <LOG_FILE> | grep "val cindex"
+
+# 输出示例:
+# [Epoch 19] val cindex=0.6486 ipcw=0.5363 IBS=0.3909 iauc=0.7859
+# [Epoch 20] val cindex=0.5634 ipcw=0.6002 IBS=0.4101 iauc=0.7181
+# [Epoch 21] val cindex=0.6006 ipcw=0.5130 IBS=0.3947 iauc=0.7307
+
+# 同时看 Fold 切换和 cindex (推荐)
+tail -f <LOG_FILE> | grep -E "Fold.*start|val cindex"
+
+# 看队列整体进度 (只显示方法级 start/done)
+tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
+```
+
+### 日志文件命名规则
+
+| 队列 | 日志路径 |
+|---|---|
+| fix 队列 (SurvOT-Rank) | `/data1/sweep_results_30ep/_logs/<TAG>_5fold.log` |
+| V51/V60 (run_v51_v60.sh) | `/data1/sweep_results_30ep/_logs/v51_slimbridge_seed<N>.log` |
+| 队列总控 | `/data1/sweep_results_30ep/_logs/fix_queue_now.log` |
+
+### 注意事项
+
+- **`fix_queue_now.log` 只显示"开始"和"完成"，不显示 epoch 进度。**
+  看每个方法的训练日志才能看到 epoch 级指标。
+- `grep "val cindex"` 输出格式统一: `[Epoch N] val cindex=X ipcw=Y IBS=Z iauc=W`
+- 如果输出为空，说明训练还没到第一个 val epoch，等几秒即可。
+
+---
+
 ## 分箱策略审计 (2026-07-14)
 
 ### 三种分箱策略实测 (BLCA, 380人, 128未删失)
