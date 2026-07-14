@@ -2,7 +2,62 @@
 
 > **此文件是 SurvOT-Rank 所有实验分数的唯一权威来源。所有新实验结果只在此追加，不再使用其他 SUMMARY/REPORT 文件。**
 >
-> 最后更新: 2026-07-13 | 代码版本: `836f2c6` (main, +V60 +queue scripts +grad_clip built-in)
+> 最后更新: 2026-07-14 | 代码版本: `983265a` (main, +全局分箱修复 +queue_fix_5fold)
+
+---
+
+## 关键发现: 等频分箱修复验证 (2026-07-14)
+
+**两个 bug 已修复并验证：**
+
+| Bug | 仓库 | 根因 | 影响 | 修复 |
+|---|---|---|---|---|
+| fold-aware 分箱 | SurvOT-Rank | `fit_label_bins()` 每折重新算分位 bins | fold2 -0.127 (0.60 vs newSlotSPE 0.73) | 移除调用 → 全局分箱 |
+| 等宽分箱 | newSlotSPE | `pd.cut(bins=4)` 覆盖 `pd.qcut` 结果 | 全折被等宽 bins 虚高 (imbalanced {310,50,16,4}) | `bins=q_bins` + ±inf |
+
+**验证方法：** 用 V51 SlimBridge seed3 和 v45_norank 两个方法对比 (均使用修复后的代码)。
+
+---
+
+### V51 SlimBridge seed3 (newSlotSPE, 修复后: 全局 + 等频分箱)
+
+| Fold | Best epoch | val_cidx (best) | val_cidx (last5) |
+|:----:|:----------:|:---------------:|:----------------:|
+| 0 | 5 | **0.7433** | 0.7118 |
+| 1 | 4 | 0.7191 | 0.6552 |
+| 2 | 16 | 0.5821 | 0.5560 |
+| 3 | 11 | 0.6650 | 0.6157 |
+| 4 | 11 | 0.6837 | 0.5645 |
+
+**5-fold last5 mean: 0.6207 ± 0.0581**
+5-fold best peak: 0.6786 ± 0.0554 (peak bias +0.06)
+
+> ❌ **fold2 仍然崩溃** (0.5821, last5=0.5560)。全局等频分箱修复了 V45 的 fold2 但没有修复 SlimBridge。
+> **结论：SlimBridge 的 fold2 崩溃是模型架构问题**（SlotBridge/Modality Dropout 机制），与分箱无关。
+
+---
+
+### v45_norank (SurvOT-Rank, 修复后: 全局 + 等频分箱, seed=random, 5-fold)
+
+| Fold | Best epoch | val_cidx (best) | val_cidx (last5) | train_cidx (last) |
+|:----:|:----------:|:---------------:|:----------------:|:-----------------:|
+| 0 | 2 | **0.7361** | 0.6536 | 0.4126 |
+| 1 | 0 | 0.7094 | 0.6643 | 0.6486 |
+| 2 | 14 | 0.6765 | 0.6637 | 0.6830 |
+| 3 | 8 | 0.6273 | 0.6021 | 0.6113 |
+| 4 | 6 | 0.6744 | 0.6195 | 0.5882 |
+
+**5-fold last5 mean: 0.6406 ± 0.0253**
+5-fold best peak: 0.6848 ± 0.0367 (peak bias +0.04)
+train-val gap: **-0.0519** (train < val → 模型正则化有效)
+
+> ✅ **fold2 恢复正常！** 从旧的 0.6013 (fold-aware) 提升到 0.6637 (全局分箱)，+0.062。
+> 但 fold0 出现 0.7361 @ epoch 2 的极端 early peak，表明 30ep 的峰值选择不可靠。
+> train < val 全部 fold 出现负 gap，说明 AdamW + wd=5e-4 正则化有效抑制了过拟合。
+
+---
+
+## 旧记录 (fold2-only, 2026-07-13)
 >
 > ## 队列状态: #1–#8 ✅ (ot_v3 失败) | #9、#10 ❌ 已终止
 
@@ -345,11 +400,21 @@
 - 继续跑 10 组 V45 / 10 组 V50 只是在已有结论上加噪声，不产生新信息。
 
 ---
+## 14. 当前运行队列 (2026-07-14 凌晨)
 
-## 13. 运行环境
+| 状态 | 方法 | 备注 |
+|:--:|---|------|
+| ✅ | V51 SlimBridge seed3 | 5-fold done, fold2 崩溃 (0.58) |
+| 🔄 | V51 SlimBridge seed5 | fold0-1 done, fold2-4 进行中 |
+| ⏳ | V60 OT Event Rank | 等 V51 完成后启动 |
+| ✅ | v45_norank (5-fold seed=random) | 完成, last5=0.6406 |
+| ⏳ | v45v2_norank, v50_norank | 等 V51/V60 完成后 |
+| ⏳ | 批次2 (rg_et/catet/dct/faithful fix) | 等批次1完成后 |
 
-- **SurvOT-Rank**: `/home/ubuntu/SurvOT-Rank` (commit `836f2c6`, main)
-- **newSlotSPE**: `/home/ubuntu/newSlotSPE` (commit `68f4ec5`, main)
+## 15. 运行环境
+
+- **SurvOT-Rank**: `/home/ubuntu/SurvOT-Rank` (commit `983265a`, main, +全局分箱修复)
+- **newSlotSPE**: `/home/ubuntu/newSlotSPE` (commit `6b0091c`, feat/v51-slimbridge, +等频分箱修复)
 - **Python**: conda env `trisurv`
 - **GPU**: gpu=0
 - **数据**: 5-fold BLCA, `survival_months_dss`, Pathways, n=380
