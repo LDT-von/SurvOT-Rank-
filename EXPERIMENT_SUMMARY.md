@@ -52,17 +52,20 @@
 - fold0 出现 epoch2 极端早峰（0.7361），说明 30ep 内峰值选择本身不够稳定，**last5 更可信**。
 - ⚠️ 用 seed=None 跑的，是探索性质；此结果值得用固定 seed(3,5) 复核（见 §6 待办）。
 
-### v45v2_norank — 关闭 rankevent + clinical（同一处方，5-fold, 30ep）🔄 进行中
+### v45v2_norank — 关闭 rankevent + clinical（同一处方，5-fold, 30ep）✅ 已完成
 
-| Fold | 最佳 epoch | best | 状态 |
-|:---:|:---:|:---:|:---:|
-| 0 | 2 | 0.7433 | ✅ |
-| 1 | 5 | 0.7437 | ✅ |
-| 2 | 2 | 0.5685 | 🔄 ep4/30 |
-| 3 | — | — | 🔄 排队 |
-| 4 | — | — | 🔄 排队 |
+| Fold | 最佳 epoch | best | last5 | train_cidx(last) |
+|:---:|:---:|:---:|:---:|:---:|
+| 0 | 2 | 0.7433 | 0.5959 | 0.5121 |
+| 1 | 5 | 0.7437 | 0.6350 | 0.6296 |
+| 2 | 12 | 0.6665 | 0.6440 | 0.6207 |
+| 3 | 17 | 0.6929 | 0.6744 | 0.6090 |
+| 4 | 6 | 0.6851 | 0.6476 | 0.6200 |
+| **mean** | | **0.7063 ± 0.029** | **0.6394 ± 0.025** | — |
 
-- fold2 又出现坏折（0.5685），和 V51 SlimBridge 的 fold2（0.5689，见下）几乎一致——**怀疑 fold2 本身（这一份数据划分）就是难折，不完全是分箱或模型问题**，需要在全部方法跑完 B 分箱后再下结论。
+- fold2 从 ep2 的 0.5685（假坏折）→ ep12 最终回弹至 0.6665，说明 **fold2 不是不可训练的内在坏折**——它只是训练慢、需要更多 epoch 才能收敛。这与 V51 SlimBridge fold2 在两个 seed 下均 <0.60 形成鲜明对比：**V51 的 fold2 是真崩溃（架构问题），v45 的 fold2 是慢收敛（可修复）**。
+- ⚠️ 用 seed=323（随机）跑的，探索性质。best peak 0.7063 vs v45_norank best 0.6848 —— **v45v2 多关了 clinical 损失项，best 反而更高**，说明临床特征（V2 特有）在当前数据上是噪声。
+- best→last5 下滑 -0.07（0.7063→0.6394），存在过拟合。对比 v45_norank 的下滑也是 -0.04（0.6848→0.6406），两者 last5 几乎一致，best 的 0.02 差异可能是噪声。
 
 ### V51 SlimBridge（newSlotSPE，分箱 B，两个 seed）
 
@@ -71,11 +74,13 @@
 | 0 | 0.7433 / 5 / 0.7118 | 0.7385 / 3 / 0.6599 |
 | 1 | 0.7191 / 4 / 0.6552 | 0.7014 / 4 / 0.6374 |
 | 2 | 0.5821 / 16 / 0.5560 | 0.5689 / 15 / 0.5388 |
-| 3 | 0.6650 / 11 / 0.6157 | 0.6459 / 5 / 🔄 ep23/30 |
-| 4 | 0.6837 / 11 / 0.5645 | 🔄 排队 |
-| **mean** | **best 0.6786 ± 0.055 / last5 0.6207 ± 0.058** | 🔄 未完（3 fold 时 0.6637）|
+| 3 | 0.6650 / 11 / 0.6157 | 0.6459 / 5 / 0.5769 |
+| 4 | 0.6837 / 11 / 0.5645 | 0.6366 / 6 / 0.6310 |
+| **mean** | **best 0.6786 ± 0.055 / last5 0.6207 ± 0.058** | **best 0.6583 ± 0.058 / last5 0.6088 ± 0.047** |
 
-- **两个 seed 的 fold2 都崩**（0.5821 / 0.5689，均 <0.60）——同一正确分箱下不同种子仍崩，说明 **SlimBridge 架构本身有问题（不是分箱造成的）**。这是排除架构假设的关键证据。
+- **跨 seed best 均值: 0.6684 ± 0.011 | 跨 seed last5 均值: 0.6148 ± 0.006**（两个 seed 高度一致，last5 差异仅 0.012）。
+- **两个 seed 的 fold2 都崩**（0.5821 / 0.5689，均 <0.60）——同一正确分箱下不同种子仍崩，说明 **SlimBridge 架构本身有问题（不是分箱造成的，也不是没有充分训练导致的）**。这排除了"fold2 只由于分箱边界异常"的假设。
+- seed5 fold4 的 last5=0.6310 是所有 fold4 最高的一条，且 last5 > seed3(0.5645) 几乎 +0.07，交叉验证波动较大是 BLCA n=380 小数据的典型特征。
 
 ### 分箱修复前后对照（同方法，仅分箱不同）
 
@@ -257,16 +262,20 @@ avg best=0.7076 ≈ baseline(0.7014)，但 fold1 不稳定，未继续跟进。
 ## 7. 当前运行环境与队列状态（2026-07-14，实时性最强，可能已过期）
 
 ```
-V51 seed5:   fold0-2 done, fold3 Epoch 23/30 (best=0.6459@ep5), fold4 排队
-v45v2 fix:   fold0=0.7433@ep2 done, fold1=0.7437@ep5 done, fold2 ep4/30 进行中, fold3-4 排队
-剩余队列:     v50_norank → rg_et_fix → catet_fix → dct_fix → faithful_fix
-V60:         等 V51 seed5 完成后自动启动
+✅ V51 seed3     5-fold done  |  best=0.6786  last5=0.6207
+✅ V51 seed5     5-fold done  |  best=0.6583  last5=0.6088
+✅ v45_norank    5-fold done  |  best=0.6848  last5=0.6406  (seed=None)
+✅ v45v2_norank  5-fold done  |  best=0.7063  last5=0.6394  (seed=323)
+🔄 V60           fold0 ep13/30 best=0.6941@ep12  (无seed, 5折30ep)
+🔄 v50_norank    5-fold 启动中 seed=22646($RANDOM)  刚启动 fold0 ep1
+⏳ rg_et_fix     → catet_fix → dct_fix → faithful_fix  (等 v50 完成后)
 ```
 
-- **SurvOT-Rank**: `/home/ubuntu/SurvOT-Rank`（commit `983265a` 起，含全局分箱修复）
+- **SurvOT-Rank**: `/home/ubuntu/SurvOT-Rank`（commit `feabc0d`）
 - **newSlotSPE**: `/home/ubuntu/newSlotSPE`（分支 `feat/v51-slimbridge`，commit `6b0091c` 起，含等频分箱修复）
-- **Python**: conda env `trisurv`；**GPU**: gpu=0，⚠️ 两个队列曾同时抢 GPU（10 进程）
+- **Python**: conda env `trisurv`；**GPU**: gpu=0（32GB），当前 6 进程：V60(1主+4worker) + v50(1主+4worker) 共 10 进程平稳运行
 - **数据**: 5-fold BLCA，`survival_months_dss`，Pathways 特征，n=380
+- **注意**: v50_norank 是 V51 seed5 结束后由 `scripts/queue_fix_5fold.sh` 自动启动的；V60 是手动启动的
 
 ### 监控命令
 
@@ -289,3 +298,16 @@ tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
 - `robust_eval/pcgrad.py`：PCGrad 梯度手术工具（**尚未接入训练循环，见 §6.4**）
 - `docs/LOSS_BLACKLIST.md`：rankevent 4 项损失黑名单的完整证据链
 - `configs/fix/README.md`：各修复版 config 的病灶→修法对照表
+
+### v45v2_norank — 5-fold seed=random
+
+| Fold | Best Epoch | val_cidx (best) | val_cidx (last5) | train_cidx (last) |
+|:----:|:----------:|:---------------:|:----------------:|:-----------------:|
+| 0 | 2 | 0.7432646592709984 | 0.5959 | 0.5121450687302002 |
+| 1 | 5 | 0.7436548223350253 | 0.6350 | 0.6296420855344789 |
+| 2 | 12 | 0.666533226581265 | 0.6440 | 0.6207118058925777 |
+| 3 | 17 | 0.692896174863388 | 0.6744 | 0.6090462859320354 |
+| 4 | 6 | 0.6850533807829181 | 0.6476 | 0.6199694997630865 |
+
+**5-fold last5:** 0.6394 ± 0.0254 | **best peak:** 0.7063 | **gap:** -0.0411
+
