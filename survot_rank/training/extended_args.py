@@ -19,6 +19,7 @@ METHOD_CHOICES = [
     "faithful_evidence_transport",
     "distributional_counterfactual_transport",
     "censoring_aware_temporal_evidence_transport",
+    "v60_ot_event_rank",
 ]
 
 
@@ -182,6 +183,13 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--catet_intervention_margin", type=float, default=0.05)
     parser.add_argument("--catet_rank_margin", type=float, default=0.0)
     parser.add_argument("--catet_rank_max_pairs", type=int, default=4096)
+
+    # V60 OT Event Rank method.
+    parser.add_argument("--v60_num_events", type=int, default=24)
+    parser.add_argument("--v60_lambda_per_event", type=float, default=0.15)
+    parser.add_argument("--v60_lambda_rank", type=float, default=0.15)
+    parser.add_argument("--v60_rank_margin", type=float, default=0.0)
+    parser.add_argument("--v60_rank_max_pairs", type=int, default=4096)
 
     return parser
 
