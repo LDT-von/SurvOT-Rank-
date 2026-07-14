@@ -266,8 +266,8 @@ avg best=0.7076 ≈ baseline(0.7014)，但 fold1 不稳定，未继续跟进。
 ✅ V51 seed5     5-fold done  |  best=0.6583  last5=0.6088
 ✅ v45_norank    5-fold done  |  best=0.6848  last5=0.6406  (seed=None)
 ✅ v45v2_norank  5-fold done  |  best=0.7063  last5=0.6394  (seed=323)
-🔄 V60           fold0 ep13/30 best=0.6941@ep12  (无seed, 5折30ep)
-🔄 v50_norank    5-fold 启动中 seed=22646($RANDOM)  刚启动 fold0 ep1
+🔄 V60           fold0=0.7124/1=0.7555/2=0.6205 done, fold3 ep16/30  (seed=3, 5折顺序)
+🔄 v50_norank    fold0=0.7227/1=0.7390/2=0.6829 done, fold3 ep17/30  (seed=22646, 5折并行)
 ⏳ rg_et_fix     → catet_fix → dct_fix → faithful_fix  (等 v50 完成后)
 ```
 
