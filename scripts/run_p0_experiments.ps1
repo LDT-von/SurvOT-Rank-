@@ -46,14 +46,21 @@ function Invoke-Experiment {
 # P0-1: v45 全 8 损失 + 分箱 B 对照
 Invoke-Experiment -ConfigPath "configs\p0_experiments\v45_baseline_globalbin_blca.yaml"
 
-# P0-2: v50_norank 固定 seed 复核
+# P0-2: v45_norank 固定 seed 复核
+Invoke-Experiment -ConfigPath "configs\p0_experiments\v45_norank_seed3_blca.yaml"
+Invoke-Experiment -ConfigPath "configs\p0_experiments\v45_norank_seed5_blca.yaml"
+
+# P0-3: v50_norank 固定 seed 复核
 Invoke-Experiment -ConfigPath "configs\p0_experiments\v50_norank_seed3_blca.yaml"
 Invoke-Experiment -ConfigPath "configs\p0_experiments\v50_norank_seed5_blca.yaml"
 
-# P0-3: v50 损失消融
+# P0-4: v50 损失消融
 Invoke-Experiment -ConfigPath "configs\p0_experiments\v50_ablation_only_ot_eventsurv_blca.yaml"
+Invoke-Experiment -ConfigPath "configs\p0_experiments\v50_ablation_spec_only_blca.yaml"
 Invoke-Experiment -ConfigPath "configs\p0_experiments\v50_ablation_spec_cover_blca.yaml"
+Invoke-Experiment -ConfigPath "configs\p0_experiments\v50_ablation_full_blca.yaml"
 
 Write-Host "=============================================="
 Write-Host "[P0] All experiments completed!"
+Write-Host "共 18 次训练 × 2 折 = 36 次运行"
 Write-Host "=============================================="
