@@ -11,6 +11,7 @@ description: >
     4. otehv2_dropout 0.1 -> 0.15 — 轻微加大，配合延长训练的稳定性
   其余 dct_lambda_* 保持不变，因为原分数增长趋势健康、损失结构没崩。
 
+# DCT v3: shared semantic coordinates + train-fold IPCW anchors + cost intervention.
 data:
   study: blca
   data_root_dir: /data/CPathPatchFeature
@@ -65,9 +66,14 @@ model:
   dct_num_stages: 4
   dct_lambda_ot: 0.06
   dct_lambda_rank: 0.05
-  dct_lambda_cf: 0.10
-  dct_lambda_proto: 0.01
-  dct_cf_margin: 0.05
+  dct_lambda_anchor: 0.03
+  dct_anchor_margin: 0.02
+  dct_anchor_momentum: 0.90
+  dct_evidence_cost_weight: 0.10
+  dct_coupling_projection_iters: 1000
+  dct_coupling_projection_tol: 0.0001
+  dct_lambda_coordinate: 0.01
+  dct_coordinate_temperature: 0.20
   dct_mix_ratio: 0.50
   fet_lambda_sparse: 0.0
   fet_lambda_faith: 0.0

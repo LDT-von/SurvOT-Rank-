@@ -417,6 +417,14 @@ def train_one_fold(args, dataset_factory, fold, log_file):
 
     train_data, val_data, train_loader, val_loader = get_split(args, dataset_factory, fold)
     model = init_model_for_method(args, dataset_factory)
+    if hasattr(model, "configure_train_reference"):
+        # DCT v3 fits stage edges and censoring weights strictly from this fold's
+        # training cases before validation is ever seen.
+        train_labels = train_data.label_df
+        model.configure_train_reference(
+            train_labels[dataset_factory.label_col].to_numpy(),
+            train_labels[dataset_factory.censorship_var].to_numpy(),
+        )
     loss_fn = init_loss_function(args)
     optimizer = init_optimizer(args, model)
     scheduler = init_scheduler(args, optimizer)

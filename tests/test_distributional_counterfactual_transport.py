@@ -18,16 +18,21 @@ def make_args():
         slot_num_omics=3,
         slot_iters=2,
         otehv2_eps=0.05,
-        otehv2_iter=5,
+        otehv2_iter=100,
         otehv2_heads=2,
         otehv2_layers=1,
         otehv2_dropout=0.1,
         dct_num_stages=4,
         dct_lambda_ot=0.06,
         dct_lambda_rank=0.05,
-        dct_lambda_cf=0.10,
-        dct_lambda_proto=0.01,
-        dct_cf_margin=0.05,
+        dct_lambda_anchor=0.03,
+        dct_anchor_margin=0.02,
+        dct_anchor_momentum=0.90,
+        dct_evidence_cost_weight=0.10,
+        dct_coupling_projection_iters=1000,
+        dct_coupling_projection_tol=1e-4,
+        dct_lambda_coordinate=0.01,
+        dct_coordinate_temperature=0.20,
         dct_mix_ratio=0.50,
         fet_lambda_sparse=0.0,
         fet_lambda_faith=0.0,
@@ -42,21 +47,68 @@ def make_args():
     )
 
 
-def test_distributional_counterfactual_transport_outputs_risk_changes():
+def test_train_fold_reference_uses_late_censoring_as_low_risk_set_context():
+    model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
+    model.configure_train_reference(
+        torch.tensor([2.0, 4.0, 7.0, 10.0, 13.0]),
+        torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+    )
+    low, high = model._stage_membership_weights(
+        torch.tensor([2.0, 4.0, 7.0, 10.0, 13.0]),
+        torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+    )
+    assert torch.all(high[:4].sum(dim=1) > 0)
+    assert low[4].sum() > 0
+    assert low[4, -1] > 0
+
+
+def test_distributional_counterfactual_transport_uses_feasible_risk_anchored_paths():
     torch.manual_seed(0)
     model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
+    model.configure_train_reference(
+        torch.tensor([2.0, 4.0, 7.0, 10.0, 13.0]),
+        torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+    )
     model.train()
     logits, aux_loss = model(
-        x_wsi=torch.randn(3, 6, 16),
-        x_omics=torch.randn(3, 5, 20),
-        event_time=torch.tensor([4.0, 12.0, 7.0]),
-        c=torch.tensor([0.0, 1.0, 0.0]),
+        x_wsi=torch.randn(5, 6, 16),
+        x_omics=torch.randn(5, 5, 20),
+        event_time=torch.tensor([2.0, 4.0, 7.0, 10.0, 13.0]),
+        c=torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
     )
-    explanation = model.explain_last_batch()
-    assert logits.shape == (3, 4)
+    assert logits.shape == (5, 4)
     assert aux_loss.ndim == 0
     assert torch.isfinite(aux_loss)
-    assert explanation["low_risk_counterfactual"].shape == (3,)
-    assert explanation["high_risk_counterfactual"].shape == (3,)
     aux_loss.backward()
-    assert model.risk_prototypes.grad is not None
+    assert model.stage_pair_cost[-1].weight.grad is not None
+    assert model.risk_anchor_seen.all()
+    assert not hasattr(model, "risk_prototypes")
+
+    # A second batch activates the survival-anchored contrastive geometry loss;
+    # it never imposes a requested ordering on the model's CF risk predictions.
+    model.zero_grad(set_to_none=True)
+    _, aux_loss = model(
+        x_wsi=torch.randn(5, 6, 16),
+        x_omics=torch.randn(5, 5, 20),
+        event_time=torch.tensor([2.0, 4.0, 7.0, 10.0, 13.0]),
+        c=torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+    )
+    aux_loss.backward()
+    assert model.stage_pair_cost[-1].weight.grad is not None
+
+    model.eval()
+    with torch.no_grad():
+        logits, _ = model(
+            x_wsi=torch.randn(5, 6, 16),
+            x_omics=torch.randn(5, 5, 20),
+        )
+    explanation = model.explain_last_batch()
+    assert logits.shape == (5, 4)
+    assert explanation["low_risk_counterfactual"].shape == (5,)
+    assert explanation["high_risk_counterfactual"].shape == (5,)
+    for key in (
+        "factual_coupling_marginal_error",
+        "low_coupling_marginal_error",
+        "high_coupling_marginal_error",
+    ):
+        assert torch.all(explanation[key] < 1e-3), key

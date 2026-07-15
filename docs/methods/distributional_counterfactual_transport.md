@@ -1,28 +1,60 @@
-# Distributional Counterfactual Transport
+# Risk-Anchored Counterfactual Evidence Transport
 
-`distributional_counterfactual_transport` is an independent experimental method line. It keeps the previous methods unchanged and adds a latent, model-faithful counterfactual explanation layer.
+`distributional_counterfactual_transport` is an experimental multimodal survival
+line for **model-based counterfactual sensitivity analysis**.  It is not a causal
+treatment-effect estimator.
 
-## Core idea
+## Mechanism
 
-The method learns stage-wise low-risk and high-risk evidence distributions over WSI-slot/pathway-slot transport plans. For each patient, it interpolates the factual plan toward both distributions and recomputes the survival prediction:
+1. WSI patches and pathway tokens are pooled by separate global prototype
+   dictionaries.  Prototype index therefore defines a stable coordinate across
+   patients before population anchors are formed.
+2. At the start of every fold, only that fold's training labels fit time-stage
+   upper boundaries and a censoring Kaplan--Meier curve.
+3. Each stage builds two IPCW-weighted transport-cost anchors during training:
+   observed events within the stage form the high-risk anchor; patients known to
+   survive past the stage boundary form the low-risk anchor.  The latter includes
+   late-censored patients but excludes patients censored before that boundary.
+4. Evidence gates modify both the transport energy and the OT marginals.  Weak
+   semantic slots may therefore carry less mass instead of being forced to use a
+   uniform balanced marginal.
+5. To query a patient, factual stage costs are moved toward either anchor and
+   Sinkhorn is solved again under the intervened cost.  A numerical projection
+   verifies the resulting coupling's evidence-conditioned marginals.
+6. Factual, low-anchor, and high-anchor couplings use the same survival decoder.
+   Counterfactual risk direction is measured after training; it is never imposed
+   as a training target.
 
 ```text
-factual evidence plan
-        -> low-risk counterfactual plan -> risk change
-        -> high-risk counterfactual plan -> risk change
+WSI patches / pathway tokens
+        -> global semantic prototype coordinates
+        -> stage-specific evidence-conditioned OT cost
+        -> IPCW high-event / low-risk-set cost anchors
+        -> cost-space intervention
+        -> re-optimised Sinkhorn coupling
+        -> shared survival decoder and post-hoc sensitivity metrics
 ```
-
-The explanation exposes the factual evidence, both risk prototypes, the two counterfactual risks, and the risk deltas. The counterfactual lives in the learned evidence space; it must not be described as a causal treatment effect.
 
 ## Objective
 
-The total objective contains the survival NLL outside the model plus four compact auxiliary terms:
+The external survival NLL remains the prediction objective.  The model adds:
 
-1. OT regularization;
+1. OT cost regularisation;
 2. censoring-aware continuous ranking;
-3. bidirectional counterfactual risk ordering;
-4. sparse risk-prototype entropy.
+3. risk-anchor contrast on observed event and risk-set membership; and
+4. shared-prototype coordinate diversity.
 
-## Required evidence
+There is deliberately no `low_risk_counterfactual < factual_risk <
+high_risk_counterfactual` loss.
 
-Before claiming an improvement, compare the factual prediction with low/high counterfactual risk, measure the transport distance required to cross a risk margin, and test stability across folds and seeds. Report model-faithful latent counterfactuals rather than causal intervention claims.
+## Required validation
+
+Report, per fold and across seeds:
+
+- train-fold stage edges and anchor coverage;
+- coupling marginal residuals;
+- risk delta and survival-curve difference across `alpha` values;
+- directional-consistency and monotonicity-violation rates;
+- stability of prototype-coordinate assignments; and
+- ablations of shared coordinates, IPCW anchors, evidence-conditioned marginals,
+  and re-optimised cost-space intervention.
