@@ -2,7 +2,7 @@
 
 > 此文件是 SurvOT-Rank 所有实验分数的唯一权威来源。新实验结果只在此追加。
 >
-> 最后更新: 2026-07-14 | 代码版本: `765d8d4`
+> 最后更新: 2026-07-15 | 代码版本: `(pending)`
 
 ---
 
@@ -533,4 +533,58 @@ tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
 | 4 | 5 | 0.6316725978647687 | 0.5718 | 0.5447995519742881 |
 
 **5-fold last5:** 0.5681 ± 0.0855 | **best peak:** 0.6519 | **gap:** 0.0015
+
+
+---
+## 10. 统一 per-fold best-epoch 汇总表（从 epoch_curve CSV 提取，2026-07-15）
+
+> 生成脚本: `scripts/generate_final_results.py`
+> 输出文件: `results/per_fold_best_metrics.csv`, `results/per_method_summary.csv`
+
+### 10.1 Per-fold best val_cindex@epoch
+
+| method | fold0 | fold1 | fold2 | fold3 | fold4 |
+|---|---|---|---|---|---|
+| dct_fix | 0.7322@3 | 0.7995@16 | 0.6613@28 | 0.6787@7 | 0.7367@5 |
+| catet_fix | 0.7591@3 | 0.6878@1 | 0.5540@2 | 0.6022@1 | 0.6637@3 |
+| faithful_fix | 0.7472@4 | 0.7208@3 | 0.5596@0 | 0.6000@1 | 0.6317@5 |
+| rg_et_fix | 0.5832@7 | 0.7496@14 | 0.5789@6 | 0.6279@0 | 0.7082@15 |
+| stagewise_prognostic_transport | — | — | 0.6741@13 | — | — |
+| v50_norank | 0.7227@5 | 0.7390@7 | 0.6829@11 | 0.6885@12 | 0.7411@0 |
+| v45_norank | 0.7361@2 | 0.7094@0 | 0.6765@14 | 0.6273@8 | 0.6744@6 |
+| v45v2_norank | 0.7433@2 | 0.7437@5 | 0.6665@12 | 0.6929@17 | 0.6851@6 |
+| V60 | 0.7124@14 | 0.7555@3 | 0.6205@4 | 0.6525@11 | 0.6544@22 |
+| V51 seed3 | 0.7433@5 | 0.7191@4 | 0.5821@16 | 0.6650@11 | 0.6837@11 |
+| V51 seed5 | 0.7385@3 | 0.7014@4 | 0.5689@15 | 0.6459@5 | 0.6366@6 |
+
+> 单元格格式: `val_cindex@best_epoch`。`—` 表示该折未训练。
+> stagewise_prognostic_transport 仅 fold2，使用旧分箱 A\*；其余全部使用分箱 B。
+
+### 10.2 Per-method 5-fold 汇总
+
+| method | config | seed | n_folds | split_protocol | best mean±std | last5 mean±std | gap | ipcw | IBS | iAUC |
+|---|---|---|---|---|---|---|---|---|---|---|
+| dct_fix | fix/dct | 14623 | 5 | B | 0.7217±0.054 | 0.5920±0.021 | -0.130 | 0.6655 | 0.2183 | 0.5241 |
+| catet_fix | fix/catet | 27785 | 5 | B | 0.6534±0.079 | 0.5474±0.032 | -0.106 | 0.5971 | 0.2328 | 0.5724 |
+| faithful_fix | fix/faithful | 23541 | 5 | B | 0.6519±0.080 | 0.5892±0.060 | -0.063 | 0.5850 | 0.2585 | 0.6360 |
+| rg_et_fix | fix/rg_et | 19552 | 5 | B | 0.6495±0.076 | 0.5923±0.087 | -0.057 | 0.5804 | 0.2312 | 0.6862 |
+| stagewise_prognostic_transport | sp | 3 | 1 | A\* | 0.6741±0.000 | 0.6349±0.000 | -0.039 | 0.6931 | 0.2383 | 0.7277 |
+| v50_norank | fix/v50 | 22646 | 5 | B | 0.7148±0.028 | 0.6572±0.012 | -0.058 | 0.6422 | 0.2275 | 0.5920 |
+| v45_norank | fix/v45 | 6792 | 5 | B | 0.6848±0.041 | 0.6406±0.028 | -0.044 | 0.6277 | 0.2360 | 0.6598 |
+| v45v2_norank | fix/v45v2 | 323 | 5 | B | 0.7063±0.035 | 0.6394±0.028 | -0.067 | 0.6391 | 0.2208 | 0.6078 |
+| V60 | v60 | 3 | 5 | B | 0.6790±0.054 | 0.6063±0.035 | -0.073 | 0.6195 | 0.4194 | 0.6223 |
+| V51 seed3 | v51 | 3 | 5 | B | 0.6786±0.062 | 0.6207±0.065 | -0.058 | 0.6094 | 0.5648 | 0.6131 |
+| V51 seed5 | v51 | 5 | 5 | B | 0.6582±0.065 | 0.6088±0.050 | -0.049 | 0.5983 | 0.5447 | 0.5967 |
+
+> stagewise 仅 fold2（A\* 旧分箱），其 std=0 是单折。ipcw/IBS/iAUC 取自 best_epoch 同一点。
+
+### 10.3 备注
+
+- 所有数值从正式 epoch_curve CSV 提取，每折按 `val_cindex` 最大 epoch 作为 best_epoch。
+- `val_cindex_ipcw`, `val_IBS`, `val_iauc` 严格对应 best_epoch（不与 final epoch 混淆）。
+- `last5_val_cindex` = 该 fold 最后 5 个 epoch 的 val_cindex 均值。
+- `train_cindex_last` 列在 CSV 中不可用（原始 epoch_curve 不含 train 列），标记 N/A。
+- V51 seed3/seed5 的数据来自 newSlotSPE（路径 `/data1/sweep_results_30ep/v51_slimbridge_seed{3,5}/`），分箱与 SurvOT-Rank 的 B 一致。
+- stagewise 仅 fold2 存在原始曲线，标记为 `partial_folds_present=fold2`。
+- 分箱 B = global qcut fixed；分箱 A\* = old fold-aware qcut（仅 stagewise）。
 
