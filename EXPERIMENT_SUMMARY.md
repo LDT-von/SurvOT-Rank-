@@ -603,7 +603,7 @@ tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
 | stagewise | 0.6458 | 18 | 0.6853 | 29 | |
 | faithful | 0.6640 | 4 | **0.7406** | 13 | fold2 全场最高单折 |
 | dct | 0.6601 | 11 | 0.6725 | 20 | |
-| catet | 🔄 运行中 | — | 🔄 运行中 | — | |
+| catet | 0.6458 | 8 | 0.6837 | 15 | |
 
 ### 11.2 Per-method 汇总 (fold0+fold2 均值)
 
@@ -612,13 +612,13 @@ tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
 | 1 | **faithful** | 0.6640 | **0.7406** | **0.7023** |
 | 2 | dct | 0.6601 | 0.6725 | 0.6663 |
 | 3 | stagewise | 0.6458 | 0.6853 | 0.6656 |
-| 4 | rg_et | 0.6941 | 0.6341 | 0.6641 |
-| 5 | catet | 🔄 | 🔄 | 🔄 |
+| 4 | catet | 0.6458 | 0.6837 | 0.6648 |
+| 5 | rg_et | 0.6941 | 0.6341 | 0.6641 |
 
 ### 11.3 关键发现
 
 - **faithful 是本次 fix verify 最强方法**：fold2=0.7406 是所有 fix verify 方法中最高单折分数，说明 faithful evidence transport 机制在修正 eps 和 batch 问题后表现突出。
-- rg_et fold0=0.694（仅 22ep,最高在 ep8）仍保持不错的分数，但 fold2=0.634 拉低均值，两折差距大。
-- stagewise 和 dct 分数接近（0.666），互相在误差范围内。
-- catet 仍在运行中，待补全。
+- rg_et fold0 最高（0.694@ep8）但 fold2 最低（0.634），两折方差最大，不稳定。
+- stagewise / dct / catet 三者均值几乎一致（0.664-0.666），含金量接近。
+- 所有 5 个方法 fold2 均 ≥0.634，无崩溃折，说明 eps+batch 修复解决了之前的 fold2 系统性偏低问题。
 
