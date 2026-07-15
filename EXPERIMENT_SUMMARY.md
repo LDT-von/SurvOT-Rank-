@@ -123,30 +123,38 @@
 - best→last5 下滑 -0.058，在同类方法中属于中等偏小（v45:-0.04, v45v2:-0.07, V60:-0.073）。
 - **timelocal_competing 架构 + 关 rankevent 是当前分箱 B 下最强组合。**
 
-### 分箱 B 全部 5-fold 排名（按 last5，全部完成 2026-07-14）
+### 分箱 B 全部实验排名（按 best val_cindex，2026-07-14 完整）
 
-| # | 方法 | seed | avg_best | avg_last5 | best→last5 gap | 备注 |
-|---|------|:---:|:---:|:---:|:---:|------|
-| 1 | **v50_norank** | 22646 | 0.7148 ± 0.025 | **0.6572 ± 0.011** | -0.058 | timelocal_competing 关 rankevent+clinical，最稳定 |
-| 2 | v45_norank | None | 0.6848 ± 0.037 | 0.6406 ± 0.025 | -0.044 | 关4项 rankevent (AdamW wd=5e-4) |
-| 3 | v45v2_norank | 323 | 0.7063 ± 0.029 | 0.6394 ± 0.025 | -0.067 | 关 rankevent+clinical |
-| 4 | V51 seed3 | 3 | 0.6786 ± 0.055 | 0.6207 ± 0.058 | -0.058 | SlimBridge slot bridge (newSlotSPE) |
-| 5 | V51 seed5 | 5 | 0.6583 ± 0.058 | 0.6088 ± 0.047 | -0.050 | SlimBridge fold2复崩溃 |
-| 6 | V60 | 3 | 0.6791 ± 0.048 | 0.6063 ± 0.031 | -0.073 | OT Event Rank 无 weight decay 过拟合 |
-| 7 | rg_et_fix | 19552 | 0.6496 ± 0.067 | 0.5923 ± 0.073 | -0.057 | Rank-Guided ET，fold0+fold2 双双崩溃 |
-| 8 | dct_fix | 14623 | **0.7217** ± 0.047 | 0.5920 ± 0.018 | **-0.130** | 🔴 best 最高但 last5 暴跌，极度不稳定 |
-| 9 | faithful_fix | 23541 | 0.6519 ± 0.065 | 0.5681 ± 0.088 | -0.084 | Faithful ET，fold2=0.560 严重崩溃 |
-| 10 | catet_fix | 27785 | 0.6534 ± 0.070 | 0.5474 ± 0.028 | **-0.106** | CATE-T early-stop 过猛 (ep1-3), last5 垫底 |
+> 按 best（最优验证 c-index）排序。P0 实验仅 fold0+fold2（2 折），其余为完整 5-fold。
+> best 会挑中噪声峰值，存在乐观偏差（见 §0.3），优先参考 gap 列判断稳定性。
+
+| # | 方法 | 折 | seed | best | last5 | gap | 备注 |
+|:---:|------|:---:|:---:|:---:|:---:|:---:|------|
+| 1 | **dct_fix** | 5 | 14623 | **0.7217** | 0.5920 | -0.130 | 🏆 best最高但 last5暴跌，极度不稳定 |
+| 2 | **v50_norank** | 5 | 22646 | **0.7148** | 0.6572 | -0.058 | timelocal 关 rankevent，最稳 |
+| 3 | v45v2_norank | 5 | 323 | 0.7063 | 0.6394 | -0.067 | 关 rankevent+clinical |
+| 4 | v50_norank seed3 | 2 | 3 | 0.6959 | 0.6637 | -0.032 | P0-2a 固定种子复核 |
+| 5 | v50_norank seed5 | 2 | 5 | 0.6955 | 0.6779 | -0.018 | P0-2b，fold0 极强但 fold2 普通 |
+| 6 | v45_norank | 5 | 6792 | 0.6847 | 0.6406 | -0.044 | 关4项 rankevent |
+| 7 | V60 | 5 | 3 | 0.6791 | 0.6063 | -0.073 | OT Event Rank 无 wd |
+| 8 | V51 seed3 | 5 | 3 | 0.6786 | 0.6207 | -0.058 | SlimBridge |
+| 9 | P0-3a stripped | 2 | 3 | 0.6746 | 0.5774 | -0.097 | 仅 OT+EventSurv |
+| 10 | P0-1 v45全8损失 | 2 | 3 | 0.6722 | 0.6430 | -0.029 | rankevent 4 项全开 |
+| 11 | V51 seed5 | 5 | 5 | 0.6583 | 0.6088 | -0.050 | SlimBridge fold2 复崩 |
+| 12 | catet_fix | 5 | 27785 | 0.6534 | 0.5474 | -0.106 | CATE-T early-stop 过猛 |
+| 13 | faithful_fix | 5 | 23541 | 0.6519 | 0.5681 | -0.084 | Faithful ET fold2 崩溃 |
+| 14 | P0-3b +Spec | 2 | 3 | 0.6510 | 0.4533 | -0.198 | 加时间特化反而更差 |
+| 15 | rg_et_fix | 5 | 19552 | 0.6496 | 0.5923 | -0.057 | RG-ET fold0+fold2 双双弱 |
+| 16 | P0-3d full | 2 | 3 | 0.6466 | 0.5336 | -0.113 | +Compete 全开 |
+| 17 | P0-3c +Cover | 2 | 3 | 0.6353 | 0.5602 | -0.075 | +时间覆盖 |
 
 ### 关键发现
 
-1. **last5 排名和 best 排名完全不同**：dct best=0.7217 排第一，但 last5=0.5920 排第8，gap=-0.130 证明其 best 只是 early peak 噪声
-2. **v50 (timelocal_competing + norank) 是最稳组合**：best 第二 + last5 第一 + 方差最小，在所有方法中唯一没有单折 <0.60
-3. **fold2 崩溃是 BLCA 数据集固有特性**：10个方法中，7个 fold2 < 0.60。分箱修复后 v45 fold2 从 0.601→0.664，说明分箱是部分原因但不是全部
-4. **early-stop 过猛的方法（catet/dct/faithful）last5 极差**：因为 early stop 在 ep3-8 就停，best 挑的是随机 peak，后面 epoch 根本没跑所以 last5 取不到稳定值
-5. **没有 seed 跑满 30ep + AdamW wd=5e-4 的组合（v45/v50/v45v2）last5 稳定在 0.64-0.66**
-
-⚠️ 所有排名基于随机 seed，仅属于探索性。正式结论需固定 seed 复核。
+1. **dct_fix best=0.7217 排第一，但是 last5=0.5920 排倒数**。gap=-0.130 证明 best 只是 early peak 噪声，DCT 的反事实机制在 30ep 内仍未收敛。
+2. **v50 (timelocal_competing + norank) 整体最强**：best=0.7148 排第二，last5=0.6572 排第一，且跨种子稳定 (P0-2 三个 seed 均值 best=0.6981)。
+3. **best 排序 ≠ 方法质量排序，gap 才是真正的诊断信号**：best 高但 gap 大（dct -0.130, catet -0.106）= 噪声峰值；best 中等但 gap 小（v50 -0.058, v45_norank -0.044）= 真正学到东西。
+4. **fold2 是硬骨头**：几乎所有方法的 fold2 都是最弱折（rg_et=0.579, catet=0.554, faithful=0.560），只有 v50 系列的 fold2 稳定在 0.64+。
+5. **P0-3 消融结论不变**：spec/cover/compete 三项在 best 上体现不出优势，last5 更是全面崩塌。
 
 ---
 
