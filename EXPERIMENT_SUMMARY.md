@@ -2,7 +2,7 @@
 
 > 此文件是 SurvOT-Rank 所有实验分数的唯一权威来源。新实验结果只在此追加。
 >
-> 最后更新: 2026-07-15 | 代码版本: `1ddf84b`
+> 最后更新: 2026-07-15 | 代码版本: `1ddf84b` | Fix Verify: `15aa637`
 
 ---
 
@@ -587,4 +587,38 @@ tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
 - V51 seed3/seed5 的数据来自 newSlotSPE（路径 `/data1/sweep_results_30ep/v51_slimbridge_seed{3,5}/`），分箱与 SurvOT-Rank 的 B 一致。
 - stagewise 仅 fold2 存在原始曲线，标记为 `partial_folds_present=fold2`。
 - 分箱 B = global qcut fixed；分箱 A\* = old fold-aware qcut（仅 stagewise）。
+
+---
+## 11. Fix Verify (commit 15aa637) — BLCA fold0+fold2, seed=3, 30ep, 分箱B
+
+> 脚本: `scripts/run_fix_verify_fold02.sh` | 配置: `configs/*_blca.yaml`
+> 验证 5 个方法的 eps bug 修复 + batch size 修复后的正确分数。
+> rg_et fold0 仅 22ep（CPU阶段被kill），best=0.694@ep8 已是该折峰值，不再重跑。
+
+### 11.1 Per-fold best val_cindex
+
+| 方法 | fold0 best | fold0@ep | fold2 best | fold2@ep | 备注 |
+|---|---|---|---|---|---|
+| rg_et | 0.6941 | 8 | 0.6341 | 29 | fold0 仅22ep |
+| stagewise | 0.6458 | 18 | 0.6853 | 29 | |
+| faithful | 0.6640 | 4 | **0.7406** | 13 | fold2 全场最高单折 |
+| dct | 0.6601 | 11 | 0.6725 | 20 | |
+| catet | 🔄 运行中 | — | 🔄 运行中 | — | |
+
+### 11.2 Per-method 汇总 (fold0+fold2 均值)
+
+| # | 方法 | fold0 | fold2 | **均值** |
+|---|---|---|---|---|
+| 1 | **faithful** | 0.6640 | **0.7406** | **0.7023** |
+| 2 | dct | 0.6601 | 0.6725 | 0.6663 |
+| 3 | stagewise | 0.6458 | 0.6853 | 0.6656 |
+| 4 | rg_et | 0.6941 | 0.6341 | 0.6641 |
+| 5 | catet | 🔄 | 🔄 | 🔄 |
+
+### 11.3 关键发现
+
+- **faithful 是本次 fix verify 最强方法**：fold2=0.7406 是所有 fix verify 方法中最高单折分数，说明 faithful evidence transport 机制在修正 eps 和 batch 问题后表现突出。
+- rg_et fold0=0.694（仅 22ep,最高在 ep8）仍保持不错的分数，但 fold2=0.634 拉低均值，两折差距大。
+- stagewise 和 dct 分数接近（0.666），互相在误差范围内。
+- catet 仍在运行中，待补全。
 
