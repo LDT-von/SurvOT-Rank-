@@ -307,26 +307,115 @@ avg best=0.7076 ≈ baseline(0.7014)，但 fold1 不稳定，未继续跟进。
 
 ---
 
-## 6. 待办（决定下一步实验优先级）
+## 6. P0 实验完整结果（2026-07-14, fold0+fold2, 30ep, 分箱B, 固定seed）
 
-1. **【最高优先级】v45 全 8 损失 + 分箱 B + 5-fold** 的对照实验缺失。现在只知道"关rankevent+分箱B"=0.6406，不知道"不关+分箱B"是多少，无法拆分"分箱修复"和"关损失"各自的贡献。
-2. **v45_norank / v45v2_norank 用的是 seed=None**，属于探索性数据，需要用固定 seed(3 和 5) 复核，才能把 §1 的结论写进正式报告。
-3. **V51 SlimBridge fold2 崩溃**已排除分箱因素（两个 seed 都崩），需深入检查 SlotBridge/Modality Dropout 机制本身。
-4. **PCGrad 尚未真正验证过**，`robust_eval/pcgrad.py` 写好但没接进训练循环，RG-ET 的 IBS 崩塌问题依然悬而未决。
-5. Fix 队列剩余：v50_norank / rg_et_fix / catet_fix / dct_fix / faithful_fix（全部分箱 B），排队中。
+> 脚本: `scripts/run_p0_experiments.sh` | 配置: `configs/p0_experiments/`
+> 仅 fold0/fold2 (节省时间)，非完整5-fold。以下讨论均以 fold0/fold2 两折均值比较。
+
+### P0-1: v45 全8损失 vs v45_norank — 拆分"分箱修复"和"关rankevent"各自的贡献
+
+| 实验 | fold | best | best@ep | last5 |
+|---|:---:|:---:|:---:|:---:|
+| v45 全 8 损失 (seed=3) | 0 | 0.6751 | 9 | 0.6316 |
+|  | 2 | 0.6693 | 17 | 0.6544 |
+|  | **avg** | **0.6722** | — | **0.6430** |
+| v45_norank 关rankevent (seed=None) | 0 | 0.7361 | 2 | 0.6536 |
+|  | 2 | 0.6765 | 14 | 0.6637 |
+|  | **avg** | **0.7063** | — | **0.6587** |
+
+- **rankevent 4项净效果**: 关掉后 last5 +0.0157 (0.6430 → 0.6587)，与分箱A下消融方向一致。
+- **分箱B vs 分箱A\***: v45 全8损失 fold2 从 0.5026(分箱A\*) → 0.6544(分箱B)，+0.152。分箱修复是最主要贡献者。
+- **结论**: 分箱修复贡献 >> 关 rankevent 贡献，但关 rankevent 仍有约 0.015 的净增益。
+
+### P0-2: v50_norank 固定 seed 复核 — 确认 0.6572 不是单一种子运气
+
+| 实验 | fold | best | best@ep | last5 |
+|---|:---:|:---:|:---:|:---:|
+| v50_norank seed=3 | 0 | 0.7080 | 14 | 0.6781 |
+|  | 2 | 0.6837 | 12 | 0.6493 |
+|  | **avg** | **0.6959** | — | **0.6637** |
+| v50_norank seed=5 | 0 | 0.7409 | 5 | 0.7187 |
+|  | 2 | 0.6501 | 17 | 0.6371 |
+|  | **avg** | **0.6955** | — | **0.6779** |
+| v50_norank seed=22646 | 0 | 0.7227 | 5 | 0.6734 |
+| (历史5-fold) | 2 | 0.6829 | 11 | 0.6478 |
+|  | **avg** | **0.7028** | — | **0.6606** |
+
+| 跨3-seed汇总 | avg best | avg last5 |
+|---|:---:|:---:|
+| v50_norank seed={3,5,22646} | 0.6981 | **0.6674** |
+
+- **三种子last5**: 0.6637 / 0.6779 / 0.6606，均值 0.6674 ± 0.009，**稳定**。
+- seed=5 fold0 last5=0.7187 是异常高分（early peak fold），fold2 拉回正常 0.6371。跨fold方差大是 BLCA n=380 小数据的特征。
+- **v50_norank 跨 seed 确认有效**——这是分箱B下最可靠的数字。
+
+### P0-3: v50 时间局部机制消融 — spec/cover/compete 逐项贡献（rankevent 锁定关闭, seed=3）
+
+| 消融档位 | 损失组合 | fold | best | best@ep | last5 |
+|---|---|:---:|:---:|:---:|:---:|
+| **stripped** | OT + EventSurv | 0 | 0.6830 | 6 | 0.5604 |
+|  |  | 2 | 0.6661 | 13 | 0.5944 |
+|  |  | **avg** | **0.6746** | — | **0.5774** |
+| **+Spec** | +时间特化 | 0 | 0.6807 | 7 | 0.3902 |
+|  |  | 2 | 0.6213 | 19 | 0.5164 |
+|  |  | **avg** | **0.6510** | — | **0.4533** |
+| **+Spec+Cover** | +时间覆盖 | 0 | 0.6973 | 9 | 0.6008 |
+|  |  | 2 | 0.5733 | 24 | 0.5196 |
+|  |  | **avg** | **0.6353** | — | **0.5602** |
+| **full** | +竞争(全开) | 0 | 0.6823 | 7 | 0.4713 |
+|  |  | 2 | 0.6109 | 18 | 0.5959 |
+|  |  | **avg** | **0.6466** | — | **0.5336** |
+
+- **best vs last5 剧烈偏离**: 四档 best→last5 下滑量为 -0.097 / -0.198 / -0.075 / -0.113。全部存在严重过拟合。
+- **stripped (仅OT+EventSurv)** 的 best=0.6746 和 v50_norank full best=0.6959 差了 0.021，说明 spec/cover/compete 对 best 有提升但代价是稳定性毁灭。
+- **任何一档的 last5 (最高仅0.5774) 都不如 v50_norank (0.6674)**。时间局部机制的 spec/cover/compete 三项在分箱B下**没有贡献稳定的增益**——它们制造了尖锐的 early peak 然后崩溃。
+- **V50 真正的有效成分**: OT融合 + EventSurv NLL + 关rankevent（即 stripped 的核心），而非 spec/cover/compete 时间局部正则。
+
+### P0 总结
+
+| 排名 | 方法 | avg best | avg last5 | best→last5 gap |
+|:---:|---|:---:|:---:|:---:|
+| 1 | **v50_norank (3-seed均值)** | 0.6981 | **0.6674** | -0.031 |
+| 2 | v45_norank (seed=None) | 0.7063 | 0.6587 | -0.048 |
+| 3 | v45 全8损失 (seed=3) | 0.6722 | 0.6430 | -0.029 |
+| 4 | stripped (OT+EventSurv) | 0.6746 | 0.5774 | -0.097 |
+| 5 | +Spec+Cover | 0.6353 | 0.5602 | -0.075 |
+| 6 | full (+Compete) | 0.6466 | 0.5336 | -0.113 |
+| 7 | +Spec | 0.6510 | 0.4533 | -0.198 |
 
 ---
 
-## 7. 当前运行环境与队列状态（2026-07-14，实时性最强，可能已过期）
+## 7. 待办（决定下一步实验优先级）
+
+1. **SlotSPE 原始基线 BLCA 5-fold**（脚本已就绪: `run_slotspe_baseline_blca.sh`）—— 对比 epoch 曲线是 early peak 还是后期收敛。
+2. **V51 SlimBridge fold2 崩溃**已排除分箱因素（两个 seed 都崩），需深入检查 SlotBridge/Modality Dropout 机制本身。
+3. **PCGrad 尚未真正验证过**，`robust_eval/pcgrad.py` 写好但没接进训练循环，RG-ET 的 IBS 崩塌问题依然悬而未决。
+4. **v50_norank 跨癌种验证**（BRCA/HNSC），确认不是 only-BLCA 过拟合。
+5. **重跑 v50 stripped 用更大正则化**（当前 AdamW wd=5e-4 可能不够），确认仅 OT+EventSurv 是否能稳定。
+
+---
+
+## 8. 当前运行环境与队列状态（2026-07-14，P0已完成）
 
 ```
-✅ V51 seed3     5-fold done  |  best=0.6786  last5=0.6207
-✅ V51 seed5     5-fold done  |  best=0.6583  last5=0.6088
-✅ v45_norank    5-fold done  |  best=0.6848  last5=0.6406  (seed=None)
-✅ v45v2_norank  5-fold done  |  best=0.7063  last5=0.6394  (seed=323)
-✅ V60           5-fold done  |  best=0.6791  last5=0.6063  (seed=3) ⚠️严重过拟合
-✅ v50_norank    5-fold done  |  best=0.7148  last5=0.6572  (seed=22646) 🏆最高
-⏳ rg_et_fix     → catet_fix → dct_fix → faithful_fix  (等 v50 完成后自动启动)
+✅ P0-1 v45 全8损失   fold0+2  done
+✅ P0-2a v50_norank seed=3  fold0+2  done  last5=0.6637
+✅ P0-2b v50_norank seed=5  fold0+2  done  last5=0.6779
+✅ P0-3a stripped   fold0+2  done
+✅ P0-3b +Spec      fold0+2  done
+✅ P0-3c +Cover     fold0+2  done
+✅ P0-3d full       fold0+2  done
+✅ V51 seed3    5-fold done  |  best=0.6786  last5=0.6207
+✅ V51 seed5    5-fold done  |  best=0.6583  last5=0.6088
+✅ v45_norank   5-fold done  |  best=0.6848  last5=0.6406  (seed=None)
+✅ v45v2_norank 5-fold done  |  best=0.7063  last5=0.6394  (seed=323)
+✅ V60          5-fold done  |  best=0.6791  last5=0.6063  (seed=3)
+✅ v50_norank   5-fold done  |  best=0.7148  last5=0.6572  (seed=22646)
+✅ rg_et_fix    5-fold done  (fix 队列收尾)
+✅ catet_fix    5-fold done
+✅ dct_fix      5-fold done
+✅ faithful_fix 5-fold done
+⏳ SlotSPE baseline 待运行 (run_slotspe_baseline_blca.sh)
 ```
 
 - **SurvOT-Rank**: `/home/ubuntu/SurvOT-Rank`（commit `feabc0d`）
@@ -349,7 +438,7 @@ tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
 
 ---
 
-## 8. 工具
+## 9. 工具
 
 - `robust_eval/honest_report.py`：诚实汇总（best vs last5 乐观偏差、IBS 校准告警、消融对比表）
 - `robust_eval/loss_group_sweep.py`：损失子集扫描器，`--preset curated`(默认10组)/`pruned`/`full`

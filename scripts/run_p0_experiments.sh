@@ -10,7 +10,7 @@ CONDA_ENV="trisurv"
 GPU=0
 
 activate() {
-    source ~/miniconda3/etc/profile.d/conda.sh
+    source /data/env/data/env/anaconda/etc/profile.d/conda.sh
     conda activate $CONDA_ENV
 }
 
