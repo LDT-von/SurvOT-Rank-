@@ -1,7 +1,7 @@
 param(
     [ValidateSet("doctor", "smoke", "run", "summarize")]
     [string]$Mode = "run",
-    [ValidateSet("full", "no_anchor", "no_stage_risk", "evidence_cost", "all")]
+    [ValidateSet("full", "nll_only", "unweighted_rank", "legacy_six_loss", "all")]
     [string]$Variant = "all",
     [string]$Folds = "0,2,3",
     [string]$Gpu = "0",
@@ -16,16 +16,23 @@ Set-Location $RepoRoot
 $ResultsRoot = "results/dct_v3_score_diagnostics"
 
 function Get-Variants([string]$Selection) {
-    if ($Selection -eq "all") { return @("full", "no_anchor", "no_stage_risk", "evidence_cost") }
+    if ($Selection -eq "all") { return @("full", "nll_only", "unweighted_rank", "legacy_six_loss") }
     return @($Selection)
 }
 
 function Get-VariantOverrides([string]$Name) {
     switch ($Name) {
         "full" { return @() }
-        "no_anchor" { return @("dct_lambda_anchor=0.0") }
-        "no_stage_risk" { return @("dct_lambda_stage_risk=0.0") }
-        "evidence_cost" { return @("dct_evidence_cost_weight=0.10") }
+        "nll_only" { return @("dct_lambda_ipcw_rank=0.0") }
+        "unweighted_rank" { return @("dct_lambda_ipcw_rank=0.0", "dct_lambda_rank=0.05") }
+        "legacy_six_loss" { return @(
+            "dct_lambda_ipcw_rank=0.0",
+            "dct_lambda_ot=0.06",
+            "dct_lambda_rank=0.05",
+            "dct_lambda_anchor=0.03",
+            "dct_lambda_stage_risk=0.05",
+            "dct_lambda_coordinate=0.01"
+        ) }
         default { throw "Unknown variant: $Name" }
     }
 }

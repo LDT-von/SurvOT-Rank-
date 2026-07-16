@@ -270,6 +270,7 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
     args.cur_epoch = epoch
 
     total_loss = 0.0
+    seen_samples = 0
     method_diagnostic_sums = {}
     method_diagnostic_batches = 0
     all_risk_scores, all_censorships, all_event_times = [], [], []
@@ -303,7 +304,8 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
             loss_surv = loss_fn(logits, y_disc, event_time, c)
         loss_surv = loss_surv / y_disc.shape[0]
 
-        loss = (loss_surv + slot_loss) / accumulation_steps
+        batch_objective = loss_surv + slot_loss
+        loss = batch_objective / accumulation_steps
         loss.backward()
 
         # 统一的累积更新：每 accumulation_steps 个 micro-batch 更新一次，
@@ -316,21 +318,29 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
             optimizer.step()
             optimizer.zero_grad()
 
-        total_loss += loss.item()
+        # Report the actual per-sample objective. The old code accumulated the
+        # gradient-scaled batch loss and divided it by the dataset size again,
+        # making the displayed train loss depend on batch/accumulation settings.
+        batch_samples = int(y_disc.shape[0])
+        total_loss += float(batch_objective.item()) * batch_samples
+        seen_samples += batch_samples
         risk, _ = _calculate_risk(logits)
         all_risk_scores, all_censorships, all_event_times = _update_arrays(
             all_risk_scores, all_censorships, all_event_times,
             event_time, c, risk, data
         )
 
-        pbar.set_postfix(loss=f"{loss.item():.3f}", surv=f"{loss_surv.item():.3f}",
+        pbar.set_postfix(loss=f"{batch_objective.item():.3f}", surv=f"{loss_surv.item():.3f}",
                          batch=f"{batch_idx+1}/{total_batches}", refresh=False)
         if batch_idx % 10 == 0:
-            msg = f"  batch:{batch_idx} loss:{loss.item():.4f} surv:{loss_surv.item():.4f}"
+            msg = (
+                f"  batch:{batch_idx} loss:{batch_objective.item():.4f} "
+                f"surv:{loss_surv.item():.4f}"
+            )
             print(msg, flush=True)
             safe_write_line(log_file, msg)
         if smk > 0 and (batch_idx + 1) >= smk:
-            pbar.set_postfix(loss=f"{loss.item():.3f}", surv=f"{loss_surv.item():.3f}",
+            pbar.set_postfix(loss=f"{batch_objective.item():.3f}", surv=f"{loss_surv.item():.3f}",
                              batch=f"{batch_idx+1}/{total_batches}", status="smoke-stop", refresh=False)
             msg = f"  [smoke] stop train epoch after {batch_idx + 1} batch(es)"
             print(msg, flush=True)
@@ -340,7 +350,7 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
 
     scheduler.step()
 
-    total_loss /= max(len(loader.dataset), 1)
+    total_loss /= max(seen_samples, 1)
     all_risk_scores = np.concatenate(all_risk_scores, axis=0)
     all_censorships = np.concatenate(all_censorships, axis=0)
     all_event_times = np.concatenate(all_event_times, axis=0)

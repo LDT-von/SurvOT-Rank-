@@ -23,10 +23,14 @@ def make_args():
         otehv2_layers=1,
         otehv2_dropout=0.1,
         dct_num_stages=4,
-        dct_lambda_ot=0.06,
-        dct_lambda_rank=0.05,
-        dct_lambda_anchor=0.03,
-        dct_lambda_stage_risk=0.05,
+        dct_lambda_ipcw_rank=0.10,
+        dct_ipcw_rank_margin=0.02,
+        dct_ipcw_rank_temperature=0.50,
+        dct_ipcw_max_weight=10.0,
+        dct_lambda_ot=0.0,
+        dct_lambda_rank=0.0,
+        dct_lambda_anchor=0.0,
+        dct_lambda_stage_risk=0.0,
         dct_stage_risk_margin=0.02,
         dct_anchor_margin=0.02,
         dct_anchor_momentum=0.90,
@@ -34,7 +38,7 @@ def make_args():
         dct_evidence_mass_floor=0.05,
         dct_coupling_projection_iters=1000,
         dct_coupling_projection_tol=1e-4,
-        dct_lambda_coordinate=0.01,
+        dct_lambda_coordinate=0.0,
         dct_coordinate_temperature=0.30,
         dct_mix_ratio=0.50,
         fet_lambda_sparse=0.0,
@@ -63,6 +67,7 @@ def test_train_fold_reference_uses_late_censoring_as_low_risk_set_context():
     assert torch.all(high[:4].sum(dim=1) > 0)
     assert low[4].sum() > 0
     assert low[4, -1] > 0
+    assert model._ipcw(torch.tensor([1.0])).item() == 1.0
 
 
 def test_distributional_counterfactual_transport_uses_feasible_risk_anchored_paths():
@@ -82,6 +87,11 @@ def test_distributional_counterfactual_transport_uses_feasible_risk_anchored_pat
     assert logits.shape == (5, 4)
     assert aux_loss.ndim == 0
     assert torch.isfinite(aux_loss)
+    assert model.last_training_losses["ipcw_pairs"] > 0
+    assert torch.allclose(
+        aux_loss,
+        model.dct_lambda_ipcw_rank * model.last_training_losses["ipcw_rank"],
+    )
     aux_loss.backward()
     assert model.stage_pair_cost[-1].weight.grad is not None
     assert model.slot_attention_wsi.slots_mu.grad is not None
@@ -89,8 +99,8 @@ def test_distributional_counterfactual_transport_uses_feasible_risk_anchored_pat
     assert model.risk_anchor_seen.all()
     assert not hasattr(model, "risk_prototypes")
 
-    # A second batch activates the survival-anchored contrastive geometry loss;
-    # it never imposes a requested ordering on the model's CF risk predictions.
+    # A second batch keeps the score-aligned IPCW ranking path differentiable;
+    # it never imposes a requested ordering on synthetic CF risk predictions.
     model.zero_grad(set_to_none=True)
     _, aux_loss = model(
         x_wsi=torch.randn(5, 6, 16),
@@ -148,3 +158,25 @@ def test_stage_risk_contrast_uses_observed_high_and_low_risk_sets():
     )
     assert separated == 0
     assert reversed_loss > 0
+
+
+def test_ipcw_pairwise_rank_matches_cindex_direction():
+    model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
+    model.configure_train_reference(
+        torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0]),
+        torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+    )
+    event_time = torch.tensor([1.0, 3.0])
+    censorship = torch.tensor([0.0, 1.0])
+    correctly_ranked = model._ipcw_pairwise_ranking_loss(
+        torch.tensor([[4.0, -4.0, -4.0, -4.0], [-4.0, -4.0, -4.0, -4.0]]),
+        event_time,
+        censorship,
+    )
+    reversed_rank = model._ipcw_pairwise_ranking_loss(
+        torch.tensor([[-4.0, -4.0, -4.0, -4.0], [4.0, -4.0, -4.0, -4.0]]),
+        event_time,
+        censorship,
+    )
+    assert correctly_ranked < reversed_rank
+    assert model.last_ipcw_pair_count.item() == 1

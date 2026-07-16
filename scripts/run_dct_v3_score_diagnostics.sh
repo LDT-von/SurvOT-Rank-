@@ -12,14 +12,20 @@ RESULTS_ROOT="results/dct_v3_score_diagnostics"
 cd "$(dirname "$0")/.."
 
 variants_for() {
-  if [[ "$1" == "all" ]]; then printf '%s\n' full no_anchor no_stage_risk evidence_cost; else printf '%s\n' "$1"; fi
+  if [[ "$1" == "all" ]]; then printf '%s\n' full nll_only unweighted_rank legacy_six_loss; else printf '%s\n' "$1"; fi
 }
 override_for() {
   case "$1" in
     full) ;;
-    no_anchor) printf '%s\n' 'dct_lambda_anchor=0.0' ;;
-    no_stage_risk) printf '%s\n' 'dct_lambda_stage_risk=0.0' ;;
-    evidence_cost) printf '%s\n' 'dct_evidence_cost_weight=0.10' ;;
+    nll_only) printf '%s\n' 'dct_lambda_ipcw_rank=0.0' ;;
+    unweighted_rank) printf '%s\n' 'dct_lambda_ipcw_rank=0.0' 'dct_lambda_rank=0.05' ;;
+    legacy_six_loss) printf '%s\n' \
+      'dct_lambda_ipcw_rank=0.0' \
+      'dct_lambda_ot=0.06' \
+      'dct_lambda_rank=0.05' \
+      'dct_lambda_anchor=0.03' \
+      'dct_lambda_stage_risk=0.05' \
+      'dct_lambda_coordinate=0.01' ;;
     *) echo "Unknown variant: $1" >&2; exit 2 ;;
   esac
 }
@@ -30,8 +36,9 @@ run_variant() {
     local fold="${fold_text// /}"
     local end_fold=$((fold + 1))
     local args=( -m survot_rank.cli train --config "$CONFIG" --set "gpu=$GPU" --set "num_workers=$NUM_WORKERS" --set "results_dir=$RESULTS_ROOT/$variant" --set "specific_simple=dct_v3_score_$variant" )
-    local override; override="$(override_for "$variant")"
-    if [[ -n "$override" ]]; then args+=( --set "$override" ); fi
+    while IFS= read -r override; do
+      if [[ -n "$override" ]]; then args+=( --set "$override" ); fi
+    done < <(override_for "$variant")
     if [[ "$smoke" == "true" ]]; then args+=( --set "max_epochs=1" ); fi
     args+=( -- --k_start "$fold" --k_end "$end_fold" )
     echo "Running $variant, fold $fold"
@@ -43,6 +50,6 @@ case "$MODE" in
   smoke) run_variant full "${FOLDS%%,*}" true ;;
   run) while IFS= read -r variant; do run_variant "$variant" "$FOLDS"; done < <(variants_for "$VARIANT") ;;
   summarize) ;;
-  *) echo "Usage: $0 [doctor|smoke|run|summarize] [full|no_anchor|no_stage_risk|evidence_cost|all]" >&2; exit 2 ;;
+  *) echo "Usage: $0 [doctor|smoke|run|summarize] [full|nll_only|unweighted_rank|legacy_six_loss|all]" >&2; exit 2 ;;
 esac
 exec "$PYTHON_BIN" scripts/summarize_dct_v3_score_diagnostics.py --root "$RESULTS_ROOT" --expected-folds "$FOLDS"

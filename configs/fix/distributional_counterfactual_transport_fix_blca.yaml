@@ -1,17 +1,9 @@
 name: distributional_counterfactual_transport_fix_blca
 description: >
-  DCT 修复版 — 针对原版 fold2 30ep「val_best 出现在最后一个 epoch (0.6237 @ep29)、
-  仍在缓慢爬升、IBS/iAUC 全程健康」的**未收敛**问题。这与 RG-ET/CATE-T 的过拟合
-  相反，DCT 是训得不够，直接砍训练反而更糟。
-  修法（4 项）：
-    1. max_epochs 30 -> 60 — 让曲线跑到平台期，判断真实峰值在哪
-    2. reg 0.00001 -> 0.0005 — 补上正则，防止延长后转向过拟合（V4a 配方）
-    3. early stop patience=8 min_delta=0.001 **warmup=25** — warmup 大于原 best 位置，
-       仅在收敛平台后触发；避免延长的意义被过早停机抹掉
-    4. otehv2_dropout 0.1 -> 0.15 — 轻微加大，配合延长训练的稳定性
-  其余 dct_lambda_* 保持不变，因为原分数增长趋势健康、损失结构没崩。
+  DCT v3 score-first compatibility recipe for the historical fold-2 fix run.
+  It keeps the longer 60-epoch/early-stop schedule, but uses batch size 8 and
+  the corrected two-term NLL + IPCW ranking objective.
 
-# DCT v3: shared semantic coordinates + train-fold IPCW anchors + cost intervention.
 data:
   study: blca
   data_root_dir: /data/CPathPatchFeature
@@ -32,7 +24,10 @@ train:
   specific_simple: distributional_counterfactual_transport_fix_blca
   results_dir: results/distributional_counterfactual_transport_fix_blca
   max_epochs: 60
-  batch_size: 4
+  batch_size: 8
+  grad_accum_steps: 1
+  warmup_epochs: 5
+  grad_clip_norm: 1.0
   seed: 3
   lr: 0.0005
   opt: adamW
@@ -64,16 +59,23 @@ model:
   otehv2_layers: 2
   otehv2_dropout: 0.15
   dct_num_stages: 4
-  dct_lambda_ot: 0.06
-  dct_lambda_rank: 0.05
-  dct_lambda_anchor: 0.03
+  dct_lambda_ipcw_rank: 0.10
+  dct_ipcw_rank_margin: 0.02
+  dct_ipcw_rank_temperature: 0.50
+  dct_ipcw_max_weight: 10.0
+  dct_lambda_ot: 0.0
+  dct_lambda_rank: 0.0
+  dct_lambda_anchor: 0.0
+  dct_lambda_stage_risk: 0.0
+  dct_stage_risk_margin: 0.02
   dct_anchor_margin: 0.02
   dct_anchor_momentum: 0.90
-  dct_evidence_cost_weight: 0.10
+  dct_evidence_cost_weight: 0.0
+  dct_evidence_mass_floor: 0.05
   dct_coupling_projection_iters: 1000
   dct_coupling_projection_tol: 0.0001
-  dct_lambda_coordinate: 0.01
-  dct_coordinate_temperature: 0.20
+  dct_lambda_coordinate: 0.0
+  dct_coordinate_temperature: 0.30
   dct_mix_ratio: 0.50
   fet_lambda_sparse: 0.0
   fet_lambda_faith: 0.0

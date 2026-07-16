@@ -1,56 +1,69 @@
 # DCT v3 分数诊断
 
-这套入口用于回答一个窄问题：DCT v3.1 的 IPCW anchor、阶段风险对比和 evidence cost，分别是在提高真实泛化分数，还是只改变了某一折的峰值。它冻结当前主线的训练配方（50 epochs、batch size 8、seed 3、AdamW）。
+这套入口用于判断新的 score-first 目标是否真的提高 BLCA 泛化分数。当前
+主线固定为 50 epochs、batch size 8、seed 3、AdamW，并保持每折最早达到
+最佳验证 C-index 的 checkpoint。
 
 ## 四个对照
 
-| 变体 | 与 full 的唯一区别 | 要检验的问题 |
+| 变体 | 与 `full` 的区别 | 检验问题 |
 | --- | --- | --- |
-| `full` | 无 | v3.1：Slot Attention 后竞争式共享坐标、IPCW 阶段风险对比、gate 仅调 OT marginals |
-| `no_anchor` | `dct_lambda_anchor=0` | IPCW anchor 是否真的带来分数增益 |
-| `no_stage_risk` | `dct_lambda_stage_risk=0` | 真实事件/风险集方向监督是否带来 C-index 增益 |
-| `evidence_cost` | `dct_evidence_cost_weight=0.10` | gate 再同时改 cost 是否反而过强 |
+| `full` | 无 | NLL + IPCW 可比较样本排序 |
+| `nll_only` | `dct_lambda_ipcw_rank=0` | 排序监督是否真正提高 C-index |
+| `unweighted_rank` | 关闭 IPCW 排序，启用旧普通排序 | IPCW 是否优于未校正删失的排序 |
+| `legacy_six_loss` | 恢复旧 OT/普通排序/anchor/阶段/坐标五个辅助项 | 多目标冲突是否是低分来源 |
 
-默认只跑 fold 0、2、3：0/3 是已知不稳定折，2 是相对稳定折。共 12 次训练；它是定位瓶颈，不是正式报告。三折信号清楚后，才让胜出的版本跑完整五折。
+`full` 的默认目标只有：
+
+```text
+survival NLL + 0.10 * IPCW comparable-pair rank
+```
+
+OT、anchor 和 prototype 坐标仍参与前向结构与反事实解释，但不再各自争夺
+预测梯度。训练日志会额外记录 `ipcw_rank`、`ipcw_pairs`、OT 距离、anchor
+覆盖率等诊断量。
 
 ## 运行
 
-先确认环境和数据路径：
+先做环境检查：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run_dct_v3_score_diagnostics.ps1 -Mode doctor
 ```
 
-先做一个单 epoch 冒烟检查：
+再做单 epoch 冒烟检查：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run_dct_v3_score_diagnostics.ps1 -Mode smoke
 ```
 
-跑完整四变体三折：
+正式诊断三个代表折：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run_dct_v3_score_diagnostics.ps1 -Mode run -Variant all -Folds 0,2,3
 ```
 
-Linux 服务器可用：
+Linux：
 
 ```bash
 bash scripts/run_dct_v3_score_diagnostics.sh run all
 ```
 
-独立重新汇总：
+独立汇总：
 
 ```powershell
 python scripts/summarize_dct_v3_score_diagnostics.py --root results/dct_v3_score_diagnostics --expected-folds 0,2,3
 ```
 
-汇总会输出 `results/dct_v3_score_diagnostics/dct_v3_score_summary.csv`，每折记录 best epoch、best C-index、best 附近三点均值、末五 epoch 均值、峰值-末五差、IPCW C-index、IBS、iAUC。
+汇总文件为 `results/dct_v3_score_diagnostics/dct_v3_score_summary.csv`，包含
+每折 best epoch、best C-index、best 附近三点均值、末五轮均值、峰值差、
+IPCW C-index、IBS 和 iAUC。
 
-## 判读与下一步
+## 判读
 
-- `full` 要至少在 2/3 折胜过某个删减版，并且 `best3` 或 `last5` 不更差，才说明该机制是稳定的分数贡献，而非尖峰。
-- 若 `no_anchor` 更好或 `full` 只抬高 best 却扩大 `best_gap`，先回退或重做 anchor；不要先扫 intervention 强度。
-- 若 `no_stage_risk` 更好，说明阶段风险对比的权重或边界定义不合适；先调该项，而不是回退到旧版 CF 排序 hinge。
-- 若 `evidence_cost` 更好，才考虑恢复 gate 的 cost 注入；默认仅调 marginals 可避免双重约束。
-- 只有当 `full` 或一个删减版在三折上稳定后，才补 fold 1、4 形成正式五折；这时应报告 best、best3、last5 和选点规则，而不只报告每折峰值。
+- `full` 应在多数折超过 `nll_only`，否则将排名权重继续降到 0.05。
+- `full` 若胜过 `unweighted_rank`，说明 train-fold IPCW 校正有效。
+- `legacy_six_loss` 若更差且 `best_gap` 更大，就能直接确认旧多目标配方造成
+  过拟合或梯度冲突。
+- 先用 0/2/3 折定位，再让胜出配方跑完整五折；最终同时报告 best、best3、
+  last5，避免只靠单 epoch 尖峰下结论。

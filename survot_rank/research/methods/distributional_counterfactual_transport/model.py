@@ -35,12 +35,27 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         args.fet_num_stages = int(getattr(args, "dct_num_stages", 4))
         super().__init__(args, omic_input_dim, omic_names, pathway_names)
 
-        self.dct_lambda_ot = float(getattr(args, "dct_lambda_ot", 0.06))
-        self.dct_lambda_rank = float(getattr(args, "dct_lambda_rank", 0.05))
-        self.dct_lambda_anchor = float(getattr(args, "dct_lambda_anchor", 0.03))
-        self.dct_lambda_stage_risk = float(getattr(args, "dct_lambda_stage_risk", 0.05))
+        # Score-first default: NLL is supplied by the trainer and DCT adds one
+        # censoring-aware objective that is aligned with the reported C-index.
+        # The older OT/rank/anchor/stage/coordinate penalties remain available
+        # only as explicit ablations; jointly enabling all five created a
+        # poorly-scaled six-objective optimisation problem.
+        self.dct_lambda_ipcw_rank = float(getattr(args, "dct_lambda_ipcw_rank", 0.10))
+        self.dct_ipcw_rank_margin = float(getattr(args, "dct_ipcw_rank_margin", 0.02))
+        self.dct_ipcw_rank_temperature = float(
+            getattr(args, "dct_ipcw_rank_temperature", 0.50)
+        )
+        self.dct_ipcw_max_weight = float(getattr(args, "dct_ipcw_max_weight", 10.0))
+        if self.dct_ipcw_rank_temperature <= 0.0:
+            raise ValueError("dct_ipcw_rank_temperature must be positive")
+        if self.dct_ipcw_max_weight <= 0.0:
+            raise ValueError("dct_ipcw_max_weight must be positive")
+        self.dct_lambda_ot = float(getattr(args, "dct_lambda_ot", 0.0))
+        self.dct_lambda_rank = float(getattr(args, "dct_lambda_rank", 0.0))
+        self.dct_lambda_anchor = float(getattr(args, "dct_lambda_anchor", 0.0))
+        self.dct_lambda_stage_risk = float(getattr(args, "dct_lambda_stage_risk", 0.0))
         self.dct_stage_risk_margin = float(getattr(args, "dct_stage_risk_margin", 0.02))
-        self.dct_lambda_coordinate = float(getattr(args, "dct_lambda_coordinate", 0.01))
+        self.dct_lambda_coordinate = float(getattr(args, "dct_lambda_coordinate", 0.0))
         self.dct_anchor_margin = float(getattr(args, "dct_anchor_margin", 0.02))
         self.dct_anchor_momentum = float(getattr(args, "dct_anchor_momentum", 0.90))
         self.dct_evidence_cost_weight = float(
@@ -138,8 +153,11 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         if self.dct_censor_times.numel() == 0:
             return torch.ones_like(query_times)
         indices = torch.searchsorted(self.dct_censor_times, query_times, right=True) - 1
-        indices = indices.clamp_min(0)
-        values = self.dct_censor_survival[indices]
+        # G(t)=1 before the first observed follow-up time. Clamping -1 to zero
+        # would incorrectly reuse the first post-time KM value.
+        values = torch.ones_like(query_times)
+        valid = indices >= 0
+        values[valid] = self.dct_censor_survival[indices[valid]]
         return values.clamp_min(0.05).reciprocal()
 
     def _semantic_slots(self, tokens, prototypes):
@@ -312,6 +330,37 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             losses.append(F.relu(self.dct_stage_risk_margin - (high_mean - low_mean)))
         return torch.stack(losses).mean() if losses else factual_logits.new_zeros(())
 
+    def _ipcw_pairwise_ranking_loss(self, factual_logits, event_time, censorship):
+        """Smooth Uno-style ranking over the exact validation risk score.
+
+        A pair ``(i, j)`` is comparable when patient ``i`` has an observed
+        event before patient ``j``.  The event case receives inverse squared
+        censoring-survival weight, matching IPCW concordance weighting.  The
+        softplus temperature gives a smooth approximation to a margin hinge
+        while retaining gradients for near-correct pairs.
+        """
+        risk = self._risk(factual_logits)
+        times = event_time.float().view(-1)
+        observed = censorship.float().view(-1) < 0.5
+        comparable = observed[:, None] & (times[:, None] < times[None, :])
+        self.last_ipcw_pair_count = comparable.sum().detach()
+        if not bool(comparable.any()):
+            return risk.sum() * 0.0
+
+        differences = risk[:, None] - risk[None, :]
+        temperature = self.dct_ipcw_rank_temperature
+        pair_losses = temperature * F.softplus(
+            (self.dct_ipcw_rank_margin - differences) / temperature
+        )
+
+        # Uno's concordance uses delta_i / G(T_i)^2. Stabilised clipping avoids
+        # one late, heavily censored event dominating a small batch.
+        event_weights = self._ipcw(times).square().clamp_max(self.dct_ipcw_max_weight)
+        pair_weights = event_weights[:, None].expand_as(pair_losses)[comparable]
+        return (
+            pair_losses[comparable] * pair_weights
+        ).sum() / pair_weights.sum().clamp_min(1e-6)
+
     @torch.no_grad()
     def _update_risk_anchors(self, costs, low_weights, high_weights):
         for stage_idx in range(self.spt_num_stages):
@@ -396,14 +445,74 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         high_weights = torch.zeros_like(low_weights)
         anchor_loss = factual_costs.new_zeros(())
         stage_risk_loss = factual_costs.new_zeros(())
+        ipcw_rank_loss = factual_costs.new_zeros(())
+        ipcw_pair_count = factual_costs.new_zeros(())
         if kwargs.get("event_time") is not None and kwargs.get("c") is not None:
             low_weights, high_weights = self._stage_membership_weights(kwargs["event_time"], kwargs["c"])
-            anchor_loss = self._anchor_contrastive_loss(factual_costs, low_weights, high_weights)
-            stage_risk_loss = self._stage_risk_contrast_loss(
-                factual_logits, low_weights, high_weights
-            )
             if self.training:
+                if self.dct_lambda_anchor != 0.0:
+                    anchor_loss = self._anchor_contrastive_loss(
+                        factual_costs, low_weights, high_weights
+                    )
+                if self.dct_lambda_stage_risk != 0.0:
+                    stage_risk_loss = self._stage_risk_contrast_loss(
+                        factual_logits, low_weights, high_weights
+                    )
+                if self.dct_lambda_ipcw_rank != 0.0:
+                    ipcw_rank_loss = self._ipcw_pairwise_ranking_loss(
+                        factual_logits, kwargs["event_time"], kwargs["c"]
+                    )
+                    ipcw_pair_count = self.last_ipcw_pair_count.to(
+                        device=factual_costs.device, dtype=factual_costs.dtype
+                    )
                 self._update_risk_anchors(factual_costs.detach(), low_weights, high_weights)
+
+        if self.training:
+            # Counterfactual branches are post-hoc queries, not training losses.
+            # The former implementation solved two extra Sinkhorn systems and
+            # decoded them on every training batch even though their outputs had
+            # no path to the objective.  Keep training factual-only and evaluate
+            # counterfactual sensitivity with the selected checkpoint.
+            self.last_explanations = None
+
+            rank_loss = factual_costs.new_zeros(())
+            if (
+                self.dct_lambda_rank != 0.0
+                and kwargs.get("event_time") is not None
+                and kwargs.get("c") is not None
+            ):
+                rank_loss = self._continuous_ranking_loss(
+                    factual_logits, kwargs["event_time"], kwargs["c"]
+                )
+            coordinate_loss = (
+                self._coordinate_loss()
+                if self.dct_lambda_coordinate != 0.0
+                else factual_costs.new_zeros(())
+            )
+            active_stage_fraction = (
+                ((low_weights > 0).any(dim=0) & (high_weights > 0).any(dim=0))
+                .to(factual_costs.dtype)
+                .mean()
+            )
+            self.last_training_losses = {
+                "ot": ot_distance.detach(),
+                "ipcw_rank": ipcw_rank_loss.detach(),
+                "ipcw_pairs": ipcw_pair_count.detach(),
+                "rank": rank_loss.detach(),
+                "anchor": anchor_loss.detach(),
+                "stage_risk": stage_risk_loss.detach(),
+                "coordinate": coordinate_loss.detach(),
+                "active_stage_fraction": active_stage_fraction.detach(),
+                "anchor_coverage": self.risk_anchor_seen.to(factual_costs.dtype).mean().detach(),
+            }
+
+            aux_loss = self.dct_lambda_ipcw_rank * ipcw_rank_loss
+            aux_loss = aux_loss + self.dct_lambda_ot * ot_distance
+            aux_loss = aux_loss + self.dct_lambda_rank * rank_loss
+            aux_loss = aux_loss + self.dct_lambda_anchor * anchor_loss
+            aux_loss = aux_loss + self.dct_lambda_stage_risk * stage_risk_loss
+            aux_loss = aux_loss + self.dct_lambda_coordinate * coordinate_loss
+            return factual_logits, aux_loss
 
         low_costs, high_costs = self._counterfactual_costs(factual_costs)
         low_plans, _ = self._plans_from_cost_tensor(low_costs, rows, cols, epoch)
@@ -438,33 +547,4 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             "event_gate": factual_gate.detach(),
         }
 
-        if not self.training:
-            return factual_logits, 0.0
-
-        rank_loss = factual_costs.new_zeros(())
-        if "event_time" in kwargs and "c" in kwargs:
-            rank_loss = self._continuous_ranking_loss(
-                factual_logits, kwargs["event_time"], kwargs["c"]
-            )
-        coordinate_loss = self._coordinate_loss()
-        active_stage_fraction = (
-            ((low_weights > 0).any(dim=0) & (high_weights > 0).any(dim=0))
-            .to(factual_costs.dtype)
-            .mean()
-        )
-        self.last_training_losses = {
-            "ot": ot_distance.detach(),
-            "rank": rank_loss.detach(),
-            "anchor": anchor_loss.detach(),
-            "stage_risk": stage_risk_loss.detach(),
-            "coordinate": coordinate_loss.detach(),
-            "active_stage_fraction": active_stage_fraction.detach(),
-            "anchor_coverage": self.risk_anchor_seen.to(factual_costs.dtype).mean().detach(),
-        }
-
-        aux_loss = self.dct_lambda_ot * ot_distance
-        aux_loss = aux_loss + self.dct_lambda_rank * rank_loss
-        aux_loss = aux_loss + self.dct_lambda_anchor * anchor_loss
-        aux_loss = aux_loss + self.dct_lambda_stage_risk * stage_risk_loss
-        aux_loss = aux_loss + self.dct_lambda_coordinate * coordinate_loss
-        return factual_logits, aux_loss
+        return factual_logits, 0.0

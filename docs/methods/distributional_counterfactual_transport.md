@@ -29,7 +29,8 @@ treatment-effect estimator.
 
 ```text
 WSI patches / pathway tokens
-        -> global semantic prototype coordinates
+        -> patient-local Slot Attention
+        -> competitive global semantic prototype coordinates
         -> stage-specific evidence-conditioned OT cost
         -> IPCW high-event / low-risk-set cost anchors
         -> cost-space intervention
@@ -39,14 +40,40 @@ WSI patches / pathway tokens
 
 ## Objective
 
-The external survival NLL remains the prediction objective.  The model adds:
+The score-first default has exactly two terms:
 
-1. OT cost regularisation;
-2. censoring-aware continuous ranking;
-3. risk-anchor contrast on observed event and risk-set membership; and
-4. IPCW stage-risk contrast: observed in-stage events must have greater factual
-   cumulative risk than patients confirmed to survive that stage; and
-5. shared-prototype coordinate diversity.
+\[
+\mathcal L = \mathcal L_{NLL} + \lambda_{rank}\mathcal L_{IPCW-rank}.
+\]
+
+Let \(r_i=-\sum_k S_i(k)\), exactly the scalar risk used by validation
+C-index, and let
+\(\mathcal P=\{(i,j):\delta_i=1, T_i<T_j\}\) be the comparable pairs in a
+training batch.  The ranking term is
+
+\[
+\mathcal L_{IPCW-rank}=
+\frac{\sum_{(i,j)\in\mathcal P} w_i\,\tau\,
+\operatorname{softplus}((m-(r_i-r_j))/\tau)}
+{\sum_{(i,j)\in\mathcal P}w_i},\qquad
+w_i=\min(w_{max},\widehat G(T_i)^{-2}).
+\]
+
+The censoring Kaplan--Meier estimate \(\widehat G\) is fitted only on the
+current fold's training cases.  Squared IPCW matches censoring-adjusted
+concordance weighting; clipping prevents one late event from controlling a
+small batch.  With the default \(\lambda=0.10\) and \(\tau=0.50\), a tied-risk
+pair contributes \(0.10\times0.50\log 2\), the same initial scale as the old
+unweighted \(0.05\times\log 2\) term; this changes the statistical target
+without introducing an arbitrary jump in auxiliary-loss magnitude.
+
+OT cost, unweighted ranking, anchor contrast, stage-mean hinge, and coordinate
+orthogonality remain available only as zero-by-default ablations.  In
+particular, minimizing a fully learnable OT cost is not part of the default:
+the transport plan is a representation mechanism, not an energy target that
+should be driven toward zero.  Risk anchors are updated as detached moving
+statistics, and the two counterfactual Sinkhorn solves run only for post-hoc
+evaluation rather than wasting training compute.
 
 There is deliberately no `low_risk_counterfactual < factual_risk <
 high_risk_counterfactual` loss.
@@ -60,5 +87,16 @@ Report, per fold and across seeds:
 - risk delta and survival-curve difference across `alpha` values;
 - directional-consistency and monotonicity-violation rates;
 - stability of prototype-coordinate assignments; and
-- ablations of IPCW anchors, stage-risk contrast, evidence-cost injection, and
+- ablations of NLL-only, unweighted ranking, the former six-loss recipe, and
   re-optimised cost-space intervention.
+
+## Design references
+
+- [MOTCat (ICCV 2023) official implementation](https://github.com/Innse/MOTCat):
+  OT is used to construct multimodal co-attention, while its trainer optimises
+  the survival loss (plus optional parameter regularisation) rather than adding
+  the returned OT distance to the prediction objective.
+- [DeepHit (AAAI 2018)](https://doi.org/10.1609/aaai.v32i1.11842): likelihood
+  and differentiable risk ranking are complementary prediction targets.
+- [Uno et al. (2011)](https://pubmed.ncbi.nlm.nih.gov/21484848/): censoring-
+  adjusted concordance motivates the inverse-squared censoring-survival weight.
