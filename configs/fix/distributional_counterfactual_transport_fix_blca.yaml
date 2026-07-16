@@ -21,8 +21,8 @@ split:
 
 train:
   survot_method: distributional_counterfactual_transport
-  specific_simple: distributional_counterfactual_transport_fix_blca
-  results_dir: results/distributional_counterfactual_transport_fix_blca
+  specific_simple: distributional_counterfactual_transport_score_first_fix_blca
+  results_dir: results/distributional_counterfactual_transport_score_first_fix_blca
   max_epochs: 60
   batch_size: 8
   grad_accum_steps: 1

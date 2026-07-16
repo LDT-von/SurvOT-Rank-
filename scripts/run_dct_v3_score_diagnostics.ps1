@@ -13,7 +13,7 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
-$ResultsRoot = "results/dct_v3_score_diagnostics"
+$ResultsRoot = "results/dct_v3_score_first_diagnostics"
 
 function Get-Variants([string]$Selection) {
     if ($Selection -eq "all") { return @("full", "nll_only", "unweighted_rank", "legacy_six_loss") }
@@ -43,7 +43,7 @@ function Invoke-Variant([string]$Name, [string]$FoldList, [switch]$Smoke) {
         $EndFold = $Fold + 1
         $Args = @("-m", "survot_rank.cli", "train", "--config", $Config,
             "--set", "gpu=$Gpu", "--set", "num_workers=$NumWorkers",
-            "--set", "results_dir=$ResultsRoot/$Name", "--set", "specific_simple=dct_v3_score_$Name")
+            "--set", "results_dir=$ResultsRoot/$Name", "--set", "specific_simple=dct_v3_score_first_$Name")
         foreach ($Override in (Get-VariantOverrides $Name)) { $Args += @("--set", $Override) }
         if ($Smoke) { $Args += @("--set", "max_epochs=1") }
         $Args += @("--", "--k_start", "$Fold", "--k_end", "$EndFold")

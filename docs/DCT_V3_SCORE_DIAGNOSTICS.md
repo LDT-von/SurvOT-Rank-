@@ -52,10 +52,10 @@ bash scripts/run_dct_v3_score_diagnostics.sh run all
 独立汇总：
 
 ```powershell
-python scripts/summarize_dct_v3_score_diagnostics.py --root results/dct_v3_score_diagnostics --expected-folds 0,2,3
+python scripts/summarize_dct_v3_score_diagnostics.py --root results/dct_v3_score_first_diagnostics --expected-folds 0,2,3
 ```
 
-汇总文件为 `results/dct_v3_score_diagnostics/dct_v3_score_summary.csv`，包含
+汇总文件为 `results/dct_v3_score_first_diagnostics/dct_v3_score_summary.csv`，包含
 每折 best epoch、best C-index、best 附近三点均值、末五轮均值、峰值差、
 IPCW C-index、IBS 和 iAUC。
 

@@ -19,8 +19,8 @@ split:
 
 train:
   survot_method: distributional_counterfactual_transport
-  specific_simple: distributional_counterfactual_transport_blca
-  results_dir: results/distributional_counterfactual_transport_blca
+  specific_simple: distributional_counterfactual_transport_score_first_blca
+  results_dir: results/distributional_counterfactual_transport_score_first_blca
   max_epochs: 50           # DCT 历史上 best 常在末轮，30ep 不够，延长到 50
   batch_size: 8            # v3.1: enough risk-set pairs without fold0's batch-16 overfit.
   grad_accum_steps: 1      # Effective batch = 8; ranking/risk-set losses see 8 cases per forward.

@@ -20,8 +20,8 @@ split:
 
 train:
   survot_method: distributional_counterfactual_transport
-  specific_simple: dct_v3_score_full
-  results_dir: results/dct_v3_score_diagnostics/full
+  specific_simple: dct_v3_score_first_full
+  results_dir: results/dct_v3_score_first_diagnostics/full
   max_epochs: 50
   batch_size: 8
   grad_accum_steps: 1

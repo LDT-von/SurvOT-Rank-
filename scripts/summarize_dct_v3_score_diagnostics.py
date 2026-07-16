@@ -108,7 +108,7 @@ def print_report(rows: list[dict[str, object]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("results/dct_v3_score_diagnostics"))
+    parser.add_argument("--root", type=Path, default=Path("results/dct_v3_score_first_diagnostics"))
     parser.add_argument("--expected-folds", default="0,2,3")
     parser.add_argument("--output", default="dct_v3_score_summary.csv")
     args = parser.parse_args()

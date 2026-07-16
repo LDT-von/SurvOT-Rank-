@@ -8,7 +8,7 @@ GPU="${GPU:-0}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 CONFIG="${CONFIG:-configs/diagnostics/dct_v3_score_blca.yaml}"
-RESULTS_ROOT="results/dct_v3_score_diagnostics"
+RESULTS_ROOT="results/dct_v3_score_first_diagnostics"
 cd "$(dirname "$0")/.."
 
 variants_for() {
@@ -35,7 +35,7 @@ run_variant() {
   for fold_text in "${fold_array[@]}"; do
     local fold="${fold_text// /}"
     local end_fold=$((fold + 1))
-    local args=( -m survot_rank.cli train --config "$CONFIG" --set "gpu=$GPU" --set "num_workers=$NUM_WORKERS" --set "results_dir=$RESULTS_ROOT/$variant" --set "specific_simple=dct_v3_score_$variant" )
+    local args=( -m survot_rank.cli train --config "$CONFIG" --set "gpu=$GPU" --set "num_workers=$NUM_WORKERS" --set "results_dir=$RESULTS_ROOT/$variant" --set "specific_simple=dct_v3_score_first_$variant" )
     while IFS= read -r override; do
       if [[ -n "$override" ]]; then args+=( --set "$override" ); fi
     done < <(override_for "$variant")
