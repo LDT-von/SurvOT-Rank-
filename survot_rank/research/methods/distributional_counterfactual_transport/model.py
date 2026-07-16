@@ -371,11 +371,19 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
     def forward(self, **kwargs):
         x_wsi_proj = self.wsi_mlp(kwargs["x_wsi"])
         x_omics = self._encode_omics(kwargs)
+
+        # Preserve the high-capacity patient-local representation used by the
+        # earlier high-scoring DCT, then align those local slots to global
+        # prototype coordinates. Directly pooling thousands of raw tokens with
+        # the global dictionary discarded Slot Attention's within-patient
+        # competition and was a factual-prediction bottleneck.
+        local_slots_wsi = self.slot_attention_wsi(x_wsi_proj)
+        local_slots_omic = self.slot_attention_omic(x_omics)
         slots_wsi, wsi_coordinate_assignment = self._semantic_slots(
-            x_wsi_proj, self.shared_wsi_prototypes
+            local_slots_wsi, self.shared_wsi_prototypes
         )
         slots_omic, omic_coordinate_assignment = self._semantic_slots(
-            x_omics, self.shared_omic_prototypes
+            local_slots_omic, self.shared_omic_prototypes
         )
         epoch = int(getattr(self.args, "cur_epoch", kwargs.get("cur_epoch", 0)))
 
@@ -433,12 +441,30 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         if not self.training:
             return factual_logits, 0.0
 
-        aux_loss = self.dct_lambda_ot * ot_distance
+        rank_loss = factual_costs.new_zeros(())
         if "event_time" in kwargs and "c" in kwargs:
-            aux_loss = aux_loss + self.dct_lambda_rank * self._continuous_ranking_loss(
+            rank_loss = self._continuous_ranking_loss(
                 factual_logits, kwargs["event_time"], kwargs["c"]
             )
+        coordinate_loss = self._coordinate_loss()
+        active_stage_fraction = (
+            ((low_weights > 0).any(dim=0) & (high_weights > 0).any(dim=0))
+            .to(factual_costs.dtype)
+            .mean()
+        )
+        self.last_training_losses = {
+            "ot": ot_distance.detach(),
+            "rank": rank_loss.detach(),
+            "anchor": anchor_loss.detach(),
+            "stage_risk": stage_risk_loss.detach(),
+            "coordinate": coordinate_loss.detach(),
+            "active_stage_fraction": active_stage_fraction.detach(),
+            "anchor_coverage": self.risk_anchor_seen.to(factual_costs.dtype).mean().detach(),
+        }
+
+        aux_loss = self.dct_lambda_ot * ot_distance
+        aux_loss = aux_loss + self.dct_lambda_rank * rank_loss
         aux_loss = aux_loss + self.dct_lambda_anchor * anchor_loss
         aux_loss = aux_loss + self.dct_lambda_stage_risk * stage_risk_loss
-        aux_loss = aux_loss + self.dct_lambda_coordinate * self._coordinate_loss()
+        aux_loss = aux_loss + self.dct_lambda_coordinate * coordinate_loss
         return factual_logits, aux_loss

@@ -270,6 +270,8 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
     args.cur_epoch = epoch
 
     total_loss = 0.0
+    method_diagnostic_sums = {}
+    method_diagnostic_batches = 0
     all_risk_scores, all_censorships, all_event_times = [], [], []
 
     # 梯度累积：batch=4 时通过累积 grad_accum_steps 个 micro-batch 再更新，
@@ -289,6 +291,11 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
     for batch_idx, data in pbar:
         out, y_disc, event_time, c = _process_data_and_forward(args, model, data, device)
         logits, slot_loss = out
+
+        for name, value in getattr(model, "last_training_losses", {}).items():
+            method_diagnostic_sums[name] = method_diagnostic_sums.get(name, 0.0) + float(value.item())
+        if getattr(model, "last_training_losses", None):
+            method_diagnostic_batches += 1
 
         if args.bag_loss == "cox_surv":
             loss_surv = loss_fn(logits, event_time, c)
@@ -342,9 +349,20 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
         all_risk_scores, tied_tol=1e-08
     )[0]
 
-    msg = f"[Epoch {epoch}] train_loss={total_loss:.4f}  train_cindex={c_index:.4f}"
+    diagnostics = {
+        name: value / max(method_diagnostic_batches, 1)
+        for name, value in method_diagnostic_sums.items()
+    }
+    diagnostic_text = "".join(
+        f"  {name}={value:.4f}" for name, value in diagnostics.items()
+    )
+    msg = (
+        f"[Epoch {epoch}] train_loss={total_loss:.4f}  "
+        f"train_cindex={c_index:.4f}{diagnostic_text}"
+    )
     print(msg)
     safe_write_line(log_file, msg)
+    return diagnostics
 
 
 def evaluate(args, dataset_factory, model, loader, loss_fn, survival_train=None):
@@ -459,8 +477,9 @@ def train_one_fold(args, dataset_factory, fold, log_file):
 
     try:
         for epoch in range(args.max_epochs):
-            train_one_epoch(args, epoch, model, train_loader,
-                            optimizer, scheduler, loss_fn, log_file)
+            train_diagnostics = train_one_epoch(
+                args, epoch, model, train_loader, optimizer, scheduler, loss_fn, log_file
+            )
             safe_flush(log_file)
             results, val_c, val_c_ipcw, val_BS, val_IBS, val_iauc, val_loss = evaluate(
                 args, dataset_factory, model, val_loader, loss_fn, survival_train
@@ -477,12 +496,16 @@ def train_one_fold(args, dataset_factory, fold, log_file):
                 'val_IBS': val_IBS,
                 'val_iauc': val_iauc,
                 'val_loss': val_loss,
+                **{f'train_{name}': value for name, value in train_diagnostics.items()},
             })
             ensure_min_free_space(args.results_dir, args.min_free_space_gb, f"Fold {fold} epoch {epoch} before write")
             # 姣忎釜 epoch 閮借鐩栧啓涓€娆?csv (閬垮厤宕╂簝涓㈠け鏇茬嚎)
             safe_to_csv(epoch_records, epoch_csv)
 
-            if val_c >= args.max_cindex:
+            # Keep the earliest checkpoint when a discretised C-index ties.
+            # Replacing it with a later equal score previously selected a more
+            # overfit model (for example DCT fold0 epoch 29 over epoch 4).
+            if val_c > args.max_cindex:
                 args.max_cindex = val_c
                 args.max_cindex_epoch = epoch
                 best_results = results

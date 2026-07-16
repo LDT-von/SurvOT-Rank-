@@ -6,7 +6,7 @@
 
 | 变体 | 与 full 的唯一区别 | 要检验的问题 |
 | --- | --- | --- |
-| `full` | 无 | v3.1：竞争式共享坐标、IPCW 阶段风险对比、gate 仅调 OT marginals |
+| `full` | 无 | v3.1：Slot Attention 后竞争式共享坐标、IPCW 阶段风险对比、gate 仅调 OT marginals |
 | `no_anchor` | `dct_lambda_anchor=0` | IPCW anchor 是否真的带来分数增益 |
 | `no_stage_risk` | `dct_lambda_stage_risk=0` | 真实事件/风险集方向监督是否带来 C-index 增益 |
 | `evidence_cost` | `dct_evidence_cost_weight=0.10` | gate 再同时改 cost 是否反而过强 |

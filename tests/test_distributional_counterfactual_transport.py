@@ -84,6 +84,8 @@ def test_distributional_counterfactual_transport_uses_feasible_risk_anchored_pat
     assert torch.isfinite(aux_loss)
     aux_loss.backward()
     assert model.stage_pair_cost[-1].weight.grad is not None
+    assert model.slot_attention_wsi.slots_mu.grad is not None
+    assert model.slot_attention_omic.slots_mu.grad is not None
     assert model.risk_anchor_seen.all()
     assert not hasattr(model, "risk_prototypes")
 
@@ -109,6 +111,8 @@ def test_distributional_counterfactual_transport_uses_feasible_risk_anchored_pat
     assert logits.shape == (5, 4)
     assert explanation["low_risk_counterfactual"].shape == (5,)
     assert explanation["high_risk_counterfactual"].shape == (5,)
+    assert explanation["wsi_coordinate_assignment"].shape == (5, 3, 3)
+    assert explanation["omic_coordinate_assignment"].shape == (5, 3, 3)
     for key in (
         "factual_coupling_marginal_error",
         "low_coupling_marginal_error",

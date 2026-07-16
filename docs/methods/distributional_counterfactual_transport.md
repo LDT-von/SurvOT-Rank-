@@ -6,10 +6,11 @@ treatment-effect estimator.
 
 ## Mechanism
 
-1. WSI patches and pathway tokens are pooled by separate global prototype
-   dictionaries with competition across prototypes for every token. Prototype
-   index therefore defines a stable coordinate across patients without allowing
-   every coordinate to collapse onto the same salient patches.
+1. Patient-local WSI/pathway representations are first learned by Slot Attention,
+   preserving within-patient competition and capacity. Those local slots are
+   then competitively aligned to separate global prototype dictionaries.
+   Prototype index therefore defines a stable coordinate across patients without
+   discarding the factual backbone that produced the earlier DCT scores.
 2. At the start of every fold, only that fold's training labels fit time-stage
    upper boundaries and a censoring Kaplan--Meier curve.
 3. Each stage builds two IPCW-weighted transport-cost anchors during training:
