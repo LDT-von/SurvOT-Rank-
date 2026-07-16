@@ -26,13 +26,16 @@ def make_args():
         dct_lambda_ot=0.06,
         dct_lambda_rank=0.05,
         dct_lambda_anchor=0.03,
+        dct_lambda_stage_risk=0.05,
+        dct_stage_risk_margin=0.02,
         dct_anchor_margin=0.02,
         dct_anchor_momentum=0.90,
-        dct_evidence_cost_weight=0.10,
+        dct_evidence_cost_weight=0.0,
+        dct_evidence_mass_floor=0.05,
         dct_coupling_projection_iters=1000,
         dct_coupling_projection_tol=1e-4,
         dct_lambda_coordinate=0.01,
-        dct_coordinate_temperature=0.20,
+        dct_coordinate_temperature=0.30,
         dct_mix_ratio=0.50,
         fet_lambda_sparse=0.0,
         fet_lambda_faith=0.0,
@@ -112,3 +115,32 @@ def test_distributional_counterfactual_transport_uses_feasible_risk_anchored_pat
         "high_coupling_marginal_error",
     ):
         assert torch.all(explanation[key] < 1e-3), key
+
+
+def test_competitive_semantic_slots_separate_opposite_token_evidence():
+    model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
+    tokens = torch.zeros(1, 2, 16)
+    tokens[0, 0, 0] = 1.0
+    tokens[0, 1, 0] = -1.0
+    prototypes = torch.zeros(2, 16)
+    prototypes[0, 0] = 1.0
+    prototypes[1, 0] = -1.0
+    _, weights = model._semantic_slots(tokens, prototypes)
+    assert weights[0, 0, 0] > weights[0, 1, 0]
+    assert weights[0, 1, 1] > weights[0, 0, 1]
+
+
+def test_stage_risk_contrast_uses_observed_high_and_low_risk_sets():
+    model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
+    low = torch.zeros(2, 4)
+    high = torch.zeros(2, 4)
+    low[1, 0] = 1.0
+    high[0, 0] = 1.0
+    separated = model._stage_risk_contrast_loss(
+        torch.tensor([[4.0, -4.0, -4.0, -4.0], [-4.0, -4.0, -4.0, -4.0]]), low, high
+    )
+    reversed_loss = model._stage_risk_contrast_loss(
+        torch.tensor([[-4.0, -4.0, -4.0, -4.0], [4.0, -4.0, -4.0, -4.0]]), low, high
+    )
+    assert separated == 0
+    assert reversed_loss > 0

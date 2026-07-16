@@ -7,17 +7,18 @@ treatment-effect estimator.
 ## Mechanism
 
 1. WSI patches and pathway tokens are pooled by separate global prototype
-   dictionaries.  Prototype index therefore defines a stable coordinate across
-   patients before population anchors are formed.
+   dictionaries with competition across prototypes for every token. Prototype
+   index therefore defines a stable coordinate across patients without allowing
+   every coordinate to collapse onto the same salient patches.
 2. At the start of every fold, only that fold's training labels fit time-stage
    upper boundaries and a censoring Kaplan--Meier curve.
 3. Each stage builds two IPCW-weighted transport-cost anchors during training:
    observed events within the stage form the high-risk anchor; patients known to
    survive past the stage boundary form the low-risk anchor.  The latter includes
    late-censored patients but excludes patients censored before that boundary.
-4. Evidence gates modify both the transport energy and the OT marginals.  Weak
-   semantic slots may therefore carry less mass instead of being forced to use a
-   uniform balanced marginal.
+4. Evidence gates modify the OT marginals by default, so weak semantic slots may
+   carry less mass instead of being forced to use a uniform balanced marginal.
+   Their additional transport-energy contribution is a separately tested option.
 5. To query a patient, factual stage costs are moved toward either anchor and
    Sinkhorn is solved again under the intervened cost.  A numerical projection
    verifies the resulting coupling's evidence-conditioned marginals.
@@ -42,7 +43,9 @@ The external survival NLL remains the prediction objective.  The model adds:
 1. OT cost regularisation;
 2. censoring-aware continuous ranking;
 3. risk-anchor contrast on observed event and risk-set membership; and
-4. shared-prototype coordinate diversity.
+4. IPCW stage-risk contrast: observed in-stage events must have greater factual
+   cumulative risk than patients confirmed to survive that stage; and
+5. shared-prototype coordinate diversity.
 
 There is deliberately no `low_risk_counterfactual < factual_risk <
 high_risk_counterfactual` loss.
@@ -56,5 +59,5 @@ Report, per fold and across seeds:
 - risk delta and survival-curve difference across `alpha` values;
 - directional-consistency and monotonicity-violation rates;
 - stability of prototype-coordinate assignments; and
-- ablations of shared coordinates, IPCW anchors, evidence-conditioned marginals,
-  and re-optimised cost-space intervention.
+- ablations of IPCW anchors, stage-risk contrast, evidence-cost injection, and
+  re-optimised cost-space intervention.

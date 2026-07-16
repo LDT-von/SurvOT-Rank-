@@ -176,13 +176,16 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dct_lambda_ot", type=float, default=0.06)
     parser.add_argument("--dct_lambda_rank", type=float, default=0.05)
     parser.add_argument("--dct_lambda_anchor", type=float, default=0.03)
+    parser.add_argument("--dct_lambda_stage_risk", type=float, default=0.05)
+    parser.add_argument("--dct_stage_risk_margin", type=float, default=0.02)
     parser.add_argument("--dct_anchor_margin", type=float, default=0.02)
     parser.add_argument("--dct_anchor_momentum", type=float, default=0.90)
-    parser.add_argument("--dct_evidence_cost_weight", type=float, default=0.10)
+    parser.add_argument("--dct_evidence_cost_weight", type=float, default=0.0)
+    parser.add_argument("--dct_evidence_mass_floor", type=float, default=0.05)
     parser.add_argument("--dct_coupling_projection_iters", type=int, default=1000)
     parser.add_argument("--dct_coupling_projection_tol", type=float, default=1e-4)
     parser.add_argument("--dct_lambda_coordinate", type=float, default=0.01)
-    parser.add_argument("--dct_coordinate_temperature", type=float, default=0.20)
+    parser.add_argument("--dct_coordinate_temperature", type=float, default=0.30)
     parser.add_argument("--dct_mix_ratio", type=float, default=0.50)
 
     # Censoring-aware temporal evidence transport mainline.

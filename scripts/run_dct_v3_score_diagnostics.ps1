@@ -1,7 +1,7 @@
 param(
     [ValidateSet("doctor", "smoke", "run", "summarize")]
     [string]$Mode = "run",
-    [ValidateSet("full", "no_anchor", "no_coordinate", "no_evidence_cost", "all")]
+    [ValidateSet("full", "no_anchor", "no_stage_risk", "evidence_cost", "all")]
     [string]$Variant = "all",
     [string]$Folds = "0,2,3",
     [string]$Gpu = "0",
@@ -16,7 +16,7 @@ Set-Location $RepoRoot
 $ResultsRoot = "results/dct_v3_score_diagnostics"
 
 function Get-Variants([string]$Selection) {
-    if ($Selection -eq "all") { return @("full", "no_anchor", "no_coordinate", "no_evidence_cost") }
+    if ($Selection -eq "all") { return @("full", "no_anchor", "no_stage_risk", "evidence_cost") }
     return @($Selection)
 }
 
@@ -24,8 +24,8 @@ function Get-VariantOverrides([string]$Name) {
     switch ($Name) {
         "full" { return @() }
         "no_anchor" { return @("dct_lambda_anchor=0.0") }
-        "no_coordinate" { return @("dct_lambda_coordinate=0.0") }
-        "no_evidence_cost" { return @("dct_evidence_cost_weight=0.0") }
+        "no_stage_risk" { return @("dct_lambda_stage_risk=0.0") }
+        "evidence_cost" { return @("dct_evidence_cost_weight=0.10") }
         default { throw "Unknown variant: $Name" }
     }
 }
