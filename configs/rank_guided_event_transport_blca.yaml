@@ -20,10 +20,10 @@ train:
   survot_method: rank_guided_event_transport
   specific_simple: rank_guided_event_transport_blca
   results_dir: results/rank_guided_event_transport_blca
-  max_epochs: 30
+  max_epochs: 50           # 30ep 下 fold2 峰值仍在 ep29 未收敛，延长到 50
   batch_size: 4
-  grad_accum_steps: 8      # 有效 batch = 4*8 = 32，稳住 NLL 梯度、消除早峰（核心修复）
-  warmup_epochs: 3         # 前 3 epoch 线性 warmup，避免 cosine 峰值 lr 在 ep0 乱跳
+  grad_accum_steps: 4      # 有效 batch=16；accum=8 时每 epoch 优化步数从~76暴跌到~10导致欠训练，改4回到~19步
+  warmup_epochs: 5         # 前 5 epoch 线性 warmup
   grad_clip_norm: 1.0      # 梯度裁剪，进一步稳定小 batch 训练
   seed: 3
   lr: 0.0005
