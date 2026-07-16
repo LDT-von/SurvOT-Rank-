@@ -355,7 +355,7 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         low_weights = factual_costs.new_zeros(factual_costs.size(0), self.spt_num_stages)
         high_weights = torch.zeros_like(low_weights)
         anchor_loss = factual_costs.new_zeros(())
-        if "event_time" in kwargs and "c" in kwargs:
+        if kwargs.get("event_time") is not None and kwargs.get("c") is not None:
             low_weights, high_weights = self._stage_membership_weights(kwargs["event_time"], kwargs["c"])
             anchor_loss = self._anchor_contrastive_loss(factual_costs, low_weights, high_weights)
             if self.training:
