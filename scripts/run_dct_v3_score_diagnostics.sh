@@ -27,7 +27,8 @@ run_variant() {
   local variant="$1" fold_list="$2" smoke="${3:-false}"
   IFS=',' read -ra fold_array <<< "$fold_list"
   for fold_text in "${fold_array[@]}"; do
-    local fold="${fold_text// /}" end_fold=$((fold + 1))
+    local fold="${fold_text// /}"
+    local end_fold=$((fold + 1))
     local args=( -m survot_rank.cli train --config "$CONFIG" --set "gpu=$GPU" --set "num_workers=$NUM_WORKERS" --set "results_dir=$RESULTS_ROOT/$variant" --set "specific_simple=dct_v3_score_$variant" )
     local override; override="$(override_for "$variant")"
     if [[ -n "$override" ]]; then args+=( --set "$override" ); fi

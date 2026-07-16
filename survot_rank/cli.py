@@ -29,11 +29,13 @@ def cmd_train(args: argparse.Namespace) -> None:
         extra_args = extra_args[1:]
     argv = config_to_argv(config) + extra_args
 
+    # Set CUDA_VISIBLE_DEVICES before any torch import so that
+    # torch.cuda.is_available() and device count reflect the correct GPU.
     from survot_rank.training.extended_args import process_args_extended
-    from survot_rank.training.train_runner import run
-
     parsed = process_args_extended(argv)
     os.environ["CUDA_VISIBLE_DEVICES"] = parsed.gpu
+
+    from survot_rank.training.train_runner import run
     run(parsed)
 
 
