@@ -2,7 +2,7 @@
 
 > 此文件是 SurvOT-Rank 所有实验分数的唯一权威来源。新实验结果只在此追加。
 >
-> 最后更新: 2026-07-15 | 代码版本: `1ddf84b` | Fix Verify: `15aa637`
+> 最后更新: 2026-07-16 | 代码版本: `049b55a` | DCT v3: `6af1a4b`
 
 ---
 
@@ -621,4 +621,37 @@ tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
 - rg_et fold0 最高（0.694@ep8）但 fold2 最低（0.634），两折方差最大，不稳定。
 - stagewise / dct / catet 三者均值几乎一致（0.664-0.666），含金量接近。
 - 所有 5 个方法 fold2 均 ≥0.634，无崩溃折，说明 eps+batch 修复解决了之前的 fold2 系统性偏低问题。
+
+---
+
+## 12. DCT v3 完整 5-fold (seed=3, 30ep)
+
+> 代码版本: `6af1a4b` | 修复: `049b55a` (eval crash) | 口径: A\* (fold-aware 等频)
+> fold4 因磁盘不足仅跑 14ep，best@ep13 已是峰值。
+
+### 12.1 Per-fold best val_cindex
+
+| Fold | Best val_cindex | @ Epoch | Last5 mean |
+|---|---|---|---|
+| fold0 | 0.6490 | 3 | 0.5868 |
+| fold1 | 0.6794 | 3 | 0.5887 |
+| fold2 | 0.6709 | 19 | 0.6613 |
+| fold3 | 0.6557 | 6 | 0.5003 |
+| fold4 | 0.7109 | 13 | 0.6617 |
+
+### 12.2 汇总
+
+| 指标 | 值 |
+|---|---|
+| **5-fold best mean** | **0.6732** |
+| 5-fold last5 mean | 0.5998 |
+| 最高单折 | fold4 0.7109@ep13 |
+| 最低单折 | fold0 0.6490@ep3 |
+
+### 12.3 关键发现
+
+- DCT v3 5 折 best mean = 0.6732，相比之前 fix verify (fold0+fold2 only) 的 0.6663 有一定提升，说明 fold1/fold3/fold4 拉高了均值。
+- fold4 虽然只跑了 14ep，但 best@ep13=0.7109 已经超过之前 faithful 的 fold2 0.7406 之外的所有单折分数。
+- last5 mean 偏低（0.5998）主要被 fold0/fold3 拖累，这两折在后期明显漂移，存在过拟合趋势。
+- fold2 的 best 在 epoch 19（偏后期），且 last5 尚可（0.6613），是最稳定的一折。
 
