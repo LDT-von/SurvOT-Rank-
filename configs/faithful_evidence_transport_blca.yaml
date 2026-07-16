@@ -21,8 +21,8 @@ train:
   specific_simple: faithful_evidence_transport_blca
   results_dir: results/faithful_evidence_transport_blca
   max_epochs: 50           # 30ep 下 fold2 峰值仍在 ep29 未收敛，延长到 50
-  batch_size: 4
-  grad_accum_steps: 4      # 有效 batch=16；accum=8 时每 epoch 优化步数从~76暴跌到~10导致欠训练，改4回到~19步
+  batch_size: 16           # 调大物理 batch：单次 forward 有16样本，排序/risk-set 损失才有足够可比对（梯度累积替代不了这点）
+  grad_accum_steps: 2      # 有效 batch = 16*2 = 32
   warmup_epochs: 5         # 前 5 epoch 线性 warmup
   grad_clip_norm: 1.0      # 梯度裁剪，进一步稳定小 batch 训练
   seed: 3
