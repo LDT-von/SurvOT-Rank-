@@ -2,7 +2,7 @@
 
 > 此文件是 SurvOT-Rank 所有实验分数的唯一权威来源。新实验结果只在此追加。
 >
-> 最后更新: 2026-07-16 | 代码版本: `049b55a` | DCT v3: `6af1a4b`
+> 最后更新: 2026-07-16 | 代码版本: `0c65573` | DCT v3.2 diagnostics
 
 ---
 
@@ -654,4 +654,87 @@ tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
 - fold4 虽然只跑了 14ep，但 best@ep13=0.7109 已经超过之前 faithful 的 fold2 0.7406 之外的所有单折分数。
 - last5 mean 偏低（0.5998）主要被 fold0/fold3 拖累，这两折在后期明显漂移，存在过拟合趋势。
 - fold2 的 best 在 epoch 19（偏后期），且 last5 尚可（0.6613），是最稳定的一折。
+
+---
+## 13. DCT v3.2 Score Diagnostics — 四变体消融 (batch=8, 50ep, seed=3, 分箱B, folds=0,2,3, 2026-07-16)
+
+> 代码版本: `0c65573` | 配置: `configs/diagnostics/dct_v3_score_blca.yaml`
+> 脚本: `scripts/run_dct_v3_score_diagnostics.sh` | 汇总: `scripts/summarize_dct_v3_score_diagnostics.py`
+>
+> **架构路径**: 原始 WSI/pathway → Slot Attention 患者内表征 → 竞争式映射到全局 prototype 坐标 → IPCW anchor + 阶段风险监督 → OT 与生存预测
+> 此前 v3 直接用 prototype 池化原始 patch，丢掉了 Slot Attention，导致患者内表征质量下降。
+
+### 13.1 四变体定义
+
+| Variant | 说明 |
+|------|------|
+| **full** | 全开：Slot Attention + competitive prototype + IPCW anchor + stage_risk + OT cost (no evidence cost) |
+| **no_anchor** | 去掉 IPCW anchor 损失 |
+| **no_stage_risk** | 去掉阶段风险监督 |
+| **evidence_cost** | 注入 evidence-based cost（代替 OT marginals 调整）|
+
+### 13.2 Per-fold 详细结果
+
+| Variant | Fold | Epochs | Best@ | Best C-idx | Best IPCW | Best IBS | Best iAUC | Last5 | Gap |
+|------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| full | 0 | 50 | 8 | 0.7068 | 0.5654 | 0.3352 | 0.5053 | 0.5311 | 0.176 |
+| full | 2 | 50 | 27 | 0.6701 | 0.5813 | 0.6955 | 0.3872 | 0.6173 | 0.053 |
+| full | 3 | 50 | 43 | 0.7005 | 0.6301 | 0.3714 | 0.3200 | 0.6435 | 0.057 |
+| no_anchor | 0 | 50 | 3 | 0.6933 | 0.8000 | 0.3466 | 0.8671 | 0.6591 | 0.034 |
+| no_anchor | 2 | 50 | 18 | 0.6878 | 0.7601 | 0.3753 | 0.4526 | 0.5862 | 0.102 |
+| no_anchor | 3 | 50 | 31 | 0.7169 | 0.6119 | 0.2448 | 0.4302 | 0.6682 | 0.049 |
+| no_stage_risk | 0 | 50 | 9 | 0.7599 | 0.4841 | 0.4351 | 0.5306 | 0.5642 | 0.196 |
+| no_stage_risk | 2 | 50 | 39 | 0.6998 | 0.6943 | 0.5416 | 0.7910 | 0.6104 | 0.089 |
+| no_stage_risk | 3 | 50 | 26 | 0.7322 | 0.6939 | 0.2125 | 0.5777 | 0.6621 | 0.070 |
+| evidence_cost | 0 | 50 | 6 | 0.7044 | 0.5709 | 0.3830 | 0.8004 | 0.6087 | 0.096 |
+| evidence_cost | 2 | 50 | 7 | 0.6629 | 0.6507 | 0.3301 | 0.3514 | 0.6021 | 0.061 |
+| evidence_cost | 3 | 50 | 12 | 0.6918 | 0.6477 | 0.1626 | 0.7397 | 0.5880 | 0.104 |
+
+### 13.3 四变体汇总 (3-fold mean)
+
+| # | Variant | Folds | Best μ | Best3 μ | Last5 μ | Gap | 诊断 |
+|:---:|------|:---:|:---:|:---:|:---:|:---:|------|
+| 1 | **no_anchor** | 3 | 0.6993 | 0.6383 | **0.6378** | **0.0615** | 最稳定 |
+| 2 | full | 3 | 0.6925 | 0.6588 | 0.5973 | 0.0952 | 过度退化 |
+| 3 | evidence_cost | 3 | 0.6864 | 0.6563 | 0.5996 | 0.0868 | 略低于 full |
+| 4 | no_stage_risk | 3 | 0.7306 | 0.6333 | 0.6122 | 0.1184 | 峰值最高但最不稳定 |
+
+### 13.4 关键发现
+
+1. **IPCW anchor 是稳定性杀手**：去掉 anchor 后 gap 从 0.095 降至 0.062（-35%），last5 从 0.597 升至 0.638（+0.041）。anchor 制造早期峰值但加速退化。
+
+2. **stage_risk 增加峰值但破坏稳定性**：no_stage_risk 的 best 最高 (0.7306) 但 gap 最大 (0.118)。阶段风险监督给了强方向信号但过于激进，模型抓住它后就崩塌。
+
+3. **Slot Attention 恢复了峰值能力**：v3.2 full best=0.693 vs v3 full best=0.618（+0.075），恢复 Slot Attention + competitive prototype 是正确方向。
+
+4. **evidence_cost 不提供额外增益**：best=0.686 低于 full (0.693)，OT marginals 调整本身就足够。
+
+5. **no_anchor 是唯一可接受的变体**：尽管 best 非最高，但 last5 唯一健康（0.638），证明去掉 anchor 后模型学到的是真实信号而非噪声峰值。
+
+6. **anchor_coverage 始终 = 1.0**：100% 患者都有 anchor，说明锚定机制未产生实际过滤效果。`active_stage_fraction` ≈ 0.39-0.41，`stage_risk` ≈ 0.0，这两个新增监督指标在数值上未形成有效梯度。
+
+7. **跨 fold 方差大**：no_anchor fold2=0.586（last5）vs fold0=0.659 — BLCA n=380 小数据 + 50ep 不足以让所有 fold 稳定收敛。
+
+### 13.5 演进历史 (DCT v3 → v3.2)
+
+| 版本 | 峰值能力 | 稳定性 | 关键变化 |
+|------|:---:|:---:|------|
+| v3 (batch=16) | ~0.619 | 差 (gap 0.014) | 原始：prototype 直接池化 patch |
+| v3.1 (batch=8) | ~0.661 | 更差 (gap 0.121) | +stage_risk/+competitive prototype，仍无 Slot Attention |
+| **v3.2 (batch=8)** | **0.693** | 差 (gap 0.095) | **恢复 Slot Attention**，峰值恢复但稳定性未修复 |
+| v3.2 no_anchor | **0.699** | **中 (gap 0.062)** | 去掉 anchor，唯一可接受 |
+
+### 13.6 修复清单 (commit `f3fa505` → `0c65573`)
+
+| Commit | 修复内容 |
+|------|------|
+| `f3fa505` | GPU 调度顺序 (CUDA_VISIBLE_DEVICES 提前)、Bash local 语法、conda.sh 路径 |
+| `62b0750` (v3.1) | competitive prototype、IPCW 阶段风险监督、evidence mass floor、batch=8 |
+| `0c65573` (v3.2) | 恢复 Slot Attention、同分 C-index 不再覆盖、epoch 级诊断指标 (stage_risk/active_stage_fraction/anchor_coverage) |
+
+### 13.7 原始数据
+
+- 汇总 CSV：`results/dct_v3_score_diagnostics/dct_v3_score_summary.csv`
+- 每折曲线：`results/dct_v3_score_diagnostics/{variant}/blca/.../epoch_curve_fold{N}.csv`
+- 监控工具：`scripts/watch_progress.py`
 
