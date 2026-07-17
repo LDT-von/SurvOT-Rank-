@@ -57,6 +57,15 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "v60_ot_event_rank"),
         "V60OTEventRank",
     ),
+    "cohort_anchored_adaptive_prognostic_slot_attention": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "cohort_anchored_adaptive_prognostic_slot_attention",
+        ),
+        "CohortAnchoredAdaptivePrognosticSlotAttention",
+    ),
 }
 
 METHOD_ALIASES = {
@@ -67,6 +76,8 @@ METHOD_ALIASES = {
     "45v2": "otehv2_rankevent_v2",
     "50": "otehv2_timelocal_competing",
     "60": "v60_ot_event_rank",
+    "ca_psa": "cohort_anchored_adaptive_prognostic_slot_attention",
+    "capsa": "cohort_anchored_adaptive_prognostic_slot_attention",
 }
 
 

@@ -20,6 +20,9 @@ METHOD_CHOICES = [
     "distributional_counterfactual_transport",
     "censoring_aware_temporal_evidence_transport",
     "v60_ot_event_rank",
+    "cohort_anchored_adaptive_prognostic_slot_attention",
+    "ca_psa",
+    "capsa",
 ]
 
 
@@ -211,6 +214,20 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--v60_lambda_rank", type=float, default=0.15)
     parser.add_argument("--v60_rank_margin", type=float, default=0.0)
     parser.add_argument("--v60_rank_max_pairs", type=int, default=4096)
+
+    # Cohort-Anchored Adaptive Prognostic Slot Attention (CA-PSA).
+    parser.add_argument("--capsa_max_slots", type=int, default=16)
+    parser.add_argument("--capsa_slot_iters", type=int, default=3)
+    parser.add_argument("--capsa_heads", type=int, default=4)
+    parser.add_argument("--capsa_dropout", type=float, default=0.15)
+    parser.add_argument("--capsa_gate_temperature", type=float, default=2.0 / 3.0)
+    parser.add_argument("--capsa_gate_gamma", type=float, default=-0.1)
+    parser.add_argument("--capsa_gate_zeta", type=float, default=1.1)
+    parser.add_argument("--capsa_gate_threshold", type=float, default=0.5)
+    parser.add_argument("--capsa_gate_prior_start", type=float, default=-1.0)
+    parser.add_argument("--capsa_gate_prior_end", type=float, default=-2.2)
+    parser.add_argument("--capsa_lambda_sparse", type=float, default=0.01)
+    parser.add_argument("--capsa_lambda_align", type=float, default=0.02)
 
     return parser
 

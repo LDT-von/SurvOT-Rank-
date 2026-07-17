@@ -1,0 +1,64 @@
+name: cohort_anchored_adaptive_prognostic_slot_attention_blca
+description: CA-PSA with shared cohort identities and patient-adaptive prognostic slots on BLCA DSS.
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: cohort_anchored_adaptive_prognostic_slot_attention
+  specific_simple: cohort_anchored_adaptive_prognostic_slot_attention_blca
+  results_dir: results/cohort_anchored_adaptive_prognostic_slot_attention_blca
+  max_epochs: 50
+  batch_size: 8
+  grad_accum_steps: 1
+  warmup_epochs: 5
+  grad_clip_norm: 1.0
+  seed: 3
+  lr: 0.0003
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  # Legacy slot counts are intentionally unused by CA-PSA. K_max is a capacity,
+  # while the hard-concrete gate chooses the patient-specific active count.
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 3
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  capsa_max_slots: 16
+  capsa_slot_iters: 3
+  capsa_heads: 4
+  capsa_dropout: 0.15
+  capsa_gate_temperature: 0.6666667
+  capsa_gate_gamma: -0.1
+  capsa_gate_zeta: 1.1
+  capsa_gate_threshold: 0.5
+  # Learnable ordered capacity prior: avoids all-on/all-off initial validation.
+  capsa_gate_prior_start: -1.0
+  capsa_gate_prior_end: -2.2
+  # Total objective: trainer NLL + these two terms only.
+  capsa_lambda_sparse: 0.01
+  capsa_lambda_align: 0.02
