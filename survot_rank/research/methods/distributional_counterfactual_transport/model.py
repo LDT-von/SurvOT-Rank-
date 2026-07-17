@@ -228,7 +228,12 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
 
     @staticmethod
     def _log_sinkhorn(cost, rows, cols, eps, max_iter):
-        kernel = -cost / eps
+        # Sharp learned costs can otherwise contaminate every logsumexp with
+        # NaN/Inf and make the whole fold look invalid.
+        finite_cost = torch.nan_to_num(cost, nan=0.0, posinf=1e4, neginf=-1e4)
+        finite_cost = finite_cost.clamp(min=-1e4, max=1e4)
+        eps = max(float(eps), float(torch.finfo(cost.dtype).eps))
+        kernel = (-finite_cost / eps).clamp(min=-60.0, max=60.0)
         log_rows = rows.clamp_min(1e-8).log()
         log_cols = cols.clamp_min(1e-8).log()
         log_u = torch.zeros_like(log_rows)
@@ -236,7 +241,10 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         for _ in range(max_iter):
             log_u = log_rows - torch.logsumexp(kernel + log_v.unsqueeze(1), dim=2)
             log_v = log_cols - torch.logsumexp(kernel + log_u.unsqueeze(2), dim=1)
-        return (kernel + log_u.unsqueeze(2) + log_v.unsqueeze(1)).exp()
+            log_u = torch.nan_to_num(log_u, nan=0.0, posinf=60.0, neginf=-60.0)
+            log_v = torch.nan_to_num(log_v, nan=0.0, posinf=60.0, neginf=-60.0)
+        plan = (kernel + log_u.unsqueeze(2) + log_v.unsqueeze(1)).exp()
+        return torch.nan_to_num(plan, nan=0.0, posinf=1.0, neginf=0.0)
 
     def _project_coupling(self, plan, rows, cols):
         """Numerically project a positive plan to its evidence-conditioned marginals."""

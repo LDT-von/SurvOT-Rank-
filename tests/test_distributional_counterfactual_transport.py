@@ -180,3 +180,15 @@ def test_ipcw_pairwise_rank_matches_cindex_direction():
     )
     assert correctly_ranked < reversed_rank
     assert model.last_ipcw_pair_count.item() == 1
+
+
+def test_log_sinkhorn_projects_extreme_nonfinite_costs_to_finite_plan():
+    model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
+    cost = torch.tensor(
+        [[[float("nan"), float("inf"), -float("inf")], [1e20, -1e20, 0.0], [0.0, 2.0, 3.0]]]
+    )
+    rows = torch.full((1, 3), 1.0 / 3.0)
+    cols = torch.full((1, 3), 1.0 / 3.0)
+    plan = model._log_sinkhorn(cost, rows, cols, eps=0.0, max_iter=20)
+    assert torch.isfinite(plan).all()
+    assert torch.all(plan >= 0)

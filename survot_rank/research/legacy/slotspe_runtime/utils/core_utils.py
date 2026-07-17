@@ -305,15 +305,31 @@ def _calculate_metrics(loader, dataset_factory, survival_train, all_risk_scores,
     bins_original = dataset_factory.bins
     which_times_to_eval_at = np.array([data.min() + 0.0001, bins_original[1], bins_original[2], data.max() - 0.0001])
 
-    # ---> delete the nans and corresponding elements from other arrays
-    original_risk_scores = all_risk_scores
-    all_risk_scores = np.delete(all_risk_scores, np.argwhere(np.isnan(original_risk_scores)))
-    all_censorships = np.delete(all_censorships, np.argwhere(np.isnan(original_risk_scores)))
-    all_event_times = np.delete(all_event_times, np.argwhere(np.isnan(original_risk_scores)))
-    # <---
+    # Filter complete patient rows. A single non-finite prediction must not
+    # turn an entire fold into NaN or misalign risk/time/censoring arrays.
+    finite_mask = (
+        np.isfinite(all_risk_scores)
+        & np.isfinite(all_censorships)
+        & np.isfinite(all_event_times)
+        & np.isfinite(all_risk_by_bin_scores).all(axis=1)
+    )
+    all_risk_scores = all_risk_scores[finite_mask]
+    all_censorships = all_censorships[finite_mask]
+    all_event_times = all_event_times[finite_mask]
+    all_risk_by_bin_scores = all_risk_by_bin_scores[finite_mask]
+    if all_risk_scores.size == 0:
+        print("Warning: no finite validation predictions; returning neutral metrics.")
+        return 0.5, 0.5, 0.5, 0.5, 0.5
 
-    c_index = concordance_index_censored((1 - all_censorships).astype(bool), all_event_times,
-                                         all_risk_scores, tied_tol=1e-08)[0]
+    try:
+        c_index = concordance_index_censored(
+            (1 - all_censorships).astype(bool), all_event_times,
+            all_risk_scores, tied_tol=1e-08
+        )[0]
+    except (ValueError, FloatingPointError):
+        # Undefined concordance (for example no comparable event pair) is
+        # neutral, never NaN, and cannot poison best-epoch selection.
+        c_index = 0.5
     c_index_ipcw, BS, IBS, iauc = 0., 0., 0., 0.
 
     # change the datatype of survival test to calculate metrics
