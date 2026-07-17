@@ -23,6 +23,9 @@ METHOD_CHOICES = [
     "cohort_anchored_adaptive_prognostic_slot_attention",
     "ca_psa",
     "capsa",
+    "v70_patient_specific_prognostic_circuits",
+    "pspc_surv",
+    "pspc",
 ]
 
 
@@ -228,6 +231,21 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--capsa_gate_prior_end", type=float, default=-2.2)
     parser.add_argument("--capsa_lambda_sparse", type=float, default=0.01)
     parser.add_argument("--capsa_lambda_align", type=float, default=0.02)
+
+    # V70 Patient-Specific Prognostic Circuits (PSPC-Surv).
+    parser.add_argument("--pspc_max_modules", type=int, default=16)
+    parser.add_argument("--pspc_heads", type=int, default=4)
+    parser.add_argument("--pspc_layers", type=int, default=3)
+    parser.add_argument("--pspc_dropout", type=float, default=0.15)
+    parser.add_argument("--pspc_gate_temperature", type=float, default=2.0 / 3.0)
+    parser.add_argument("--pspc_gate_gamma", type=float, default=-0.1)
+    parser.add_argument("--pspc_gate_zeta", type=float, default=1.1)
+    parser.add_argument("--pspc_gate_threshold", type=float, default=0.5)
+    parser.add_argument("--pspc_edge_temperature", type=float, default=0.75)
+    parser.add_argument("--pspc_edge_threshold", type=float, default=0.5)
+    parser.add_argument("--pspc_edge_rank", type=int, default=4)
+    parser.add_argument("--pspc_lambda_node_sparse", type=float, default=0.01)
+    parser.add_argument("--pspc_lambda_edge_sparse", type=float, default=0.005)
 
     return parser
 

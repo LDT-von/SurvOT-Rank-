@@ -39,6 +39,9 @@ python -m survot_rank.cli train --config configs/v45_blca.yaml --set seed=5 --se
 # Experimental CA-PSA: shared cohort slot identities + patient-adaptive count
 python -m survot_rank.cli train --config configs/cohort_anchored_adaptive_prognostic_slot_attention_blca.yaml
 
+# Experimental V70 / PSPC-Surv: no slots, patient-specific sparse circuits
+python -m survot_rank.cli train --config configs/v70_patient_specific_prognostic_circuits_blca.yaml
+
 # Ensemble evaluation for multiple seed result folders
 python -m survot_rank.cli ensemble --dirs results/seed3 results/seed5
 ```
@@ -74,6 +77,8 @@ survot_rank/research/methods/v60_ot_event_rank/
                               compact V60 paper-facing method
 survot_rank/research/methods/cohort_anchored_adaptive_prognostic_slot_attention/
                               experimental cohort-anchored adaptive slots
+survot_rank/research/methods/v70_patient_specific_prognostic_circuits/
+                              experimental patient-specific sparse circuits
 survot_rank/research/methods/prognostic_event_transport/
                               legacy composite PET method, formerly V45
 survot_rank/research/methods/ot_event_hazard_v2/

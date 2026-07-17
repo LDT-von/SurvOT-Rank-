@@ -66,6 +66,15 @@ METHOD_REGISTRY = {
         ),
         "CohortAnchoredAdaptivePrognosticSlotAttention",
     ),
+    "v70_patient_specific_prognostic_circuits": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "v70_patient_specific_prognostic_circuits",
+        ),
+        "V70PatientSpecificPrognosticCircuits",
+    ),
 }
 
 METHOD_ALIASES = {
@@ -78,6 +87,9 @@ METHOD_ALIASES = {
     "60": "v60_ot_event_rank",
     "ca_psa": "cohort_anchored_adaptive_prognostic_slot_attention",
     "capsa": "cohort_anchored_adaptive_prognostic_slot_attention",
+    "70": "v70_patient_specific_prognostic_circuits",
+    "pspc_surv": "v70_patient_specific_prognostic_circuits",
+    "pspc": "v70_patient_specific_prognostic_circuits",
 }
 
 

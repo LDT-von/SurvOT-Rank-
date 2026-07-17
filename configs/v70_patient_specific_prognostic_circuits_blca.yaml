@@ -1,0 +1,65 @@
+name: v70_patient_specific_prognostic_circuits_blca
+description: PSPC-Surv with patient-conditioned sparse module graphs on BLCA DSS.
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: v70_patient_specific_prognostic_circuits
+  specific_simple: v70_patient_specific_prognostic_circuits_blca
+  results_dir: results/v70_patient_specific_prognostic_circuits_blca
+  max_epochs: 50
+  batch_size: 8
+  grad_accum_steps: 1
+  warmup_epochs: 5
+  grad_clip_norm: 1.0
+  seed: 3
+  lr: 0.0003
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  # Retained only because the shared legacy parser requires these fields.
+  # V70 does not instantiate Slot Attention and does not use these counts.
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 3
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  # K_max is circuit capacity; hard-concrete gates choose the active patient subset.
+  pspc_max_modules: 16
+  pspc_heads: 4
+  pspc_layers: 3
+  pspc_dropout: 0.15
+  pspc_gate_temperature: 0.6666667
+  pspc_gate_gamma: -0.1
+  pspc_gate_zeta: 1.1
+  pspc_gate_threshold: 0.5
+  pspc_edge_temperature: 0.75
+  pspc_edge_threshold: 0.5
+  pspc_edge_rank: 4
+  # Total objective: trainer NLL + the following two structural terms.
+  pspc_lambda_node_sparse: 0.01
+  pspc_lambda_edge_sparse: 0.005
