@@ -1,0 +1,303 @@
+
+=== Fold 3 start ===
+  batch:0 loss:2.5934 surv:2.5597
+  batch:10 loss:1.6309 surv:1.5964
+  batch:20 loss:0.7337 surv:0.6959
+  batch:30 loss:1.4149 surv:1.3772
+[Epoch 0] train_loss=1.1655  train_cindex=0.4840  ot=1.1982  ipcw_rank=0.3575  ipcw_pairs=11.5263  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4079  anchor_coverage=0.9934
+[Epoch 0] val cindex=0.4612 ipcw=0.4644 IBS=0.1713 iauc=0.6759
+  batch:0 loss:1.4437 surv:1.4060
+  batch:10 loss:1.5661 surv:1.5324
+  batch:20 loss:1.3881 surv:1.3522
+  batch:30 loss:1.0937 surv:1.0578
+[Epoch 1] train_loss=1.1098  train_cindex=0.4252  ot=1.1988  ipcw_rank=0.3415  ipcw_pairs=11.6842  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 1] val cindex=0.6667 ipcw=0.5661 IBS=0.1682 iauc=0.8614
+  batch:0 loss:1.0699 surv:1.0340
+  batch:10 loss:0.9589 surv:0.9279
+  batch:20 loss:1.1847 surv:1.1519
+  batch:30 loss:0.8422 surv:0.8054
+[Epoch 2] train_loss=1.0537  train_cindex=0.5259  ot=1.1984  ipcw_rank=0.3390  ipcw_pairs=11.5000  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4211  anchor_coverage=1.0000
+[Epoch 2] val cindex=0.5049 ipcw=0.4831 IBS=0.1446 iauc=0.6988
+  batch:0 loss:1.1168 surv:1.0821
+  batch:10 loss:1.2835 surv:1.2472
+  batch:20 loss:1.0717 surv:1.0402
+  batch:30 loss:1.1660 surv:1.1312
+[Epoch 3] train_loss=1.0962  train_cindex=0.5662  ot=1.1980  ipcw_rank=0.3420  ipcw_pairs=11.7105  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4211  anchor_coverage=1.0000
+[Epoch 3] val cindex=0.6251 ipcw=0.5102 IBS=0.1569 iauc=0.4364
+  batch:0 loss:0.6736 surv:0.6413
+  batch:10 loss:1.2112 surv:1.1805
+  batch:20 loss:0.8721 surv:0.8143
+  batch:30 loss:0.1478 surv:0.1478
+[Epoch 4] train_loss=1.0470  train_cindex=0.6192  ot=1.1338  ipcw_rank=0.3217  ipcw_pairs=11.4211  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3882  anchor_coverage=1.0000
+[Epoch 4] val cindex=0.6393 ipcw=0.5733 IBS=0.1672 iauc=0.4185
+  batch:0 loss:0.8192 surv:0.7938
+  batch:10 loss:0.9807 surv:0.9532
+  batch:20 loss:0.4847 surv:0.4753
+  batch:30 loss:0.7069 surv:0.6680
+[Epoch 5] train_loss=0.9999  train_cindex=0.6264  ot=1.0751  ipcw_rank=0.3089  ipcw_pairs=11.5526  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4276  anchor_coverage=1.0000
+[Epoch 5] val cindex=0.6219 ipcw=0.5497 IBS=0.1624 iauc=0.9188
+  batch:0 loss:0.9862 surv:0.9487
+  batch:10 loss:0.8040 surv:0.7546
+  batch:20 loss:0.8791 surv:0.8436
+  batch:30 loss:0.7738 surv:0.7704
+[Epoch 6] train_loss=0.9109  train_cindex=0.7094  ot=1.0056  ipcw_rank=0.2945  ipcw_pairs=11.5263  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3618  anchor_coverage=1.0000
+[Epoch 6] val cindex=0.4798 ipcw=0.4701 IBS=0.1590 iauc=0.8726
+  batch:0 loss:0.7301 surv:0.6953
+  batch:10 loss:0.6415 surv:0.5913
+  batch:20 loss:0.8793 surv:0.8495
+  batch:30 loss:0.9882 surv:0.9682
+[Epoch 7] train_loss=0.8675  train_cindex=0.7213  ot=0.9701  ipcw_rank=0.2940  ipcw_pairs=11.8158  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3816  anchor_coverage=1.0000
+[Epoch 7] val cindex=0.6251 ipcw=0.6007 IBS=0.1571 iauc=0.3907
+  batch:0 loss:0.3515 surv:0.3511
+  batch:10 loss:1.1900 surv:1.1636
+  batch:20 loss:0.8571 surv:0.8198
+  batch:30 loss:0.5763 surv:0.5607
+[Epoch 8] train_loss=0.8364  train_cindex=0.6855  ot=0.9533  ipcw_rank=0.2726  ipcw_pairs=12.1579  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4013  anchor_coverage=1.0000
+[Epoch 8] val cindex=0.5027 ipcw=0.4780 IBS=0.1516 iauc=0.7469
+  batch:0 loss:0.2113 surv:0.2113
+  batch:10 loss:0.6114 surv:0.6039
+  batch:20 loss:0.4661 surv:0.4590
+  batch:30 loss:1.1549 surv:1.1285
+[Epoch 9] train_loss=0.8348  train_cindex=0.7275  ot=0.9591  ipcw_rank=0.2887  ipcw_pairs=11.6842  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3816  anchor_coverage=1.0000
+[Epoch 9] val cindex=0.6120 ipcw=0.5722 IBS=0.1596 iauc=0.7505
+  batch:0 loss:1.0773 surv:1.0423
+  batch:10 loss:1.0325 surv:1.0039
+  batch:20 loss:0.7090 surv:0.6750
+  batch:30 loss:0.4840 surv:0.4636
+[Epoch 10] train_loss=0.7331  train_cindex=0.7607  ot=0.9241  ipcw_rank=0.2511  ipcw_pairs=12.1842  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4079  anchor_coverage=1.0000
+[Epoch 10] val cindex=0.5738 ipcw=0.5573 IBS=0.1760 iauc=0.5501
+  batch:0 loss:0.5771 surv:0.5552
+  batch:10 loss:0.6896 surv:0.6698
+  batch:20 loss:1.4266 surv:1.3906
+  batch:30 loss:0.6763 surv:0.6616
+[Epoch 11] train_loss=0.7245  train_cindex=0.7846  ot=0.9873  ipcw_rank=0.2561  ipcw_pairs=11.7895  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 11] val cindex=0.4732 ipcw=0.4868 IBS=0.1532 iauc=0.6564
+  batch:0 loss:0.3027 surv:0.3025
+  batch:10 loss:0.1183 surv:0.1183
+  batch:20 loss:0.8541 surv:0.8293
+  batch:30 loss:0.5935 surv:0.5883
+[Epoch 12] train_loss=0.7127  train_cindex=0.7640  ot=0.9254  ipcw_rank=0.2072  ipcw_pairs=11.8947  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 12] val cindex=0.5268 ipcw=0.4869 IBS=0.1511 iauc=0.5471
+  batch:0 loss:0.5614 surv:0.5500
+  batch:10 loss:1.0287 surv:1.0287
+  batch:20 loss:0.4213 surv:0.3922
+  batch:30 loss:0.4514 surv:0.4475
+[Epoch 13] train_loss=0.7415  train_cindex=0.7853  ot=1.0413  ipcw_rank=0.2152  ipcw_pairs=11.7368  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3553  anchor_coverage=1.0000
+[Epoch 13] val cindex=0.6448 ipcw=0.5572 IBS=0.2452 iauc=0.3942
+  batch:0 loss:0.9392 surv:0.8960
+  batch:10 loss:1.0739 surv:1.0230
+  batch:20 loss:0.2529 surv:0.2497
+  batch:30 loss:0.9371 surv:0.9122
+[Epoch 14] train_loss=0.6733  train_cindex=0.7974  ot=1.0015  ipcw_rank=0.1880  ipcw_pairs=11.6842  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4803  anchor_coverage=1.0000
+[Epoch 14] val cindex=0.6492 ipcw=0.5470 IBS=0.1607 iauc=0.9296
+  batch:0 loss:1.4444 surv:1.4199
+  batch:10 loss:0.6789 surv:0.6542
+  batch:20 loss:0.2411 surv:0.2411
+  batch:30 loss:1.3049 surv:1.2862
+[Epoch 15] train_loss=0.6510  train_cindex=0.8361  ot=1.0464  ipcw_rank=0.1736  ipcw_pairs=11.6842  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 15] val cindex=0.6022 ipcw=0.5755 IBS=0.2115 iauc=0.7615
+  batch:0 loss:0.6841 surv:0.6701
+  batch:10 loss:0.5655 surv:0.5364
+  batch:20 loss:1.1985 surv:1.1740
+  batch:30 loss:0.4344 surv:0.4123
+[Epoch 16] train_loss=0.6873  train_cindex=0.7743  ot=1.0741  ipcw_rank=0.2389  ipcw_pairs=12.0263  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 16] val cindex=0.6328 ipcw=0.5468 IBS=0.3983 iauc=0.4347
+  batch:0 loss:0.8622 surv:0.8156
+  batch:10 loss:0.2560 surv:0.2560
+  batch:20 loss:0.9225 surv:0.8858
+  batch:30 loss:0.6584 surv:0.6195
+[Epoch 17] train_loss=0.6303  train_cindex=0.8050  ot=1.1176  ipcw_rank=0.1905  ipcw_pairs=11.3158  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3947  anchor_coverage=1.0000
+[Epoch 17] val cindex=0.4208 ipcw=0.4965 IBS=0.1712 iauc=0.6409
+  batch:0 loss:0.4314 surv:0.4307
+  batch:10 loss:0.5346 surv:0.5240
+  batch:20 loss:0.4998 surv:0.4846
+  batch:30 loss:0.6078 surv:0.5787
+[Epoch 18] train_loss=0.6276  train_cindex=0.8264  ot=1.0549  ipcw_rank=0.1822  ipcw_pairs=11.7895  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4013  anchor_coverage=1.0000
+[Epoch 18] val cindex=0.5508 ipcw=0.4578 IBS=0.1895 iauc=0.3862
+  batch:0 loss:0.4917 surv:0.4780
+  batch:10 loss:0.5026 surv:0.4920
+  batch:20 loss:0.6728 surv:0.6625
+  batch:30 loss:1.0000 surv:0.9781
+[Epoch 19] train_loss=0.5915  train_cindex=0.8332  ot=0.9943  ipcw_rank=0.1689  ipcw_pairs=11.2105  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4276  anchor_coverage=1.0000
+[Epoch 19] val cindex=0.5617 ipcw=0.4806 IBS=0.1873 iauc=0.3501
+  batch:0 loss:0.6095 surv:0.5904
+  batch:10 loss:0.5851 surv:0.5683
+  batch:20 loss:0.5755 surv:0.5431
+  batch:30 loss:0.7762 surv:0.7616
+[Epoch 20] train_loss=0.6178  train_cindex=0.8285  ot=1.0688  ipcw_rank=0.1727  ipcw_pairs=11.6579  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4342  anchor_coverage=1.0000
+[Epoch 20] val cindex=0.4809 ipcw=0.5049 IBS=0.1886 iauc=0.2846
+  batch:0 loss:0.4738 surv:0.4625
+  batch:10 loss:0.3212 surv:0.2932
+  batch:20 loss:0.7462 surv:0.7139
+  batch:30 loss:0.3971 surv:0.3856
+[Epoch 21] train_loss=0.5672  train_cindex=0.8574  ot=1.0374  ipcw_rank=0.2026  ipcw_pairs=11.3158  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4013  anchor_coverage=1.0000
+[Epoch 21] val cindex=0.5508 ipcw=0.5336 IBS=0.1958 iauc=0.4658
+  batch:0 loss:0.3157 surv:0.2938
+  batch:10 loss:0.7277 surv:0.7079
+  batch:20 loss:0.2558 surv:0.2509
+  batch:30 loss:0.2544 surv:0.2543
+[Epoch 22] train_loss=0.4838  train_cindex=0.8954  ot=0.9678  ipcw_rank=0.1525  ipcw_pairs=11.5789  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3684  anchor_coverage=1.0000
+[Epoch 22] val cindex=0.6448 ipcw=0.5648 IBS=0.2384 iauc=0.4330
+  batch:0 loss:0.1670 surv:0.1660
+  batch:10 loss:1.4143 surv:1.3889
+  batch:20 loss:0.6178 surv:0.6029
+  batch:30 loss:0.3301 surv:0.2955
+[Epoch 23] train_loss=0.6078  train_cindex=0.8431  ot=1.0251  ipcw_rank=0.1778  ipcw_pairs=11.5789  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 23] val cindex=0.5464 ipcw=0.4949 IBS=0.2111 iauc=0.2101
+  batch:0 loss:0.4122 surv:0.4119
+  batch:10 loss:0.1663 surv:0.1622
+  batch:20 loss:0.1993 surv:0.1919
+  batch:30 loss:0.6398 surv:0.6249
+[Epoch 24] train_loss=0.4582  train_cindex=0.8862  ot=1.0212  ipcw_rank=0.1433  ipcw_pairs=11.8158  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4013  anchor_coverage=1.0000
+[Epoch 24] val cindex=0.4885 ipcw=0.4596 IBS=0.2054 iauc=0.6516
+  batch:0 loss:0.1080 surv:0.1052
+  batch:10 loss:0.4802 surv:0.4719
+  batch:20 loss:0.2382 surv:0.2346
+  batch:30 loss:0.8915 surv:0.8803
+[Epoch 25] train_loss=0.4486  train_cindex=0.8980  ot=1.0097  ipcw_rank=0.1129  ipcw_pairs=11.9211  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 25] val cindex=0.6120 ipcw=0.5845 IBS=0.1773 iauc=0.7215
+  batch:0 loss:0.5188 surv:0.4852
+  batch:10 loss:0.0912 surv:0.0911
+  batch:20 loss:0.3035 surv:0.2985
+  batch:30 loss:0.1879 surv:0.1781
+[Epoch 26] train_loss=0.4098  train_cindex=0.9124  ot=0.9547  ipcw_rank=0.1113  ipcw_pairs=11.4737  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3882  anchor_coverage=1.0000
+[Epoch 26] val cindex=0.5519 ipcw=0.4856 IBS=0.2758 iauc=0.4299
+  batch:0 loss:0.0882 surv:0.0869
+  batch:10 loss:0.9044 surv:0.8828
+  batch:20 loss:0.0868 surv:0.0867
+  batch:30 loss:0.2675 surv:0.2661
+[Epoch 27] train_loss=0.3102  train_cindex=0.9332  ot=0.9236  ipcw_rank=0.0871  ipcw_pairs=11.5000  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4211  anchor_coverage=1.0000
+[Epoch 27] val cindex=0.6437 ipcw=0.5752 IBS=0.2476 iauc=0.8380
+  batch:0 loss:0.4714 surv:0.4315
+  batch:10 loss:0.2621 surv:0.2552
+  batch:20 loss:0.1125 surv:0.1094
+  batch:30 loss:0.1288 surv:0.1288
+[Epoch 28] train_loss=0.3275  train_cindex=0.9188  ot=0.9592  ipcw_rank=0.1115  ipcw_pairs=12.0789  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4013  anchor_coverage=1.0000
+[Epoch 28] val cindex=0.6109 ipcw=0.5272 IBS=0.2792 iauc=0.5521
+  batch:0 loss:0.1719 surv:0.1699
+  batch:10 loss:0.2101 surv:0.2034
+  batch:20 loss:0.2933 surv:0.2807
+  batch:30 loss:0.8518 surv:0.8298
+[Epoch 29] train_loss=0.2384  train_cindex=0.9409  ot=0.9759  ipcw_rank=0.0663  ipcw_pairs=11.6579  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4013  anchor_coverage=1.0000
+[Epoch 29] val cindex=0.6240 ipcw=0.5847 IBS=0.2324 iauc=0.7733
+  batch:0 loss:0.0207 surv:0.0207
+  batch:10 loss:1.1733 surv:1.1349
+  batch:20 loss:0.6924 surv:0.6698
+  batch:30 loss:0.2582 surv:0.2580
+[Epoch 30] train_loss=0.2600  train_cindex=0.9362  ot=0.9999  ipcw_rank=0.0732  ipcw_pairs=11.8421  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4474  anchor_coverage=1.0000
+[Epoch 30] val cindex=0.5923 ipcw=0.5000 IBS=0.3908 iauc=0.6061
+  batch:0 loss:0.0527 surv:0.0521
+  batch:10 loss:0.4575 surv:0.3634
+  batch:20 loss:0.1206 surv:0.1167
+  batch:30 loss:0.1611 surv:0.1535
+[Epoch 31] train_loss=0.2011  train_cindex=0.9463  ot=1.0081  ipcw_rank=0.0937  ipcw_pairs=12.0263  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4408  anchor_coverage=1.0000
+[Epoch 31] val cindex=0.6306 ipcw=0.5835 IBS=0.2493 iauc=0.9163
+  batch:0 loss:0.2572 surv:0.2571
+  batch:10 loss:0.0351 surv:0.0338
+  batch:20 loss:0.1138 surv:0.1125
+  batch:30 loss:0.4659 surv:0.4631
+[Epoch 32] train_loss=0.1850  train_cindex=0.9513  ot=1.0078  ipcw_rank=0.0672  ipcw_pairs=11.8158  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4079  anchor_coverage=1.0000
+[Epoch 32] val cindex=0.6689 ipcw=0.5950 IBS=0.2250 iauc=0.7807
+  batch:0 loss:0.0132 surv:0.0125
+  batch:10 loss:0.3310 surv:0.3185
+  batch:20 loss:0.4588 surv:0.4561
+  batch:30 loss:0.0297 surv:0.0235
+[Epoch 33] train_loss=0.1681  train_cindex=0.9504  ot=0.9823  ipcw_rank=0.0606  ipcw_pairs=11.7895  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 33] val cindex=0.6656 ipcw=0.5961 IBS=0.2483 iauc=0.6812
+  batch:0 loss:0.0461 surv:0.0410
+  batch:10 loss:0.1863 surv:0.1814
+  batch:20 loss:0.0442 surv:0.0427
+  batch:30 loss:0.0431 surv:0.0381
+[Epoch 34] train_loss=0.1360  train_cindex=0.9506  ot=1.0004  ipcw_rank=0.0608  ipcw_pairs=11.8158  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4539  anchor_coverage=1.0000
+[Epoch 34] val cindex=0.7104 ipcw=0.6320 IBS=0.1839 iauc=0.7814
+  batch:0 loss:0.2167 surv:0.2100
+  batch:10 loss:0.0297 surv:0.0260
+  batch:20 loss:0.0554 surv:0.0509
+  batch:30 loss:0.7698 surv:0.7513
+[Epoch 35] train_loss=0.1063  train_cindex=0.9488  ot=0.9989  ipcw_rank=0.0602  ipcw_pairs=11.8421  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3816  anchor_coverage=1.0000
+[Epoch 35] val cindex=0.7038 ipcw=0.6403 IBS=0.1979 iauc=0.7717
+  batch:0 loss:0.1513 surv:0.1464
+  batch:10 loss:0.0334 surv:0.0323
+  batch:20 loss:0.0149 surv:0.0143
+  batch:30 loss:0.0190 surv:0.0178
+[Epoch 36] train_loss=0.1019  train_cindex=0.9520  ot=1.0251  ipcw_rank=0.0565  ipcw_pairs=11.6842  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 36] val cindex=0.6404 ipcw=0.5774 IBS=0.2527 iauc=0.6285
+  batch:0 loss:0.1272 surv:0.1206
+  batch:10 loss:0.0157 surv:0.0146
+  batch:20 loss:0.0426 surv:0.0326
+  batch:30 loss:0.1516 surv:0.1416
+[Epoch 37] train_loss=0.0843  train_cindex=0.9553  ot=1.0164  ipcw_rank=0.0640  ipcw_pairs=11.3947  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4079  anchor_coverage=1.0000
+[Epoch 37] val cindex=0.6251 ipcw=0.5882 IBS=0.2347 iauc=0.7738
+  batch:0 loss:0.6880 surv:0.6485
+  batch:10 loss:0.0120 surv:0.0106
+  batch:20 loss:0.0424 surv:0.0379
+  batch:30 loss:0.0394 surv:0.0305
+[Epoch 38] train_loss=0.0637  train_cindex=0.9506  ot=1.0077  ipcw_rank=0.0575  ipcw_pairs=11.8158  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4342  anchor_coverage=1.0000
+[Epoch 38] val cindex=0.6393 ipcw=0.5950 IBS=0.2610 iauc=0.7939
+  batch:0 loss:0.0094 surv:0.0062
+  batch:10 loss:0.1600 surv:0.1549
+  batch:20 loss:0.0371 surv:0.0270
+  batch:30 loss:0.0156 surv:0.0126
+[Epoch 39] train_loss=0.0538  train_cindex=0.9532  ot=1.0154  ipcw_rank=0.0623  ipcw_pairs=12.0263  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4276  anchor_coverage=1.0000
+[Epoch 39] val cindex=0.6230 ipcw=0.5896 IBS=0.2547 iauc=0.7804
+  batch:0 loss:0.0433 surv:0.0378
+  batch:10 loss:0.0210 surv:0.0186
+  batch:20 loss:0.0079 surv:0.0072
+  batch:30 loss:0.7220 surv:0.6738
+[Epoch 40] train_loss=0.0605  train_cindex=0.9561  ot=1.0207  ipcw_rank=0.0548  ipcw_pairs=11.4737  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4276  anchor_coverage=1.0000
+[Epoch 40] val cindex=0.6328 ipcw=0.5926 IBS=0.2259 iauc=0.7044
+  batch:0 loss:0.0080 surv:0.0049
+  batch:10 loss:0.0243 surv:0.0175
+  batch:20 loss:0.0132 surv:0.0102
+  batch:30 loss:0.0734 surv:0.0541
+[Epoch 41] train_loss=0.0448  train_cindex=0.9610  ot=1.0132  ipcw_rank=0.0559  ipcw_pairs=12.1842  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4013  anchor_coverage=1.0000
+[Epoch 41] val cindex=0.6514 ipcw=0.6202 IBS=0.2355 iauc=0.7320
+  batch:0 loss:0.0147 surv:0.0125
+  batch:10 loss:0.0083 surv:0.0078
+  batch:20 loss:0.0070 surv:0.0063
+  batch:30 loss:0.0218 surv:0.0179
+[Epoch 42] train_loss=0.0447  train_cindex=0.9552  ot=1.0227  ipcw_rank=0.0434  ipcw_pairs=12.0263  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4408  anchor_coverage=1.0000
+[Epoch 42] val cindex=0.6557 ipcw=0.6023 IBS=0.2544 iauc=0.7698
+  batch:0 loss:0.0144 surv:0.0112
+  batch:10 loss:0.0115 surv:0.0066
+  batch:20 loss:0.3628 surv:0.3546
+  batch:30 loss:0.0278 surv:0.0198
+[Epoch 43] train_loss=0.0448  train_cindex=0.9595  ot=1.0155  ipcw_rank=0.0552  ipcw_pairs=11.2632  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3816  anchor_coverage=1.0000
+[Epoch 43] val cindex=0.6590 ipcw=0.5943 IBS=0.2593 iauc=0.6807
+  batch:0 loss:0.0066 surv:0.0062
+  batch:10 loss:0.1379 surv:0.1377
+  batch:20 loss:0.0111 surv:0.0105
+  batch:30 loss:0.0104 surv:0.0071
+[Epoch 44] train_loss=0.0383  train_cindex=0.9566  ot=1.0172  ipcw_rank=0.0491  ipcw_pairs=11.6842  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4013  anchor_coverage=1.0000
+[Epoch 44] val cindex=0.6874 ipcw=0.6140 IBS=0.3217 iauc=0.6291
+  batch:0 loss:0.0060 surv:0.0060
+  batch:10 loss:0.0187 surv:0.0116
+  batch:20 loss:0.0168 surv:0.0126
+  batch:30 loss:0.0329 surv:0.0201
+[Epoch 45] train_loss=0.0368  train_cindex=0.9578  ot=1.0241  ipcw_rank=0.0569  ipcw_pairs=12.1579  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4211  anchor_coverage=1.0000
+[Epoch 45] val cindex=0.6448 ipcw=0.5708 IBS=0.3087 iauc=0.6726
+  batch:0 loss:0.0139 surv:0.0088
+  batch:10 loss:0.0093 surv:0.0092
+  batch:20 loss:0.0078 surv:0.0073
+  batch:30 loss:0.0128 surv:0.0077
+[Epoch 46] train_loss=0.0357  train_cindex=0.9591  ot=1.0330  ipcw_rank=0.0529  ipcw_pairs=11.6316  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.3882  anchor_coverage=1.0000
+[Epoch 46] val cindex=0.6776 ipcw=0.6280 IBS=0.2634 iauc=0.7241
+  batch:0 loss:0.0189 surv:0.0157
+  batch:10 loss:0.0103 surv:0.0090
+  batch:20 loss:0.0090 surv:0.0062
+  batch:30 loss:0.0229 surv:0.0199
+[Epoch 47] train_loss=0.0400  train_cindex=0.9580  ot=1.0267  ipcw_rank=0.0451  ipcw_pairs=11.8158  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4539  anchor_coverage=1.0000
+[Epoch 47] val cindex=0.6415 ipcw=0.6248 IBS=0.2460 iauc=0.7354
+  batch:0 loss:0.0100 surv:0.0060
+  batch:10 loss:0.0094 surv:0.0088
+  batch:20 loss:0.0126 surv:0.0100
+  batch:30 loss:0.0169 surv:0.0115
+[Epoch 48] train_loss=0.0353  train_cindex=0.9600  ot=1.0257  ipcw_rank=0.0430  ipcw_pairs=11.4474  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 48] val cindex=0.6590 ipcw=0.6125 IBS=0.2561 iauc=0.7171
+  batch:0 loss:0.0162 surv:0.0129
+  batch:10 loss:0.0105 surv:0.0094
+  batch:20 loss:0.0099 surv:0.0070
+  batch:30 loss:0.0103 surv:0.0097
+[Epoch 49] train_loss=0.0350  train_cindex=0.9587  ot=1.0260  ipcw_rank=0.0427  ipcw_pairs=11.9737  rank=0.0000  anchor=0.0000  stage_risk=0.0000  coordinate=0.0000  active_stage_fraction=0.4145  anchor_coverage=1.0000
+[Epoch 49] val cindex=0.7049 ipcw=0.6693 IBS=0.3529 iauc=0.5909
+[Fold 3] best cindex=0.7104 @epoch 34 (stopped @epoch 49)

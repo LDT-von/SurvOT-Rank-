@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-07-19T05:24:21.627713",
+  "git_commit": "48ccc2e27b08424486b27de6f853ead13b610081",
+  "methods": {
+    "DCT_v3.3_ScoreFirst": {
+      "config": "configs/distributional_counterfactual_transport_blca.yaml",
+      "study": "blca",
+      "best_mean": 0.7311,
+      "best_std": 0.0293,
+      "last_mean": 0.6589,
+      "last_std": 0.0794,
+      "last5_mean": 0.6453,
+      "last5_std": 0.0706,
+      "result_dirs": [
+        "/home/ubuntu/SurvOT-Rank/results/dct_v3_score_first_diagnostics/full/blca/SurvOTRank_distributional_counterfactual_transport/0.0005_b8_survival_months_dss_Dim_256_e_50_g_Pathways_sig_combine_seed3_rW_8_rG_8_sp_dct_v3_score_first_full",
+        "/home/ubuntu/SurvOT-Rank/results/dct_v3_3_fold2_nan_fix/blca/SurvOTRank_distributional_counterfactual_transport/0.0005_b8_survival_months_dss_Dim_256_e_50_g_Pathways_sig_combine_seed3_rW_8_rG_8_sp_dct_v3_3_fold2_nan_fix"
+      ],
+      "fold_sources": {
+        "0": "dct_v3_score_first_diagnostics/full",
+        "1": "dct_v3_score_first_diagnostics/full",
+        "2": "dct_v3_3_fold2_nan_fix",
+        "3": "dct_v3_score_first_diagnostics/full",
+        "4": "dct_v3_score_first_diagnostics/full"
+      },
+      "issues": []
+    },
+    "V60_CA_PSA": {
+      "config": "configs/cohort_anchored_adaptive_prognostic_slot_attention_blca.yaml",
+      "study": "blca",
+      "best_mean": 0.7217,
+      "best_std": 0.0383,
+      "last_mean": 0.6369,
+      "last_std": 0.0771,
+      "last5_mean": 0.6338,
+      "last5_std": 0.08,
+      "result_dirs": [
+        "/home/ubuntu/SurvOT-Rank/results/v60_caapsa_dct_matched_blca/blca/SurvOTRank_cohort_anchored_adaptive_prognostic_slot_attention/0.0005_b8_survival_months_dss_Dim_256_e_50_g_Pathways_sig_combine_seed3_rW_8_rG_8_sp_cohort_anchored_adaptive_prognostic_slot_attention_blca"
+      ],
+      "fold_sources": {},
+      "issues": []
+    },
+    "V70_PSPC": {
+      "config": "configs/v70_pspc_blca.yaml",
+      "study": "blca",
+      "best_mean": 0.6786,
+      "best_std": 0.0335,
+      "last_mean": 0.6167,
+      "last_std": 0.0277,
+      "last5_mean": 0.6168,
+      "last5_std": 0.0283,
+      "result_dirs": [
+        "/home/ubuntu/SurvOT-Rank/results/v70_pspc_dct_matched_blca/blca/SurvOTRank_v70_patient_specific_prognostic_circuits/0.0005_b8_survival_months_dss_Dim_256_e_50_g_Pathways_sig_combine_seed3_rW_8_rG_8_sp_v70_patient_specific_prognostic_circuits_blca"
+      ],
+      "fold_sources": {},
+      "issues": []
+    }
+  }
+}

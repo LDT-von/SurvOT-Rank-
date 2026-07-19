@@ -1,0 +1,20 @@
+48ccc2e docs: record DCT v3.3 score-first 5-fold complete results
+535e020 fix: stabilize DCT fold metrics against nonfinite costs
+97f995d feat: add patient-specific prognostic circuits
+174f5f0 feat: add cohort-anchored adaptive prognostic slots
+6e513aa docs: DCT v3.2 score diagnostics complete results
+afa9dd1 fix: isolate score-first DCT results
+48c45ac fix: simplify DCT to score-aligned IPCW ranking
+0c65573 fix: restore DCT factual Slot Attention backbone
+62b0750 feat: strengthen DCT v3 survival supervision
+eefca3a results: DCT v3 score diagnostics — full fold 0 (known overfitting)
+f3fa505 fix: set CUDA_VISIBLE_DEVICES before torch import + Bash local bugfix
+6d39bc4 feat: add DCT v3 score diagnostics
+26f8df1 docs: add DCT v3 full 5-fold results (section 12)
+049b55a fix: DCT eval crash when censorship is None during test mode
+09f5c09 exp: grad_accum 2->1 (batch=16, eff batch 16), 每epoch更新步数翻倍缓解欠训练
+98e5382 exp: batch_size 4->16 + grad_accum 2 (eff batch 32), 让排序/risk-set损失单次forward有足够可比对
+c41724d fix: grad_accum 8->4 + max_epochs 30->50 (grad accum砍步数导致欠训练); add per-method publication roadmap docs
+2523e22 feat: Fix Verify catet 完成，5方法全部收工
+ba1a20e chore: add one-command DCT v3 runners
+1fb31ca feat: 添加 Fix Verify (15aa637) 5方法 fold0+fold2 结果

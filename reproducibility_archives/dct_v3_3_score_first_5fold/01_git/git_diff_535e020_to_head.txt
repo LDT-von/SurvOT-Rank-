@@ -1,0 +1,84 @@
+diff --git a/EXPERIMENT_SUMMARY.md b/EXPERIMENT_SUMMARY.md
+index 874d20e..6fce515 100644
+--- a/EXPERIMENT_SUMMARY.md
++++ b/EXPERIMENT_SUMMARY.md
+@@ -2,7 +2,7 @@
+ 
+ > 此文件是 SurvOT-Rank 所有实验分数的唯一权威来源。新实验结果只在此追加。
+ >
+-> 最后更新: 2026-07-16 | 代码版本: `0c65573` | DCT v3.2 diagnostics
++> 最后更新: 2026-07-16 | 代码版本: `535e020` | DCT v3.3 score-first 5-fold
+ 
+ ---
+ 
+@@ -738,3 +738,70 @@ tail -f /data1/sweep_results_30ep/_logs/fix_queue_now.log
+ - 每折曲线：`results/dct_v3_score_diagnostics/{variant}/blca/.../epoch_curve_fold{N}.csv`
+ - 监控工具：`scripts/watch_progress.py`
+ 
++---
++
++## 14. DCT v3.3: Score-First IPCW Ranking (5-Fold)
++
++> **代码版本**: `535e020` (NaN fix) + `48c45ac`/`afa9dd1` (score-first 配方)
++>
++> **核心改动**: 抛弃 v3.2 的 7 项复合损失 (OT + anchor + stage_risk + coordinate + rank + ...)，退回到最简单的 NLL + IPCW pairwise ranking。rank/anchor/stage_risk/coordinate loss = 0。
++>
++> **配置**: batch_size=8, lr=0.0005, seed=3, 50 epochs, BLCA 5-fold (0/1/2/3/4)
++>
++> **结果目录**: `results/dct_v3_score_first_diagnostics/full` + `results/dct_v3_3_fold2_nan_fix` (fold 2 用修复后代码重跑)
++
++### 14.1 五折完整分数
++
++| Fold | Epochs | Best@ | Best | IPCW | IBS | iAUC | Last | Last5 | Gap | 备注 |
++|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|------|
++| 0 | 50 | 4 | **0.7552** | 0.5657 | 0.2134 | 0.7884 | 0.6482 | 0.6569 | 0.107 | 干净 |
++| 1 | 50 | 5 | **0.7157** | 0.5248 | 0.3122 | 0.4202 | 0.5431 | 0.5314 | 0.173 | 被多进程污染，峰值可参考 |
++| 2 | 50 | 18 | **0.7046** | 0.5080 | 0.4014 | 0.6316 | 0.6429 | 0.6474 | 0.057 | NaN 修复后重跑，epoch 0→不再崩溃 |
++| 3 | 50 | 43 | **0.7189** | 0.6490 | 0.2407 | 0.6491 | 0.7049 | 0.6481 | 0.014 | 末期回到峰值附近，极稳定 |
++| 4 | 50 | 36 | **0.7696** | 0.7084 | 0.0729 | 0.9491 | 0.7572 | 0.7459 | 0.012 | 全场最佳，末期接近峰值 |
++
++### 14.2 汇总统计
++
++| 指标 | 值 |
++|------|:---:|
++| **Best mean** (5折) | **0.7328** |
++| Best std | 0.0286 |
++| **Last5 mean** | **0.6459** |
++| Last5 std | 0.0764 |
++| **Gap mean** | **0.0726** |
++
++### 14.3 vs v3.2 (多损失 full 变体)
++
++| | v3.2 (3折) | v3.3 score-first (5折) | Δ |
++|------|:---:|:---:|:---:|
++| Best mean | 0.6925 | **0.7328** | **+0.040** |
++| Last5 mean | 0.5973 | **0.6459** | **+0.049** |
++| Gap mean | 0.0952 | **0.0726** | **-24%** |
++| fold 3/4 末期 | 持续退化 | **回到峰值** | 质变 |
++
++### 14.4 NaN 修复 (`535e020`)
++
++fold 2 在 score-first 配方下每 8 epoch 必定 NaN 崩溃。`535e020` 修复内容：
++
++- DCT log-Sinkhorn 对 NaN/Inf/极端 cost 做有限值投影
++- 防止极端 cost 污染整个 batch
++- 无可比较事件对时返回中性指标
++- 评估时按完整患者行过滤非有限预测
++
++修复后 fold 2 成功跑完 50 epoch，且 fold 2 不再是从 epoch 0 开始滑坡（best@18），证明 NaN 不仅是崩溃问题，也毒化了前几个 epoch 的梯度。
++
++### 14.5 核心结论
++
++1. **简化就是力量**：7-loss → 2-loss (NLL + IPCW rank)，best +0.04, last5 +0.05, gap -24%。
++2. **OT 在 score-first 配方下仍是活跃的正则化项** (ot ≈ 1.1, 非零)，但不像 v3.2 那样作为主损失参与竞争。
++3. **anchor 机制是过拟合加速器**：v3.2 去掉 anchor 后 gap 从 0.095 → 0.062；v3.3 彻底移除后 gap 进一步降到 0.073。
++4. **fold 3/4 末期回到峰值** (0.705/0.757) 是 v3.3 区别于 v3.2 的最大质变 — 模型不再"过拟合完立即崩塌"。
++5. **fold 间差异大**：best 0.705~0.770, gap 0.012~0.173 — BLCA n=380 很小，fold 1 的 0.716 比 fold 4 的 0.770 低 0.05 是正常的小样本噪声。
++
++### 14.6 原始数据
++
++- 汇总 CSV：`results/dct_v3_score_first_diagnostics/dct_v3_score_summary.csv`
++- 每折曲线（fold 0/1/3/4）：`results/dct_v3_score_first_diagnostics/full/blca/.../epoch_curve_fold{N}.csv`
++- fold 2 曲线（NaN 修复后）：`results/dct_v3_3_fold2_nan_fix/blca/.../epoch_curve_fold2.csv`
++- 提交历史：`48c45ac` (score-first 配方) → `afa9dd1` (隔离目录) → `535e020` (NaN fix)
++

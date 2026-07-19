@@ -1,0 +1,84 @@
+{
+  "experiment": "DCT v3.3 Score-First IPCW Ranking",
+  "date": "2026-07-16 / 2026-07-17",
+  "commits": [
+    "535e020 (NaN fix)",
+    "48ccc2e (result docs)",
+    "48c45ac (score-first recipe)",
+    "afa9dd1 (isolate results)"
+  ],
+  "folds_completed": 5,
+  "fold_details": {
+    "0": {
+      "epochs_completed": 50,
+      "best_epoch": 4,
+      "best_cindex": 0.755151,
+      "best_ipcw": 0.5871,
+      "best_ibs": 0.349417,
+      "best_iauc": 0.497212,
+      "last_cindex": 0.648177,
+      "last5_mean_cindex": 0.656894,
+      "gap": 0.098257,
+      "total_epochs": 50
+    },
+    "1": {
+      "epochs_completed": 50,
+      "best_epoch": 5,
+      "best_cindex": 0.715736,
+      "best_ipcw": 0.657992,
+      "best_ibs": 0.181926,
+      "best_iauc": 0.463798,
+      "last_cindex": 0.543147,
+      "last5_mean_cindex": 0.531387,
+      "gap": 0.184349,
+      "total_epochs": 50
+    },
+    "2": {
+      "epochs_completed": 50,
+      "best_epoch": 18,
+      "best_cindex": 0.704564,
+      "best_ipcw": 0.507969,
+      "best_ibs": 0.401404,
+      "best_iauc": 0.631563,
+      "last_cindex": 0.642914,
+      "last5_mean_cindex": 0.647398,
+      "gap": 0.057166,
+      "total_epochs": 50
+    },
+    "3": {
+      "epochs_completed": 50,
+      "best_epoch": 34,
+      "best_cindex": 0.710383,
+      "best_ipcw": 0.632018,
+      "best_ibs": 0.183949,
+      "best_iauc": 0.781426,
+      "last_cindex": 0.704918,
+      "last5_mean_cindex": 0.665574,
+      "gap": 0.044809,
+      "total_epochs": 50
+    },
+    "4": {
+      "epochs_completed": 50,
+      "best_epoch": 36,
+      "best_cindex": 0.769573,
+      "best_ipcw": 0.724849,
+      "best_ibs": 0.123404,
+      "best_iauc": 0.874202,
+      "last_cindex": 0.755338,
+      "last5_mean_cindex": 0.725267,
+      "gap": 0.044306,
+      "total_epochs": 50
+    }
+  },
+  "aggregate": {
+    "best_mean": 0.731081,
+    "best_std": 0.026184,
+    "best_median": 0.715736,
+    "last5_mean": 0.645304,
+    "last5_std": 0.06312,
+    "last5_median": 0.656894,
+    "gap_mean": 0.085777,
+    "gap_std": 0.053083,
+    "folds_with_nan": false
+  }
+}
