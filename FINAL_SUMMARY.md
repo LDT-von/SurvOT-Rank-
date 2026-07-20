@@ -1,7 +1,6 @@
-# SurvOT-Rank BLCA 实验结果汇总
+# SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-07-18 | 数据集: BLCA | Seed: 3 | Max Epochs: 50 | Batch: 8 | 5-Fold CV
-> Git commit: 48ccc2e
+> 更新时间: 2026-07-20 | Seed: 3 | Max Epochs: 50 | Batch: 8 | 5-Fold CV | DCT v3.3 Score-First
 
 ---
 
@@ -9,13 +8,14 @@
 
 | 排名 | 方法 | Folds | Best mean±std | Last mean±std | Last5 mean±std |
 |:----:|------|:-----:|:-------------:|:-------------:|:--------------:|
-| 1 | **DCT v3.3 Score-First** | 5/5 | **0.7311±0.0293** | **0.6589±0.0794** | **0.6453±0.0706** |
-| 2 | **V60 CA-PSA** | 5/5 | 0.7217±0.0383 | 0.6369±0.0771 | 0.6338±0.0800 |
-| 3 | **dct_v3_score/no_stage_risk** | 3/5 | 0.7306±0.0301 | 0.6032±0.0299 | — |
-| 4 | **dct_v3_score/no_anchor** | 3/5 | 0.6993±0.0155 | 0.6422±0.0456 | — |
-| 5 | **dct_v3_score/full** | 3/5 | 0.6925±0.0196 | 0.5907±0.0337 | — |
-| 6 | **dct_v3_score/evidence_cost** | 3/5 | 0.6864±0.0213 | 0.5852±0.0260 | — |
-| 7 | **V70 PSPC** | 5/5 | 0.6786±0.0335 | 0.6167±0.0277 | 0.6168±0.0283 |
+| 1 | **DCT v3.3 — BLCA** | 5/5 | **0.7311±0.0293** | **0.6589±0.0794** | **0.6453±0.0706** |
+| 2 | **DCT v3.3 — BRCA** | 5/5 | 0.6886±0.0382 | 0.4911±0.0553 | 0.5001±0.0541 |
+| 3 | **V60 CA-PSA** | 5/5 | 0.7217±0.0383 | 0.6369±0.0771 | 0.6338±0.0800 |
+| 4 | **dct_v3_score/no_stage_risk** | 3/5 | 0.7306±0.0301 | 0.6032±0.0299 | — |
+| 5 | **dct_v3_score/no_anchor** | 3/5 | 0.6993±0.0155 | 0.6422±0.0456 | — |
+| 6 | **dct_v3_score/full** | 3/5 | 0.6925±0.0196 | 0.5907±0.0337 | — |
+| 7 | **dct_v3_score/evidence_cost** | 3/5 | 0.6864±0.0213 | 0.5852±0.0260 | — |
+| 8 | **V70 PSPC** | 5/5 | 0.6786±0.0335 | 0.6167±0.0277 | 0.6168±0.0283 |
 
 ---
 
@@ -36,7 +36,37 @@
 
 ---
 
-## 2. V60 CA-PSA (Cohort-Anchored Adaptive Prognostic Slot Attention)
+## 2. DCT v3.3 Score-First — BRCA
+
+- **Config**: `configs/distributional_counterfactual_transport_brca.yaml`
+- **Results dir**: `results/dct_v3.3_score_first_brca`
+- **样本数**: 1046 | 与 BLCA 完全相同参数，仅替换 study
+
+| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index | Last5 Mean |
+|:----:|:------:|:------------:|:----------:|:------------:|:----------:|
+| 0 | 50 | **0.6458** | 42 | 0.3963 | 0.4207 |
+| 1 | 50 | **0.7550** | 26 | 0.5606 | 0.5859 |
+| 2 | 50 | **0.7047** | 16 | 0.4901 | 0.4508 |
+| 3 | 50 | **0.6669** | 7 | 0.5279 | 0.5202 |
+| 4 | 50 | **0.6705** | 5 | 0.4805 | 0.5231 |
+| **Mean±Std** | | **0.6886±0.0382** | | **0.4911±0.0553** | **0.5001±0.0541** |
+
+> 样本多 2.7× 但效果反而低于 BLCA；过拟合严重 (28.7% drop)；fold 1 单独表现好 (0.7550) 但其余 fold 偏弱
+
+---
+
+### BLCA vs BRCA 对比
+
+| 指标 | BLCA (381) | BRCA (1046) |
+|------|:----------:|:-----------:|
+| Best Mean | **0.7311** | 0.6886 |
+| Last Mean | **0.6589** | 0.4911 |
+| Best-Last Gap | 9.9% | 28.7% |
+| Best Std | ±0.0293 | ±0.0382 |
+
+---
+
+## 4. V60 CA-PSA (Cohort-Anchored Adaptive Prognostic Slot Attention)
 
 - **Config**: `configs/cohort_anchored_adaptive_prognostic_slot_attention_blca.yaml`
 - **Results dir**: `results/v60_caapsa_dct_matched_blca`
@@ -54,7 +84,7 @@
 
 ---
 
-## 3. V70 PSPC (Patient-Specific Prognostic Circuits)
+## 5. V70 PSPC (Patient-Specific Prognostic Circuits)
 
 - **Config**: `configs/v70_pspc_blca.yaml`
 - **Results dir**: `results/v70_pspc_dct_matched_blca`
@@ -72,9 +102,9 @@
 
 ---
 
-## 4. dct_v3_score ablated variants (仅 3/5 fold)
+## 6. dct_v3_score ablated variants (仅 3/5 fold)
 
-### 4.1 dct_v3_score / no_stage_risk
+### 6.1 dct_v3_score / no_stage_risk
 
 | Fold | Epochs | Best C-Index | Best Epoch | Last C-Index |
 |:----:|:------:|:------------:|:----------:|:------------:|
@@ -83,7 +113,7 @@
 | 3 | 50 | **0.7322** | 27 | 0.6273 |
 | **Mean (3/5)** | | **0.7306** | | **0.6032** |
 
-### 4.2 dct_v3_score / no_anchor
+### 6.2 dct_v3_score / no_anchor
 
 | Fold | Epochs | Best C-Index | Best Epoch | Last C-Index |
 |:----:|:------:|:------------:|:----------:|:------------:|
@@ -92,7 +122,7 @@
 | 3 | 50 | **0.7169** | 32 | 0.6623 |
 | **Mean (3/5)** | | **0.6993** | | **0.6422** |
 
-### 4.3 dct_v3_score / full
+### 6.3 dct_v3_score / full
 
 | Fold | Epochs | Best C-Index | Best Epoch | Last C-Index |
 |:----:|:------:|:------------:|:----------:|:------------:|
@@ -101,7 +131,7 @@
 | 3 | 50 | **0.7005** | 44 | 0.6153 |
 | **Mean (3/5)** | | **0.6925** | | **0.5907** |
 
-### 4.4 dct_v3_score / evidence_cost
+### 6.4 dct_v3_score / evidence_cost
 
 | Fold | Epochs | Best C-Index | Best Epoch | Last C-Index |
 |:----:|:------:|:------------:|:----------:|:------------:|
@@ -119,7 +149,8 @@
 | ot_v3 (SlotSPE 最高) | 0.7282 | 0.6013 | |
 | otehv2_capacity (最稳定) | 0.7075 | **0.6708** | |
 | otehv2_rankevent_seed5 | 0.7158 | 0.6604 | |
-| **DCT v3.3 Score-First** | **0.7311** | **0.6589** | |
+| **DCT v3.3 Score-First (BLCA)** | **0.7311** | **0.6589** | |
+| **DCT v3.3 Score-First (BRCA)** | 0.6886 | 0.4911 | 过拟合严重 (28.7% gap) |
 | V60 CA-PSA | 0.7217 | 0.6369 | |
 | V70 PSPC | 0.6786 | 0.6167 | |
 
@@ -127,8 +158,37 @@
 
 ## 结论
 
-1. **DCT v3.3 Score-First (0.7311)** 达到 SlotSPE ot_v3 (0.7282) 水平，且 Last mean (0.6589) 优于 ot_v3 (0.6013)
-2. 所有方法存在不同程度的过拟合，Last/Best 差距约 0.07-0.13
-3. dct_v3_score 消融实验中 no_anchor 变体 Last mean 最高 (0.6422)，去除 anchor 对稳定性有益
-4. V70 PSPC 整体偏弱 (0.6786)，不推荐继续
-5. 归档文件: `reproducibility_archives/` (summary CSV + epoch curves + manifest)
+1. **DCT v3.3 BLCA (0.7311)** 达到 SlotSPE ot_v3 (0.7282) 水平，且 Last mean (0.6589) 优于 ot_v3 (0.6013)
+2. **DCT v3.3 BRCA (0.6886)** 表现较弱，过拟合严重 (28.7% drop)，可能因为 BRCA 样本异质性大
+3. 所有方法存在不同程度的过拟合，Last/Best 差距约 0.07-0.13
+4. dct_v3_score 消融实验中 no_anchor 变体 Last mean 最高 (0.6422)，去除 anchor 对稳定性有益
+5. V70 PSPC 整体偏弱 (0.6786)，不推荐继续
+6. 归档文件: `reproducibility_archives/` (summary CSV + epoch curves + manifest)
+
+---
+
+## 多癌种数据集目录 (10 个)
+
+| 癌种 | 样本 | Clinical | Omics | 5-fold | WSI | DCT 3.3 | 缺失项 |
+|:----:|:----:|:--------:|:-----:|:------:|:---:|:-------:|--------|
+| BLCA | 381 | Y | Y | Y | 457 | **Done: 0.7311** | — |
+| BRCA | 1046 | Y | Y | Y | 1131 | **Done: 0.6886** | — |
+| UCEC | 488 | Y | Y | Y | 0 | 待跑 | **WSI** |
+| LUAD | 467 | Y | Y | Y | 0 | 待跑 | **WSI** |
+| COADREAD | 573 | Y | Y | 0 | 0 | 待跑 | **splits + WSI** |
+| KIRC | 488 | Y | Y | 0 | 0 | 待跑 | **splits + WSI** |
+| LUSC | 460 | Y | Y | 0 | 0 | 待跑 | **splits + WSI** |
+| HNSC | 438 | Y | Y | 0 | 0 | 待跑 | **splits + WSI** |
+| SKCM | 409 | Y | Y | 0 | 0 | 待跑 | **splits + WSI** |
+| STAD | 366 | Y | Y | 0 | 0 | 待跑 | **splits + WSI** |
+
+### 数据准备清单
+
+**只需 WSI patches（2 个）：** UCEC, LUAD
+> 放置路径: `/data/CPathPatchFeature/{study}/uni/pt_files/*.pt`
+
+**需要 splits + WSI patches（6 个）：** COADREAD, KIRC, LUSC, HNSC, SKCM, STAD
+> - splits: `survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold/{study}/fold_0~4.csv`
+> - WSI: `/data/CPathPatchFeature/{study}/uni/pt_files/*.pt`
+
+**配置文件**: 每个癌种需要 `configs/distributional_counterfactual_transport_{study}.yaml`，与 BLCA/BRCA 完全相同参数（仅替换 study 名和结果目录）。
