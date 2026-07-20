@@ -27,6 +27,7 @@ def make_args():
         dct_ipcw_rank_margin=0.02,
         dct_ipcw_rank_temperature=0.50,
         dct_ipcw_max_weight=10.0,
+        dct_ipcw_rank_memory_size=0,
         dct_lambda_ot=0.0,
         dct_lambda_rank=0.0,
         dct_lambda_anchor=0.0,
@@ -180,6 +181,35 @@ def test_ipcw_pairwise_rank_matches_cindex_direction():
     )
     assert correctly_ranked < reversed_rank
     assert model.last_ipcw_pair_count.item() == 1
+
+
+def test_ipcw_rank_memory_adds_cross_batch_pairs_without_attaching_old_logits():
+    model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
+    model.dct_ipcw_rank_memory_size = 4
+    model.configure_train_reference(
+        torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0]),
+        torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+    )
+    model.train()
+    model._remember_ipcw_batch(
+        torch.tensor([0.0, 0.0]),
+        torch.tensor([4.0, 5.0]),
+        torch.tensor([1.0, 1.0]),
+    )
+    logits = torch.tensor(
+        [[4.0, -4.0, -4.0, -4.0], [-4.0, -4.0, -4.0, -4.0]],
+        requires_grad=True,
+    )
+    loss = model._ipcw_pairwise_ranking_loss(
+        logits,
+        torch.tensor([1.0, 2.0]),
+        torch.tensor([0.0, 1.0]),
+    )
+    assert model.last_ipcw_pair_count.item() > 1
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert logits.grad is not None
+    assert model._rank_memory_risk.requires_grad is False
 
 
 def test_log_sinkhorn_projects_extreme_nonfinite_costs_to_finite_plan():

@@ -229,6 +229,12 @@ def get_split(args, dataset_factory, fold):
     # 改为所有 fold 共用 __init__ 阶段从全体未删失数据算出的全局 bins。
     # dataset_factory.fit_label_bins(split_df["train"].dropna().tolist())
 
+    if getattr(args, "fit_bins_on_train", False):
+        # Discrete-time labels are part of the supervised target.  Fit their
+        # quantile edges before constructing either dataset so validation times
+        # cannot influence the fold's label representation.
+        dataset_factory.fit_label_bins(split_df["train"].dropna().tolist())
+
     train_data = SurvivalDataset(dataset_factory, args.data_root_dir, 'train', fold, args.encoding_dim)
     test_data = SurvivalDataset(dataset_factory, args.data_root_dir, 'val', fold, args.encoding_dim)
 
@@ -255,7 +261,18 @@ def get_split(args, dataset_factory, fold):
         test_loader = torch.utils.data.DataLoader(
             test_data, batch_size=1, shuffle=False, num_workers=num_workers, pin_memory=pin_memory
         )
-    print(f"[data] train={len(train_data)}  val={len(test_data)}  num_workers={num_workers}  pin_memory={pin_memory}")
+    train_labels = train_data.label_df
+    val_labels = test_data.label_df
+    train_events = int((train_labels[dataset_factory.censorship_var] < 0.5).sum())
+    val_events = int((val_labels[dataset_factory.censorship_var] < 0.5).sum())
+    train_bins = train_labels["label"].value_counts().sort_index().to_dict()
+    val_bins = val_labels["label"].value_counts().sort_index().to_dict()
+    print(
+        f"[data] train={len(train_data)} val={len(test_data)} "
+        f"train_events={train_events} val_events={val_events} "
+        f"train_bins={train_bins} val_bins={val_bins} "
+        f"num_workers={num_workers} pin_memory={pin_memory}"
+    )
     return train_data, test_data, train_loader, test_loader
 
 
@@ -444,6 +461,16 @@ def train_one_fold(args, dataset_factory, fold, log_file):
     args.cur_fold = fold
 
     train_data, val_data, train_loader, val_loader = get_split(args, dataset_factory, fold)
+    train_events = int((train_data.label_df[dataset_factory.censorship_var] < 0.5).sum())
+    val_events = int((val_data.label_df[dataset_factory.censorship_var] < 0.5).sum())
+    train_bins = train_data.label_df["label"].value_counts().sort_index().to_dict()
+    val_bins = val_data.label_df["label"].value_counts().sort_index().to_dict()
+    safe_write_line(
+        log_file,
+        f"[data] train_events={train_events} val_events={val_events} "
+        f"train_bins={train_bins} val_bins={val_bins} "
+        f"fit_bins_on_train={bool(getattr(args, 'fit_bins_on_train', False))}",
+    )
     model = init_model_for_method(args, dataset_factory)
     if hasattr(model, "configure_train_reference"):
         # DCT v3 fits stage edges and censoring weights strictly from this fold's

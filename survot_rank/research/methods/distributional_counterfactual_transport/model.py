@@ -46,6 +46,11 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             getattr(args, "dct_ipcw_rank_temperature", 0.50)
         )
         self.dct_ipcw_max_weight = float(getattr(args, "dct_ipcw_max_weight", 10.0))
+        self.dct_ipcw_rank_memory_size = int(
+            getattr(args, "dct_ipcw_rank_memory_size", 0)
+        )
+        if self.dct_ipcw_rank_memory_size < 0:
+            raise ValueError("dct_ipcw_rank_memory_size must be non-negative")
         if self.dct_ipcw_rank_temperature <= 0.0:
             raise ValueError("dct_ipcw_rank_temperature must be positive")
         if self.dct_ipcw_max_weight <= 0.0:
@@ -99,6 +104,10 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         self.register_buffer("dct_stage_edges", torch.empty(0))
         self.register_buffer("dct_censor_times", torch.empty(0))
         self.register_buffer("dct_censor_survival", torch.empty(0))
+        self._rank_memory_epoch = None
+        self._rank_memory_risk = None
+        self._rank_memory_times = None
+        self._rank_memory_censorship = None
 
     @staticmethod
     def _risk(logits):
@@ -349,8 +358,30 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         """
         risk = self._risk(factual_logits)
         times = event_time.float().view(-1)
-        observed = censorship.float().view(-1) < 0.5
+        censoring = censorship.float().view(-1)
+        observed = censoring < 0.5
+
+        # BRCA has few observed events.  A batch of eight therefore often has
+        # too little comparable-pair signal for the IPCW objective.  The
+        # optional within-epoch memory supplies detached reference risks from
+        # previous batches; current risks remain attached, so gradients still
+        # update only the current batch.  This is deliberately opt-in to keep
+        # older BLCA score-first runs exactly reproducible.
+        memory_count = 0
+        if self.dct_ipcw_rank_memory_size > 0 and self._rank_memory_risk is not None:
+            memory_count = int(self._rank_memory_risk.numel())
+            risk = torch.cat([risk, self._rank_memory_risk.to(risk.device)], dim=0)
+            times = torch.cat([times, self._rank_memory_times.to(times.device)], dim=0)
+            censoring = torch.cat(
+                [censoring, self._rank_memory_censorship.to(censoring.device)], dim=0
+            )
+            observed = censoring < 0.5
+
+        current_mask = torch.ones(risk.shape[0], dtype=torch.bool, device=risk.device)
+        if memory_count:
+            current_mask[-memory_count:] = False
         comparable = observed[:, None] & (times[:, None] < times[None, :])
+        comparable &= current_mask[:, None] | current_mask[None, :]
         self.last_ipcw_pair_count = comparable.sum().detach()
         if not bool(comparable.any()):
             return risk.sum() * 0.0
@@ -368,6 +399,28 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         return (
             pair_losses[comparable] * pair_weights
         ).sum() / pair_weights.sum().clamp_min(1e-6)
+
+    def _remember_ipcw_batch(self, risk, times, censorship):
+        if self.dct_ipcw_rank_memory_size <= 0:
+            return
+        risks = [risk.detach()]
+        all_times = [times.detach()]
+        all_censorship = [censorship.detach()]
+        if self._rank_memory_risk is not None:
+            risks.insert(0, self._rank_memory_risk.to(risk.device))
+            all_times.insert(0, self._rank_memory_times.to(times.device))
+            all_censorship.insert(0, self._rank_memory_censorship.to(censorship.device))
+        keep = self.dct_ipcw_rank_memory_size
+        self._rank_memory_risk = torch.cat(risks, dim=0)[-keep:].clone()
+        self._rank_memory_times = torch.cat(all_times, dim=0)[-keep:].clone()
+        self._rank_memory_censorship = torch.cat(all_censorship, dim=0)[-keep:].clone()
+
+    def _reset_ipcw_memory_for_epoch(self, epoch):
+        if self._rank_memory_epoch != int(epoch):
+            self._rank_memory_epoch = int(epoch)
+            self._rank_memory_risk = None
+            self._rank_memory_times = None
+            self._rank_memory_censorship = None
 
     @torch.no_grad()
     def _update_risk_anchors(self, costs, low_weights, high_weights):
@@ -443,6 +496,8 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             local_slots_omic, self.shared_omic_prototypes
         )
         epoch = int(getattr(self.args, "cur_epoch", kwargs.get("cur_epoch", 0)))
+        if self.training:
+            self._reset_ipcw_memory_for_epoch(epoch)
 
         factual_costs, rows, cols, evidence_gate = self._cost_tensor(slots_wsi, slots_omic)
         factual_plans, ot_distance = self._plans_from_cost_tensor(factual_costs, rows, cols, epoch)
@@ -472,6 +527,11 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                     )
                     ipcw_pair_count = self.last_ipcw_pair_count.to(
                         device=factual_costs.device, dtype=factual_costs.dtype
+                    )
+                    self._remember_ipcw_batch(
+                        self._risk(factual_logits),
+                        kwargs["event_time"].float().view(-1),
+                        kwargs["c"].float().view(-1),
                     )
                 self._update_risk_anchors(factual_costs.detach(), low_weights, high_weights)
 
