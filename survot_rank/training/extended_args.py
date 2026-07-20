@@ -87,6 +87,15 @@ def build_base_parser() -> argparse.ArgumentParser:
         default=False,
         help="Fit discrete survival bins from the current fold's uncensored training cases only.",
     )
+    parser.add_argument(
+        "--event_sampling_fraction",
+        type=float,
+        default=0.0,
+        help=(
+            "Target observed-event fraction for weighted training sampling. "
+            "0 disables event-aware sampling and preserves historical behavior."
+        ),
+    )
 
     # Early stopping.
     parser.add_argument("--early_stop_patience", type=int, default=0)

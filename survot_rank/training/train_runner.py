@@ -56,6 +56,10 @@ from sksurv.metrics import concordance_index_censored
 # SurvOT-Rank model factory.
 from survot_rank.training.model_factory import get_model
 from survot_rank.training.extended_args import process_args_extended
+from survot_rank.training.sparse_event import (
+    EarlyStoppingController,
+    make_event_aware_sampler,
+)
 
 
 def safe_write_line(log_file, message):
@@ -241,10 +245,26 @@ def get_split(args, dataset_factory, fold):
     # 鍚敤澶氳繘绋嬫暟鎹姞杞藉拰椤甸攣瀹氬唴瀛樹互鍔犻€?GPU 璁粌
     num_workers = getattr(args, 'num_workers', 4)
     pin_memory = True
+    event_sampling_fraction = float(getattr(args, "event_sampling_fraction", 0.0) or 0.0)
+    train_sampler = None
+    if event_sampling_fraction > 0.0:
+        train_sampler = make_event_aware_sampler(
+            train_data.label_df[dataset_factory.censorship_var].to_numpy(),
+            event_sampling_fraction,
+            seed=int(getattr(args, "seed", 3)) + 1009 * int(fold),
+            num_samples=len(train_data),
+        )
+        no_event_probability = (1.0 - event_sampling_fraction) ** int(args.batch_size)
+        print(
+            f"[data] event-aware sampling target={event_sampling_fraction:.3f} "
+            f"expected_events_per_batch={event_sampling_fraction * int(args.batch_size):.2f} "
+            f"P(no_event_batch)={no_event_probability:.3f}"
+        )
 
     if args.rna_format == "Pathways" or args.rna_format == "RankedGenes":
         train_loader = torch.utils.data.DataLoader(
-            train_data, batch_size=args.batch_size, shuffle=True, num_workers=num_workers,
+            train_data, batch_size=args.batch_size, shuffle=train_sampler is None,
+            sampler=train_sampler, num_workers=num_workers,
             drop_last=True, collate_fn=_collate_pathways, pin_memory=pin_memory,
             generator=torch.Generator().manual_seed(getattr(args, 'seed', 3))
         )
@@ -254,7 +274,8 @@ def get_split(args, dataset_factory, fold):
         )
     else:
         train_loader = torch.utils.data.DataLoader(
-            train_data, batch_size=args.batch_size, shuffle=True,
+            train_data, batch_size=args.batch_size, shuffle=train_sampler is None,
+            sampler=train_sampler,
             num_workers=num_workers, drop_last=True, pin_memory=pin_memory,
             generator=torch.Generator().manual_seed(getattr(args, 'seed', 3))
         )
@@ -469,7 +490,8 @@ def train_one_fold(args, dataset_factory, fold, log_file):
         log_file,
         f"[data] train_events={train_events} val_events={val_events} "
         f"train_bins={train_bins} val_bins={val_bins} "
-        f"fit_bins_on_train={bool(getattr(args, 'fit_bins_on_train', False))}",
+        f"fit_bins_on_train={bool(getattr(args, 'fit_bins_on_train', False))} "
+        f"event_sampling_fraction={float(getattr(args, 'event_sampling_fraction', 0.0) or 0.0):.3f}",
     )
     model = init_model_for_method(args, dataset_factory)
     if hasattr(model, "configure_train_reference"):
@@ -501,8 +523,11 @@ def train_one_fold(args, dataset_factory, fold, log_file):
     es_min_delta = float(getattr(args, "early_stop_min_delta", 0.0))
     es_metric = getattr(args, "early_stop_metric", "val_cindex")
     es_warmup = int(getattr(args, "early_stop_warmup", 0))
-    es_best = -1e9
-    es_bad_epochs = 0
+    early_stopper = EarlyStoppingController(
+        patience=es_patience,
+        min_delta=es_min_delta,
+        warmup_epochs=es_warmup,
+    )
     stopped_epoch = args.max_epochs - 1
 
     def _save_best(results, model, fold):
@@ -553,12 +578,7 @@ def train_one_fold(args, dataset_factory, fold, log_file):
             if es_patience > 0:
                 cur = {'val_cindex': val_c, 'val_cindex_ipcw': val_c_ipcw,
                        'val_iauc': val_iauc}.get(es_metric, val_c)
-                if cur > es_best + es_min_delta:
-                    es_best = cur
-                    es_bad_epochs = 0
-                else:
-                    es_bad_epochs += 1
-                if epoch >= es_warmup and es_bad_epochs >= es_patience:
+                if early_stopper.update(epoch, cur):
                     stopped_epoch = epoch
                     msg = (
                         f"[Fold {fold}] early stop @epoch {epoch} "

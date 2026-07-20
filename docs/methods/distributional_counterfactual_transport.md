@@ -78,6 +78,28 @@ evaluation rather than wasting training compute.
 There is deliberately no `low_risk_counterfactual < factual_risk <
 high_risk_counterfactual` loss.
 
+## Sparse-event BRCA high-score candidate
+
+`configs/distributional_counterfactual_transport_brca_highscore.yaml` is an
+experimental DCT v3.4 training recipe.  It does not replace the recorded v3.3
+results until a complete five-fold run is available.  The model and score-first
+objective are unchanged; only the sparse-event optimisation protocol changes:
+
+- train-only survival bins retain the leakage-safe target construction;
+- weighted sampling raises the expected observed-event fraction to 0.25, or
+  two events in a batch of eight;
+- `alpha_surv = 2/3` approximately balances aggregate event and censoring NLL
+  under that sampled mixture because
+  `0.25 = 0.75 * (1 - alpha_surv)`;
+- IPCW rank memory remains enabled for cross-batch comparable pairs; and
+- all folds run the complete 50-epoch horizon because earlier BRCA peaks
+  occurred as late as epoch 42.
+
+Historical configs keep `event_sampling_fraction = 0`, so their data order and
+sampling distribution are unchanged.  Early stopping now starts accumulating
+patience only after its configured warmup rather than spending patience while
+the learning rate is still warming up.
+
 ## Required validation
 
 Report, per fold and across seeds:
