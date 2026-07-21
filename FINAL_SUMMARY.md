@@ -74,7 +74,7 @@
 
 > 运行入口：`scripts/run_dct_v35_screen.py --variants r`
 > 参数: alpha_surv=0.15, event_stratified_batches=True, slot_init_mode=deterministic, evidence_marginal_strength=1.0
-> 状态: **部分完成**（5/10 癌种 fold0），IPCW/IBS/iAUC 全零 Bug 待修复
+> 状态: **5/5 有WSI癌种 fold0 完成**（4成功 + 1中断），IPCW/IBS/iAUC 全零 Bug 待修复
 
 | 癌种 | Fold0 C-Index | Best Epoch | IPCW | IBS | iAUC | 状态 |
 |:----:|:-------------:|:----------:|:----:|:---:|:----:|:----:|
@@ -83,11 +83,11 @@
 | **BRCA** | **0.6026** | 2 | 0.0000 | 0.0000 | 0.0000 | ✅ |
 | **LUSC** | **0.5962** | 3 | 0.0000 | 0.0000 | 0.0000 | ✅ |
 | **BLCA** | ❌ 中断 | — | — | — | — | ⚠️ E17/50 |
-| COADREAD | — | — | — | — | — | 未跑 |
-| KIRC | — | — | — | — | — | 未跑 |
-| UCEC | — | — | — | — | — | 未跑 |
-| HNSC | — | — | — | — | — | 未跑 |
-| STAD | — | — | — | — | — | 未跑 |
+| COADREAD | — | — | — | — | — | 无WSI |
+| KIRC | — | — | — | — | — | 无WSI |
+| UCEC | — | — | — | — | — | 无WSI |
+| HNSC | — | — | — | — | — | 无WSI |
+| STAD | — | — | — | — | — | 无WSI |
 
 ### 对比 v3.3 Score-First
 
@@ -103,7 +103,7 @@
 1. **IPCW/IBS/iAUC 全零** — 训练日志诊断文件存在但 `_final.pkl` 中指标为 0
 2. **BLCA fold0 未生成 final.pkl** — 训练在 epoch 17 中断
 3. **Fold2 全部未跑** — 脚本在处理 fold2 前退出
-4. **5/10 癌种未开始** — COADREAD/KIRC/UCEC/HNSC/STAD
+4. **5 癌种无 WSI 数据** — COADREAD/KIRC/UCEC/HNSC/STAD 暂无法运行
 
 ### 数据完整性
 全部 10 癌种基因数据和生存标签完整，临床无缺失 RNA。WSI 缺失：BRCA 2 个 (DX2)、LUAD 1 个。
