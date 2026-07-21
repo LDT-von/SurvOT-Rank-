@@ -1,6 +1,80 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-07-20 | Seed: 3 | Max Epochs: 35 | Batch: 8 | 5-Fold CV | DCT v3.3 Score-First
+> 更新时间: 2026-07-21 | Seed: 3 | Max Epochs: 50 | Batch: 8 | 5-Fold CV | DCT v3.3 Score-First
+
+---
+
+## 🆕 多癌种 DCT v3.3 Score-First 实验结果 (2026-07-21)
+
+> 本轮实验：BRCA、LUAD、LUSC 三个癌种各完成 5 折交叉验证
+> 参数配置: max_epochs=50, batch_size=8, lr=5e-4, alpha_surv=0.15, dct_lambda_ipcw_rank=0.10
+> 日志目录: `logs/{dataset}_fold{0-4}.log`
+- BRCA: [configs/distributional_counterfactual_transport_brca.yaml](file:///home/ubuntu/SurvOT-Rank/configs/distributional_counterfactual_transport_brca.yaml)
+- LUAD: [configs/distributional_counterfactual_transport_luad.yaml](file:///home/ubuntu/SurvOT-Rank/configs/distributional_counterfactual_transport_luad.yaml)
+- LUSC: [configs/distributional_counterfactual_transport_lusc.yaml](file:///home/ubuntu/SurvOT-Rank/configs/distributional_counterfactual_transport_lusc.yaml)
+
+### BRCA (5/5 folds)
+| Fold | Best C-Index | Best Epoch |
+|:----:|:------------:|:----------:|
+| 0 | 0.6639 | 24 |
+| 1 | 0.7432 | 3 |
+| 2 | **0.7510** | 17 |
+| 3 | 0.6486 | 10 |
+| 4 | 0.7245 | 29 |
+| **Mean±Std** | **0.7062±0.0420** | — |
+
+### LUAD (5/5 folds)
+| Fold | Best C-Index | Best Epoch |
+|:----:|:------------:|:----------:|
+| 0 | **0.7662** | 32 |
+| 1 | 0.6987 | 13 |
+| 2 | 0.7297 | 2 |
+| 3 | 0.6899 | 22 |
+| 4 | 0.6656 | 17 |
+| **Mean±Std** | **0.7100±0.0348** | — |
+
+### LUSC (5/5 folds)
+| Fold | Best C-Index | Best Epoch |
+|:----:|:------------:|:----------:|
+| 0 | 0.6407 | 0 |
+| 1 | 0.5837 | 3 |
+| 2 | 0.5800 | 22 |
+| 3 | **0.6631** | 0 |
+| 4 | 0.6596 | 8 |
+| **Mean±Std** | **0.6254±0.0364** | — |
+
+### 多癌种性能对比
+
+| 排名 | 癌种 | 样本数 | Best mean±std | 最佳单折 |
+|:----:|:----:|:------:|:-------------:|:--------:|
+| 1 | **LUAD** | 467 | **0.7100±0.0348** | 0.7662 |
+| 2 | **BRCA** | 418 | **0.7062±0.0420** | 0.7510 |
+| 3 | **LUSC** | 460 | **0.6254±0.0364** | 0.6631 |
+
+> 观察:
+> - LUAD 和 BRCA 性能接近，LUSC 明显偏弱（约低 8-9 个百分点）
+> - LUSC 的 fold1 出现 IPCW/IBS/IAUC 全 0 的异常（详见 [logs/lusc_fold1.log](file:///home/ubuntu/SurvOT-Rank/logs/lusc_fold1.log)）
+> - LUSC fold0/fold3 在 epoch 0 即达到最佳，提示可能存在训练不稳定
+> - 三个癌种的 Best Epoch 分布差异较大，过拟合趋势明显
+
+### 与历史 BLCA 结果对比
+
+| 癌种 | Best mean±std | Last mean | Best-Last Gap | 备注 |
+|:----:|:-------------:|:---------:|:-------------:|------|
+| **BLCA** | 0.7311±0.0293 | 0.6589 | 9.9% | 历史最优 |
+| **LUAD** | 0.7100±0.0348 | — | — | 新结果 |
+| **BRCA** | 0.7062±0.0420 | — | — | 新结果（超过历史 BRCA stable 0.6659）|
+| **LUSC** | 0.6254±0.0364 | — | — | 新结果 |
+
+> BRCA 新结果 (0.7062) 显著优于历史 BRCA stable (0.6659)，提升 +0.0403
+
+---
+
+## 历史实验记录
+
+---
+
+> 历史更新: 2026-07-20 | Seed: 3 | Max Epochs: 35 | Batch: 8 | 5-Fold CV | DCT v3.3 Score-First
 
 ---
 

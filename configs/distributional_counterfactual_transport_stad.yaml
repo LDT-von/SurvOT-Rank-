@@ -1,0 +1,76 @@
+name: distributional_counterfactual_transport_stad
+description: Distributional counterfactual prognostic transport on STAD DSS (DCT v3.3 score-first).
+
+data:
+  study: stad
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: distributional_counterfactual_transport
+  specific_simple: distributional_counterfactual_transport_score_first_stad
+  results_dir: results/dct_v3.3_score_first_stad
+  max_epochs: 50
+  batch_size: 8
+  grad_accum_steps: 1
+  warmup_epochs: 5
+  grad_clip_norm: 1.0
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 3
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_heads: 4
+  otehv2_layers: 2
+  otehv2_dropout: 0.15
+  dct_num_stages: 4
+  dct_lambda_ipcw_rank: 0.10
+  dct_ipcw_rank_margin: 0.02
+  dct_ipcw_rank_temperature: 0.50
+  dct_ipcw_max_weight: 10.0
+  dct_lambda_ot: 0.0
+  dct_lambda_rank: 0.0
+  dct_lambda_anchor: 0.0
+  dct_lambda_stage_risk: 0.0
+  dct_stage_risk_margin: 0.02
+  dct_anchor_margin: 0.02
+  dct_anchor_momentum: 0.90
+  dct_evidence_cost_weight: 0.0
+  dct_evidence_mass_floor: 0.05
+  dct_coupling_projection_iters: 1000
+  dct_coupling_projection_tol: 0.0001
+  dct_lambda_coordinate: 0.0
+  dct_coordinate_temperature: 0.30
+  dct_mix_ratio: 0.50
+  fet_lambda_sparse: 0.0
+  fet_lambda_faith: 0.0
+  spt_prog_cost: 0.20
+  rg_eps_start: 0.10
+  rg_eps_anneal: 12
