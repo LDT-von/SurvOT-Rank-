@@ -1,6 +1,6 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-07-21 | Seed: 3 | Max Epochs: 50 | Batch: 8 | 5-Fold CV | DCT v3.3 Score-First
+> 更新时间: 2026-07-21 | Seed: 3 | DCT v3.3 Score-First + v3.5R fold0 筛选
 
 ---
 
@@ -70,7 +70,47 @@
 
 ---
 
-## 🧪 DCT v3.5 R/Q/G/L 与 U/M 后续受控筛选（待运行）
+## 🧪 DCT v3.5R Fold0 结果 (2026-07-21)
+
+> 运行入口：`scripts/run_dct_v35_screen.py --variants r`
+> 参数: alpha_surv=0.15, event_stratified_batches=True, slot_init_mode=deterministic, evidence_marginal_strength=1.0
+> 状态: **5/5 有WSI癌种 fold0 完成**（4成功 + 1中断），IPCW/IBS/iAUC 全零 Bug 待修复
+
+| 癌种 | Fold0 C-Index | Best Epoch | IPCW | IBS | iAUC | 状态 |
+|:----:|:-------------:|:----------:|:----:|:---:|:----:|:----:|
+| **LUAD** | **0.7828** | 17 | 0.0000 | 0.0000 | 0.0000 | ✅ |
+| **SKCM** | **0.6686** | 4 | 0.0000 | 0.0000 | 0.0000 | ✅ |
+| **BRCA** | **0.6026** | 2 | 0.0000 | 0.0000 | 0.0000 | ✅ |
+| **LUSC** | **0.5962** | 3 | 0.0000 | 0.0000 | 0.0000 | ✅ |
+| **BLCA** | ❌ 中断 | — | — | — | — | ⚠️ E17/50 |
+| COADREAD | — | — | — | — | — | 无WSI |
+| KIRC | — | — | — | — | — | 无WSI |
+| UCEC | — | — | — | — | — | 无WSI |
+| HNSC | — | — | — | — | — | 无WSI |
+| STAD | — | — | — | — | — | 无WSI |
+
+### 对比 v3.3 Score-First
+
+| 癌种 | v3.3 Fold0 | v3.5R Fold0 | 差异 |
+|:----:|:----------:|:-----------:|:----:|
+| LUAD | 0.7662 | **0.7828** | +1.7% |
+| BRCA | 0.6639 | 0.6026 | -6.1% |
+| LUSC | 0.6407 | 0.5962 | -4.5% |
+| BLCA | 0.7552 | ❌ | — |
+| SKCM | — | 0.6686 | 新 |
+
+### 已知 Bug
+1. **IPCW/IBS/iAUC 全零** — 训练日志诊断文件存在但 `_final.pkl` 中指标为 0
+2. **BLCA fold0 未生成 final.pkl** — 训练在 epoch 17 中断
+3. **Fold2 全部未跑** — 脚本在处理 fold2 前退出
+4. **5 癌种无 WSI 数据** — COADREAD/KIRC/UCEC/HNSC/STAD 暂无法运行
+
+### 数据完整性
+全部 10 癌种基因数据和生存标签完整，临床无缺失 RNA。WSI 缺失：BRCA 2 个 (DX2)、LUAD 1 个。
+
+---
+
+## 🧪 DCT v3.5 R/Q/G/L 受控筛选（计划）
 
 > 运行入口：`scripts/run_dct_v35_screen.py`
 >
@@ -83,11 +123,9 @@
 | v3.5Q | 每个 slot 独立 learned query | `results/dct_v3.5_screen/q/<cancer>` |
 | v3.5G | evidence marginal strength=0.25 | `results/dct_v3.5_screen/g/<cancer>` |
 | v3.5L | projection=128、Transformer=1 层 | `results/dct_v3.5_screen/l/<cancer>` |
-| U（2026 follow-up） | RTEM 几何可靠性调节 evidence marginals | `results/dct_v3.5_screen/u/<cancer>` |
-| M（2026 follow-up） | epoch 内 IPCW risk-set memory=64 | `results/dct_v3.5_screen/m/<cancer>` |
 
 完整运行顺序、命令和入选规则见 `docs/DCT_V35_SCREENING.md`。fold0/2 只用于筛选，
-最终候选仍须补齐固定 5-fold。U/M 不是新方法，也不应早于 R/Q/G/L 运行。
+最终候选仍须补齐固定 5-fold。
 
 ---
 
