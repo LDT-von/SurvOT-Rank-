@@ -132,6 +132,40 @@ def test_distributional_counterfactual_transport_uses_feasible_risk_anchored_pat
         assert torch.all(explanation[key] < 1e-3), key
 
 
+def test_deterministic_slot_mode_repeats_exact_evaluation_logits():
+    torch.manual_seed(19)
+    args = make_args()
+    args.dct_slot_init_mode = "deterministic"
+    args.dct_slot_eval_seed = 991
+    args.dct_coupling_projection_iters = 20
+    model = DistributionalCounterfactualTransport(args, omic_input_dim=20)
+    x_wsi = torch.randn(3, 6, 16)
+    x_omics = torch.randn(3, 5, 20)
+
+    model.eval()
+    with torch.no_grad():
+        first, _ = model(x_wsi=x_wsi, x_omics=x_omics)
+        second, _ = model(x_wsi=x_wsi, x_omics=x_omics)
+    assert torch.equal(first, second)
+
+    model.train()
+    train_first, _ = model(x_wsi=x_wsi, x_omics=x_omics)
+    train_second, _ = model(x_wsi=x_wsi, x_omics=x_omics)
+    assert not torch.equal(train_first, train_second)
+
+
+def test_evidence_marginal_strength_zero_restores_uniform_transport_mass():
+    args = make_args()
+    args.dct_evidence_marginal_strength = 0.0
+    model = DistributionalCounterfactualTransport(args, omic_input_dim=20)
+    slots_wsi = torch.randn(2, 3, 16)
+    slots_omic = torch.randn(2, 3, 16)
+    _, rows, cols, _ = model._cost_tensor(slots_wsi, slots_omic)
+
+    assert torch.allclose(rows, torch.full_like(rows, 1.0 / 3.0))
+    assert torch.allclose(cols, torch.full_like(cols, 1.0 / 3.0))
+
+
 def test_competitive_semantic_slots_separate_opposite_token_evidence():
     model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
     tokens = torch.zeros(1, 2, 16)

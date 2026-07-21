@@ -150,11 +150,23 @@ class OTEventHazardV2Survival(nn.Module):
 
         self._init_per_path_model(self.omic_sizes, args.rna_format)
         self.wsi_mlp = WSI_Mlp(dim_in=self.wsi_embedding_dim, feat_dim=dim)
+        slot_init_mode = getattr(args, "dct_slot_init_mode", "gaussian")
+        slot_eval_seed = int(getattr(args, "dct_slot_eval_seed", 1729))
         self.slot_attention_wsi = MultiHeadSlotAttention(
-            dim=dim, num_slots=args.slot_num_wsi, iters=args.slot_iters, heads=8
+            dim=dim,
+            num_slots=args.slot_num_wsi,
+            iters=args.slot_iters,
+            heads=8,
+            init_mode=slot_init_mode,
+            eval_seed=slot_eval_seed,
         )
         self.slot_attention_omic = MultiHeadSlotAttention(
-            dim=dim, num_slots=args.slot_num_omics, iters=args.slot_iters, heads=8
+            dim=dim,
+            num_slots=args.slot_num_omics,
+            iters=args.slot_iters,
+            heads=8,
+            init_mode=slot_init_mode,
+            eval_seed=slot_eval_seed + 1,
         )
 
         self.fusion = MultiScaleOTFusion(

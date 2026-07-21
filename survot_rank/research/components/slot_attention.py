@@ -22,6 +22,8 @@ class MultiHeadSlotAttention(Module):
         iters=3,
         eps=1e-8,
         hidden_dim=128,
+        init_mode: str = "gaussian",
+        eval_seed: int = 1729,
     ):
         super().__init__()
         self.dim = dim
@@ -29,10 +31,26 @@ class MultiHeadSlotAttention(Module):
         self.iters = iters
         self.eps = eps
         self.scale = dim ** -0.5
+        self.init_mode = str(init_mode).lower()
+        if self.init_mode not in {"gaussian", "deterministic", "learned"}:
+            raise ValueError(
+                "init_mode must be one of: gaussian, deterministic, learned"
+            )
 
         self.slots_mu = nn.Parameter(torch.randn(1, 1, dim))
         self.slots_logsigma = nn.Parameter(torch.zeros(1, 1, dim))
         init.xavier_uniform_(self.slots_logsigma)
+        if self.init_mode == "learned":
+            self.slot_queries = nn.Parameter(torch.randn(1, num_slots, dim) * 0.02)
+        else:
+            self.register_parameter("slot_queries", None)
+
+        # A local generator avoids perturbing the experiment-wide torch RNG.
+        # The buffer is intentionally non-persistent: old checkpoints remain
+        # loadable and the same seed reconstructs the exact evaluation basis.
+        generator = torch.Generator(device="cpu").manual_seed(int(eval_seed))
+        eval_noise = torch.randn(1, num_slots, dim, generator=generator)
+        self.register_buffer("_eval_slot_noise", eval_noise, persistent=False)
 
         self.norm_input = nn.LayerNorm(dim)
         self.norm_slots = nn.LayerNorm(dim)
@@ -57,9 +75,22 @@ class MultiHeadSlotAttention(Module):
         b, _, _, device, dtype = *inputs.shape, inputs.device, inputs.dtype
         n_s = num_slots if num_slots is not None else self.num_slots
 
-        mu = repeat(self.slots_mu, "1 1 d -> b s d", b=b, s=n_s)
-        sigma = repeat(self.slots_logsigma.exp(), "1 1 d -> b s d", b=b, s=n_s)
-        slots = mu + sigma * torch.randn(mu.shape, device=device, dtype=dtype)
+        if n_s > self.num_slots:
+            raise ValueError(
+                f"Requested {n_s} slots, but this module was built for {self.num_slots}"
+            )
+        if self.init_mode == "learned":
+            slots = self.slot_queries[:, :n_s].to(device=device, dtype=dtype)
+            slots = slots.expand(b, -1, -1)
+        else:
+            mu = repeat(self.slots_mu, "1 1 d -> b s d", b=b, s=n_s)
+            sigma = repeat(self.slots_logsigma.exp(), "1 1 d -> b s d", b=b, s=n_s)
+            if self.training or self.init_mode == "gaussian":
+                noise = torch.randn(mu.shape, device=device, dtype=dtype)
+            else:
+                noise = self._eval_slot_noise[:, :n_s].to(device=device, dtype=dtype)
+                noise = noise.expand(b, -1, -1)
+            slots = mu + sigma * noise
 
         inputs = self.norm_input(inputs)
         k, v = self.to_k(inputs), self.to_v(inputs)

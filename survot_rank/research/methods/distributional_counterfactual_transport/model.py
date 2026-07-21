@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -69,6 +71,11 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         self.dct_evidence_mass_floor = float(
             getattr(args, "dct_evidence_mass_floor", 0.05)
         )
+        self.dct_evidence_marginal_strength = float(
+            getattr(args, "dct_evidence_marginal_strength", 1.0)
+        )
+        if not 0.0 <= self.dct_evidence_marginal_strength <= 1.0:
+            raise ValueError("dct_evidence_marginal_strength must be in [0, 1]")
         self.dct_coupling_projection_iters = int(
             getattr(args, "dct_coupling_projection_iters", 1000)
         )
@@ -233,6 +240,12 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         cols = torch.stack(col_marginals, dim=1)
         rows = rows / rows.sum(dim=-1, keepdim=True)
         cols = cols / cols.sum(dim=-1, keepdim=True)
+        strength = self.dct_evidence_marginal_strength
+        if strength < 1.0:
+            uniform_rows = torch.full_like(rows, 1.0 / rows.size(-1))
+            uniform_cols = torch.full_like(cols, 1.0 / cols.size(-1))
+            rows = (1.0 - strength) * uniform_rows + strength * rows
+            cols = (1.0 - strength) * uniform_cols + strength * cols
         return torch.stack(all_stage_costs, dim=1), rows, cols, torch.stack(gates, dim=1)
 
     @staticmethod
@@ -562,6 +575,12 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                 .to(factual_costs.dtype)
                 .mean()
             )
+            row_entropy = -(
+                rows.clamp_min(1e-8) * rows.clamp_min(1e-8).log()
+            ).sum(dim=-1) / math.log(max(2, rows.size(-1)))
+            col_entropy = -(
+                cols.clamp_min(1e-8) * cols.clamp_min(1e-8).log()
+            ).sum(dim=-1) / math.log(max(2, cols.size(-1)))
             self.last_training_losses = {
                 "ot": ot_distance.detach(),
                 "ipcw_rank": ipcw_rank_loss.detach(),
@@ -572,6 +591,9 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                 "coordinate": coordinate_loss.detach(),
                 "active_stage_fraction": active_stage_fraction.detach(),
                 "anchor_coverage": self.risk_anchor_seen.to(factual_costs.dtype).mean().detach(),
+                "evidence_marginal_entropy": torch.cat(
+                    [row_entropy.flatten(), col_entropy.flatten()]
+                ).mean().detach(),
             }
 
             aux_loss = self.dct_lambda_ipcw_rank * ipcw_rank_loss

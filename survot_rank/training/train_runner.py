@@ -59,6 +59,7 @@ from survot_rank.training.extended_args import process_args_extended
 from survot_rank.training.sparse_event import (
     EarlyStoppingController,
     make_event_aware_sampler,
+    make_stratified_event_batch_sampler,
 )
 
 
@@ -246,6 +247,11 @@ def get_split(args, dataset_factory, fold):
     num_workers = getattr(args, 'num_workers', 4)
     pin_memory = True
     event_sampling_fraction = float(getattr(args, "event_sampling_fraction", 0.0) or 0.0)
+    event_stratified_batches = bool(getattr(args, "event_stratified_batches", False))
+    if event_sampling_fraction > 0.0 and event_stratified_batches:
+        raise ValueError(
+            "event_sampling_fraction and event_stratified_batches cannot be enabled together"
+        )
     train_sampler = None
     if event_sampling_fraction > 0.0:
         train_sampler = make_event_aware_sampler(
@@ -261,24 +267,53 @@ def get_split(args, dataset_factory, fold):
             f"P(no_event_batch)={no_event_probability:.3f}"
         )
 
-    if args.rna_format == "Pathways" or args.rna_format == "RankedGenes":
-        train_loader = torch.utils.data.DataLoader(
-            train_data, batch_size=args.batch_size, shuffle=train_sampler is None,
-            sampler=train_sampler, num_workers=num_workers,
-            drop_last=True, collate_fn=_collate_pathways, pin_memory=pin_memory,
-            generator=torch.Generator().manual_seed(getattr(args, 'seed', 3))
+    train_batch_sampler = None
+    if event_stratified_batches:
+        train_batch_sampler = make_stratified_event_batch_sampler(
+            train_data.label_df[dataset_factory.censorship_var].to_numpy(),
+            int(args.batch_size),
+            seed=int(getattr(args, "seed", 3)) + 1009 * int(fold),
         )
+        sampler_event_count = int(
+            (train_data.label_df[dataset_factory.censorship_var] < 0.5).sum()
+        )
+        event_batches = min(sampler_event_count, len(train_batch_sampler))
+        print(
+            f"[data] patient-complete stratified batches enabled "
+            f"event_batches<={event_batches}/{len(train_batch_sampler)} "
+            f"replacement=False"
+        )
+
+    if args.rna_format == "Pathways" or args.rna_format == "RankedGenes":
+        if train_batch_sampler is not None:
+            train_loader = torch.utils.data.DataLoader(
+                train_data, batch_sampler=train_batch_sampler, num_workers=num_workers,
+                collate_fn=_collate_pathways, pin_memory=pin_memory,
+            )
+        else:
+            train_loader = torch.utils.data.DataLoader(
+                train_data, batch_size=args.batch_size, shuffle=train_sampler is None,
+                sampler=train_sampler, num_workers=num_workers,
+                drop_last=True, collate_fn=_collate_pathways, pin_memory=pin_memory,
+                generator=torch.Generator().manual_seed(getattr(args, 'seed', 3))
+            )
         test_loader = torch.utils.data.DataLoader(
             test_data, batch_size=1, shuffle=False, num_workers=num_workers,
             collate_fn=_collate_pathways, pin_memory=pin_memory
         )
     else:
-        train_loader = torch.utils.data.DataLoader(
-            train_data, batch_size=args.batch_size, shuffle=train_sampler is None,
-            sampler=train_sampler,
-            num_workers=num_workers, drop_last=True, pin_memory=pin_memory,
-            generator=torch.Generator().manual_seed(getattr(args, 'seed', 3))
-        )
+        if train_batch_sampler is not None:
+            train_loader = torch.utils.data.DataLoader(
+                train_data, batch_sampler=train_batch_sampler,
+                num_workers=num_workers, pin_memory=pin_memory,
+            )
+        else:
+            train_loader = torch.utils.data.DataLoader(
+                train_data, batch_size=args.batch_size, shuffle=train_sampler is None,
+                sampler=train_sampler,
+                num_workers=num_workers, drop_last=True, pin_memory=pin_memory,
+                generator=torch.Generator().manual_seed(getattr(args, 'seed', 3))
+            )
         test_loader = torch.utils.data.DataLoader(
             test_data, batch_size=1, shuffle=False, num_workers=num_workers, pin_memory=pin_memory
         )
@@ -292,6 +327,7 @@ def get_split(args, dataset_factory, fold):
         f"[data] train={len(train_data)} val={len(test_data)} "
         f"train_events={train_events} val_events={val_events} "
         f"train_bins={train_bins} val_bins={val_bins} "
+        f"event_stratified_batches={event_stratified_batches} "
         f"num_workers={num_workers} pin_memory={pin_memory}"
     )
     return train_data, test_data, train_loader, test_loader

@@ -96,6 +96,15 @@ def build_base_parser() -> argparse.ArgumentParser:
             "0 disables event-aware sampling and preserves historical behavior."
         ),
     )
+    parser.add_argument(
+        "--event_stratified_batches",
+        action="store_true",
+        default=False,
+        help=(
+            "Spread observed events across batches without replacement. Every "
+            "training patient is used exactly once per epoch."
+        ),
+    )
 
     # Early stopping.
     parser.add_argument("--early_stop_patience", type=int, default=0)
@@ -220,6 +229,23 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dct_lambda_coordinate", type=float, default=0.0)
     parser.add_argument("--dct_coordinate_temperature", type=float, default=0.30)
     parser.add_argument("--dct_mix_ratio", type=float, default=0.50)
+    parser.add_argument(
+        "--dct_slot_init_mode",
+        type=str,
+        default="gaussian",
+        choices=["gaussian", "deterministic", "learned"],
+        help=(
+            "gaussian preserves the legacy stochastic evaluation; deterministic "
+            "uses fixed distinct evaluation slots; learned uses per-slot queries."
+        ),
+    )
+    parser.add_argument("--dct_slot_eval_seed", type=int, default=1729)
+    parser.add_argument(
+        "--dct_evidence_marginal_strength",
+        type=float,
+        default=1.0,
+        help="Mix evidence-conditioned OT marginals with uniform mass; 1 is legacy, 0 is uniform.",
+    )
 
     # Censoring-aware temporal evidence transport mainline.
     parser.add_argument("--catet_num_stages", type=int, default=4)

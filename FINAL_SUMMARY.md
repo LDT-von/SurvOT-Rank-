@@ -70,6 +70,25 @@
 
 ---
 
+## 🧪 DCT v3.5 R/Q/G/L 受控筛选（待运行）
+
+> 运行入口：`scripts/run_dct_v35_screen.py`
+>
+> 开发协议：十癌种仅 fold0/2，batch=8，train-only bins，患者无放回分层批次，
+> `alpha_surv=0.15`，IPCW rank memory 关闭。
+
+| 版本 | 单一变量 | 正式结果目录 |
+|---|---|---|
+| v3.5R | 确定性验证 slots，修复基线 | `results/dct_v3.5_screen/r/<cancer>` |
+| v3.5Q | 每个 slot 独立 learned query | `results/dct_v3.5_screen/q/<cancer>` |
+| v3.5G | evidence marginal strength=0.25 | `results/dct_v3.5_screen/g/<cancer>` |
+| v3.5L | projection=128、Transformer=1 层 | `results/dct_v3.5_screen/l/<cancer>` |
+
+完整运行顺序、命令和入选规则见 `docs/DCT_V35_SCREENING.md`。fold0/2 只用于筛选，
+最终候选仍须补齐固定 5-fold。
+
+---
+
 ## ⚠️ DCT v3.4 事件感知实验（已暂停）
 
 > 训练脚本: [run_dct_multicancer_formal.py](file:///home/ubuntu/SurvOT-Rank/scripts/run_dct_multicancer_formal.py)
