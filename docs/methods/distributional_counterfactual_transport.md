@@ -100,6 +100,24 @@ sampling distribution are unchanged.  Early stopping now starts accumulating
 patience only after its configured warmup rather than spending patience while
 the learning rate is still warming up.
 
+## Formal three-cancer rerun
+
+`scripts/run_dct_multicancer_formal.sh` is the single Linux entry point for
+the next reproducible BRCA, LUAD, and LUSC runs.  It selects cancer-specific
+configs rather than applying one global recipe:
+
+- BRCA uses `distributional_counterfactual_transport_brca_highscore.yaml` for
+  sparse-event sampling and IPCW rank memory;
+- LUAD uses `distributional_counterfactual_transport_luad_formal.yaml`; and
+- LUSC uses `distributional_counterfactual_transport_lusc_formal.yaml`.
+
+All three use train-fold discrete-time bins.  The unified runner also builds
+the IPCW/Brier/iAUC reference from that same training fold.  Evaluation times
+outside a fold's observable follow-up are excluded with their matching
+discrete-survival columns; unavailable metrics are recorded as `NaN` and the
+reason is appended to `metric_diagnostics_fold*.log`, never silently replaced
+by zero.
+
 ## Required validation
 
 Report, per fold and across seeds:

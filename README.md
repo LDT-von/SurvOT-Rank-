@@ -42,6 +42,11 @@ python -m survot_rank.cli train --config configs/cohort_anchored_adaptive_progno
 # Experimental V70 / PSPC-Surv: no slots, patient-specific sparse circuits
 python -m survot_rank.cli train --config configs/v70_patient_specific_prognostic_circuits_blca.yaml
 
+# DCT v3.4 formal BRCA + LUAD + LUSC protocols (Linux)
+bash scripts/run_dct_multicancer_formal.sh run
+# Smoke-test only the BRCA and LUSC launch paths
+python scripts/run_dct_multicancer_formal.py smoke --cancers brca,lusc
+
 # Ensemble evaluation for multiple seed result folders
 python -m survot_rank.cli ensemble --dirs results/seed3 results/seed5
 ```

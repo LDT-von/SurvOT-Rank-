@@ -136,19 +136,22 @@ def _init_scheduler(args, optimizer):
 
     return scheduler
 
-def _extract_survival_metadata(dataset_factory):
+def _extract_survival_metadata(dataset_factory, label_df=None):
+    """Build a scikit-survival reference from one explicitly scoped cohort.
 
-    all_censorships = dataset_factory.clinical_df[[dataset_factory.censorship_var]]
-    #dataframe to numpy array
-    all_censorships = all_censorships.to_numpy().flatten()
+    ``label_df`` must be the current training split when the reference is used
+    for validation IPCW, Brier, or time-dependent AUC.  The optional fallback
+    preserves the historical legacy-runner behaviour, while the unified
+    runner passes its training fold explicitly.
+    """
 
-    all_event_times = dataset_factory.clinical_df[[dataset_factory.label_col]]
-    #dataframe to numpy array
-    all_event_times = all_event_times.to_numpy().flatten()
-
-    all_survival = Surv.from_arrays(event=(1-all_censorships).astype(bool), time=all_event_times)
-
-    return all_survival
+    source_df = dataset_factory.clinical_df if label_df is None else label_df
+    all_censorships = source_df[dataset_factory.censorship_var].to_numpy().flatten()
+    all_event_times = source_df[dataset_factory.label_col].to_numpy().flatten()
+    return Surv.from_arrays(
+        event=(1 - all_censorships).astype(bool),
+        time=all_event_times,
+    )
     
 def _unpack_data(data, device, omics_format):
     # [img, omic_data_list, label, event_time, c]
@@ -298,12 +301,82 @@ def _train_loop_survival(args, epoch, model,loader, optimizer, scheduler, loss_f
     return
 
 
-def _calculate_metrics(loader, dataset_factory, survival_train, all_risk_scores, all_censorships, all_event_times,
-                       all_risk_by_bin_scores):
+def _record_metric_error(metric_name, error, metric_error_path=None):
+    """Make undefined survival metrics auditable instead of silently zero."""
+    message = (
+        f"[metrics] {metric_name} unavailable: "
+        f"{type(error).__name__}: {error}"
+    )
+    print(message)
+    if metric_error_path is not None:
+        try:
+            with open(metric_error_path, "a", encoding="utf-8") as handle:
+                handle.write(message + "\n")
+        except OSError as write_error:
+            print(
+                f"[metrics] could not write diagnostics to {metric_error_path}: "
+                f"{type(write_error).__name__}: {write_error}"
+            )
 
-    data = loader.dataset.label_df[dataset_factory.label_col]
-    bins_original = dataset_factory.bins
-    which_times_to_eval_at = np.array([data.min() + 0.0001, bins_original[1], bins_original[2], data.max() - 0.0001])
+
+def _select_valid_metric_time_grid(
+    event_times,
+    survival_train,
+    bins,
+    survival_predictions,
+):
+    """Return valid evaluation times and the matching discrete survival columns.
+
+    The old fixed four-time grid could include time points outside a validation
+    fold's observed follow-up interval.  scikit-survival then raised, and the
+    caller quietly recorded 0 for IPCW/Brier/iAUC.  Keep the same column/time
+    convention but retain only finite, strictly in-range evaluation times.
+    """
+    event_times = np.asarray(event_times, dtype=float).reshape(-1)
+    predictions = np.asarray(survival_predictions, dtype=float)
+    bins = np.asarray(bins, dtype=float).reshape(-1)
+    if predictions.ndim != 2:
+        raise ValueError("survival_predictions must be a two-dimensional array")
+    if predictions.shape[0] != event_times.size:
+        raise ValueError("survival prediction rows must match validation outcomes")
+    if event_times.size < 2:
+        raise ValueError("at least two validation outcomes are required")
+
+    num_columns = predictions.shape[1]
+    if num_columns < 2 or bins.size < num_columns + 1:
+        raise ValueError("discrete survival bins do not match prediction columns")
+
+    # Preserve the historical mapping for four discrete hazards:
+    # [fold min, bin_1, bin_2, fold max] maps to survival columns [0,1,2,3].
+    candidate_times = np.concatenate((
+        [event_times.min() + 1e-4],
+        bins[1:num_columns - 1],
+        [event_times.max() - 1e-4],
+    ))
+    if candidate_times.size != num_columns:
+        raise ValueError("could not construct one evaluation time per survival column")
+
+    train_times = np.asarray(survival_train["time"], dtype=float)
+    lower = max(float(event_times.min()), float(train_times.min()))
+    upper = min(float(event_times.max()), float(train_times.max()))
+    valid = (
+        np.isfinite(candidate_times)
+        & (candidate_times >= lower)
+        & (candidate_times < upper)
+    )
+    times = candidate_times[valid]
+    predictions = predictions[:, valid]
+    if times.size == 0:
+        raise ValueError(
+            "no evaluation time lies inside both training and validation follow-up"
+        )
+    if np.any(np.diff(times) <= 0):
+        raise ValueError("evaluation times must be strictly increasing")
+    return times, predictions
+
+
+def _calculate_metrics(loader, dataset_factory, survival_train, all_risk_scores, all_censorships, all_event_times,
+                       all_risk_by_bin_scores, metric_error_path=None):
 
     # Filter complete patient rows. A single non-finite prediction must not
     # turn an entire fold into NaN or misalign risk/time/censoring arrays.
@@ -330,45 +403,75 @@ def _calculate_metrics(loader, dataset_factory, survival_train, all_risk_scores,
         # Undefined concordance (for example no comparable event pair) is
         # neutral, never NaN, and cannot poison best-epoch selection.
         c_index = 0.5
-    c_index_ipcw, BS, IBS, iauc = 0., 0., 0., 0.
+    c_index_ipcw, BS, IBS, iauc = np.nan, np.nan, np.nan, np.nan
 
     # change the datatype of survival test to calculate metrics
     try:
         survival_test = Surv.from_arrays(event=(1 - all_censorships).astype(bool), time=all_event_times)
-    except:
-        print("Problem converting survival test datatype, so all metrics 0.")
+    except Exception as error:
+        _record_metric_error("survival_test", error, metric_error_path)
         return c_index, c_index_ipcw, BS, IBS, iauc
+
+    try:
+        which_times_to_eval_at, survival_predictions = _select_valid_metric_time_grid(
+            all_event_times,
+            survival_train,
+            dataset_factory.bins,
+            all_risk_by_bin_scores,
+        )
+    except Exception as error:
+        _record_metric_error("time_grid", error, metric_error_path)
+        which_times_to_eval_at, survival_predictions = None, None
 
     # cindex2 (cindex_ipcw)
     try:
         c_index_ipcw = concordance_index_ipcw(survival_train, survival_test, estimate=all_risk_scores)[0]
-    except:
-        print('An error occured while computing c-index ipcw')
-        c_index_ipcw = 0.
+    except Exception as error:
+        _record_metric_error("cindex_ipcw", error, metric_error_path)
 
     # brier score
-    try:
-        _, BS = brier_score(survival_train, survival_test, estimate=all_risk_by_bin_scores,
-                            times=which_times_to_eval_at)
-    except:
-        print('An error occured while computing BS')
-        BS = 0.
+    if which_times_to_eval_at is not None:
+        try:
+            _, BS = brier_score(
+                survival_train, survival_test, estimate=survival_predictions,
+                times=which_times_to_eval_at,
+            )
+        except Exception as error:
+            _record_metric_error("brier_score", error, metric_error_path)
 
     # IBS
-    try:
-        IBS = integrated_brier_score(survival_train, survival_test, estimate=all_risk_by_bin_scores,
-                                     times=which_times_to_eval_at)
-    except:
-        print('An error occured while computing IBS')
-        IBS = 0.
+    if which_times_to_eval_at is not None and which_times_to_eval_at.size >= 2:
+        try:
+            IBS = integrated_brier_score(
+                survival_train, survival_test, estimate=survival_predictions,
+                times=which_times_to_eval_at,
+            )
+        except Exception as error:
+            _record_metric_error("integrated_brier_score", error, metric_error_path)
+    elif which_times_to_eval_at is not None:
+        _record_metric_error(
+            "integrated_brier_score",
+            ValueError("at least two valid time points are required"),
+            metric_error_path,
+        )
 
     # iauc
-    try:
-        _, iauc = cumulative_dynamic_auc(survival_train, survival_test, estimate=1 - all_risk_by_bin_scores[:, 1:],
-                                         times=which_times_to_eval_at[1:])
-    except:
-        print('An error occured while computing iauc')
-        iauc = 0.
+    if which_times_to_eval_at is not None and which_times_to_eval_at.size >= 2:
+        try:
+            _, iauc = cumulative_dynamic_auc(
+                survival_train,
+                survival_test,
+                estimate=1 - survival_predictions[:, 1:],
+                times=which_times_to_eval_at[1:],
+            )
+        except Exception as error:
+            _record_metric_error("cumulative_dynamic_auc", error, metric_error_path)
+    elif which_times_to_eval_at is not None:
+        _record_metric_error(
+            "cumulative_dynamic_auc",
+            ValueError("at least one post-baseline valid time point is required"),
+            metric_error_path,
+        )
 
     return c_index, c_index_ipcw, BS, IBS, iauc
 

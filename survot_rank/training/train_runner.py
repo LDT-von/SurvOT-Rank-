@@ -463,9 +463,14 @@ def evaluate(args, dataset_factory, model, loader, loss_fn, survival_train=None)
             "logits": all_logits[i],
         }
 
+    metric_error_path = os.path.join(
+        args.results_dir,
+        f"metric_diagnostics_fold{getattr(args, 'cur_fold', 'unknown')}.log",
+    )
     c_index, c_index_ipcw, BS, IBS, iauc = _calculate_metrics(
         loader, dataset_factory, survival_train,
-        all_risk_scores, all_censorships, all_event_times, all_risk_by_bin
+        all_risk_scores, all_censorships, all_event_times, all_risk_by_bin,
+        metric_error_path=metric_error_path,
     )
     return patient_results, c_index, c_index_ipcw, BS, IBS, iauc, total_loss
 
@@ -506,7 +511,9 @@ def train_one_fold(args, dataset_factory, fold, log_file):
     optimizer = init_optimizer(args, model)
     scheduler = init_scheduler(args, optimizer)
 
-    survival_train = _extract_survival_metadata(dataset_factory)
+    # Censoring/IPCW reference quantities must be fitted only from the current
+    # training fold.  Validation labels are never part of the reference.
+    survival_train = _extract_survival_metadata(dataset_factory, train_data.label_df)
 
     args.max_cindex = 0.0
     args.max_cindex_epoch = 0
