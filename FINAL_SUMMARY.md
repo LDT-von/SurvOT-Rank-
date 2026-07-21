@@ -74,14 +74,14 @@
 
 > 运行入口：`scripts/run_dct_v35_screen.py --variants r`
 > 参数: alpha_surv=0.15, event_stratified_batches=True, slot_init_mode=deterministic, evidence_marginal_strength=1.0
-> 状态: **5/5 有WSI癌种 fold0 完成**（4成功 + 1中断），IPCW/IBS/iAUC 全零 Bug 待修复
+> 状态: **5/5 有WSI癌种 fold0 完成**（4成功 + 1中断），指标从 epoch_curve.csv 提取
 
 | 癌种 | Fold0 C-Index | Best Epoch | IPCW | IBS | iAUC | 状态 |
-|:----:|:-------------:|:----------:|:----:|:---:|:----:|:----:|
-| **LUAD** | **0.7828** | 17 | 0.0000 | 0.0000 | 0.0000 | ✅ |
-| **SKCM** | **0.6686** | 4 | 0.0000 | 0.0000 | 0.0000 | ✅ |
-| **BRCA** | **0.6026** | 2 | 0.0000 | 0.0000 | 0.0000 | ✅ |
-| **LUSC** | **0.5962** | 3 | 0.0000 | 0.0000 | 0.0000 | ✅ |
+|:----:|:-------------:|:----------:|:-----:|:----:|:----:|:----:|
+| **LUAD** | **0.7828** | 17 | 0.6210 | 0.2477 | 0.5200 | ✅ |
+| **SKCM** | **0.6686** | 4 | 0.6738 | 0.1493 | 0.8025 | ✅ |
+| **BRCA** | **0.6026** | 2 | 0.6815 | 0.0273 | 0.5938 | ✅ |
+| **LUSC** | **0.5962** | 3 | 0.5927 | 0.1334 | 0.8404 | ✅ |
 | **BLCA** | ❌ 中断 | — | — | — | — | ⚠️ E17/50 |
 | COADREAD | — | — | — | — | — | 无WSI |
 | KIRC | — | — | — | — | — | 无WSI |
@@ -100,7 +100,7 @@
 | SKCM | — | 0.6686 | 新 |
 
 ### 已知 Bug
-1. **IPCW/IBS/iAUC 全零** — 训练日志诊断文件存在但 `_final.pkl` 中指标为 0
+1. **_final.pkl 中 IPCW/IBS/iAUC 为 0** — epoch_curve.csv 值正常，仅 pkl 存储有误
 2. **BLCA fold0 未生成 final.pkl** — 训练在 epoch 17 中断
 3. **Fold2 全部未跑** — 脚本在处理 fold2 前退出
 4. **5 癌种无 WSI 数据** — COADREAD/KIRC/UCEC/HNSC/STAD 暂无法运行
