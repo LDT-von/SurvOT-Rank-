@@ -166,6 +166,58 @@ def test_evidence_marginal_strength_zero_restores_uniform_transport_mass():
     assert torch.allclose(cols, torch.full_like(cols, 1.0 / 3.0))
 
 
+def test_geometry_reliability_is_higher_when_transport_geometries_agree():
+    model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
+    shared = torch.tensor([[[[0.0, 3.0], [3.0, 3.0]]]])
+    agreed = shared.expand(1, 3, 2, 2).clone()
+    conflicted = torch.tensor(
+        [[
+            [[0.0, 3.0], [3.0, 3.0]],
+            [[3.0, 0.0], [3.0, 3.0]],
+            [[3.0, 3.0], [0.0, 3.0]],
+        ]]
+    )
+
+    agreed_reliability = model._geometry_reliability(agreed)
+    conflicted_reliability = model._geometry_reliability(conflicted)
+
+    assert torch.allclose(agreed_reliability, torch.ones_like(agreed_reliability))
+    assert torch.all(conflicted_reliability < agreed_reliability)
+    assert torch.all((conflicted_reliability >= 0.0) & (conflicted_reliability <= 1.0))
+
+
+def test_rtem_is_opt_in_and_records_stage_reliability():
+    torch.manual_seed(29)
+    baseline_args = make_args()
+    baseline = DistributionalCounterfactualTransport(baseline_args, omic_input_dim=20)
+    rtem_args = make_args()
+    rtem_args.dct_geometry_reliability_strength = 1.0
+    rtem = DistributionalCounterfactualTransport(rtem_args, omic_input_dim=20)
+    rtem.load_state_dict(baseline.state_dict())
+    slots_wsi = torch.randn(2, 3, 16)
+    slots_omic = torch.randn(2, 3, 16)
+
+    baseline_costs, baseline_rows, baseline_cols, _ = baseline._cost_tensor(
+        slots_wsi, slots_omic
+    )
+    rtem_costs, rtem_rows, rtem_cols, _ = rtem._cost_tensor(slots_wsi, slots_omic)
+
+    assert torch.equal(baseline_costs, rtem_costs)
+    assert baseline._last_transport_reliability is None
+    assert rtem._last_transport_reliability.shape == (2, 4)
+    assert torch.all(torch.isfinite(rtem._last_transport_reliability))
+    uniform_rows = torch.full_like(rtem_rows, 1.0 / rtem_rows.size(-1))
+    uniform_cols = torch.full_like(rtem_cols, 1.0 / rtem_cols.size(-1))
+    assert torch.all(
+        (rtem_rows - uniform_rows).abs().sum(dim=-1)
+        <= (baseline_rows - uniform_rows).abs().sum(dim=-1) + 1e-7
+    )
+    assert torch.all(
+        (rtem_cols - uniform_cols).abs().sum(dim=-1)
+        <= (baseline_cols - uniform_cols).abs().sum(dim=-1) + 1e-7
+    )
+
+
 def test_competitive_semantic_slots_separate_opposite_token_evidence():
     model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
     tokens = torch.zeros(1, 2, 16)

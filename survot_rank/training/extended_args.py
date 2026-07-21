@@ -246,6 +246,21 @@ def build_base_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="Mix evidence-conditioned OT marginals with uniform mass; 1 is legacy, 0 is uniform.",
     )
+    parser.add_argument(
+        "--dct_geometry_reliability_strength",
+        type=float,
+        default=0.0,
+        help=(
+            "RTEM diagnostic: temper evidence-conditioned marginals using agreement "
+            "among cosine/euclidean/dot OT geometries; 0 exactly preserves legacy DCT."
+        ),
+    )
+    parser.add_argument(
+        "--dct_geometry_reliability_temperature",
+        type=float,
+        default=0.25,
+        help="Softmax temperature used to estimate cross-geometry edge agreement.",
+    )
 
     # Censoring-aware temporal evidence transport mainline.
     parser.add_argument("--catet_num_stages", type=int, default=4)

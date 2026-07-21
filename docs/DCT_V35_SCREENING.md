@@ -30,6 +30,8 @@ v3.5 固定以下共同协议：
 | v3.5Q | R 的固定初值改为每个 slot 独立 learned query | 检验随机可交换 slots 是否是瓶颈 |
 | v3.5G | R + evidence marginal strength `0.25` | 检验无约束 evidence marginals 是否过拟合 |
 | v3.5L | R + projection 128、Transformer 1 层 | 检验 30M 级容量是否过大 |
+| U（2026 follow-up） | R + RTEM geometry reliability | 检验跨 OT 几何冲突时是否应收缩 evidence marginals |
+| M（2026 follow-up） | R + epoch 内 IPCW memory 64 | 检验小 batch/稀事件风险集是否需要跨 batch 上下文 |
 
 第一阶段禁止组合 Q/G/L。单变量胜出后，才允许增加组合版本。
 
@@ -75,6 +77,8 @@ nohup python3 -u scripts/run_dct_v35_screen.py run --variants l --cancers brca,u
 results/dct_v3.5_screen/{r,q,g,l}/{cancer}/
 results/dct_v3.5_smoke/{r,q,g,l}/{cancer}/
 ```
+
+U/M 是后续单变量诊断，不是新的论文方法，也不应早于 R/Q/G/L 运行。对应结果目录沿用同一规则：`results/dct_v3.5_screen/{u,m}/{cancer}/`。
 
 各 fold 会保存 best checkpoint、patient results、epoch curve、partial summary 和日志。
 

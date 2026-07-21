@@ -70,7 +70,7 @@
 
 ---
 
-## 🧪 DCT v3.5 R/Q/G/L 受控筛选（待运行）
+## 🧪 DCT v3.5 R/Q/G/L 与 U/M 后续受控筛选（待运行）
 
 > 运行入口：`scripts/run_dct_v35_screen.py`
 >
@@ -83,9 +83,11 @@
 | v3.5Q | 每个 slot 独立 learned query | `results/dct_v3.5_screen/q/<cancer>` |
 | v3.5G | evidence marginal strength=0.25 | `results/dct_v3.5_screen/g/<cancer>` |
 | v3.5L | projection=128、Transformer=1 层 | `results/dct_v3.5_screen/l/<cancer>` |
+| U（2026 follow-up） | RTEM 几何可靠性调节 evidence marginals | `results/dct_v3.5_screen/u/<cancer>` |
+| M（2026 follow-up） | epoch 内 IPCW risk-set memory=64 | `results/dct_v3.5_screen/m/<cancer>` |
 
 完整运行顺序、命令和入选规则见 `docs/DCT_V35_SCREENING.md`。fold0/2 只用于筛选，
-最终候选仍须补齐固定 5-fold。
+最终候选仍须补齐固定 5-fold。U/M 不是新方法，也不应早于 R/Q/G/L 运行。
 
 ---
 

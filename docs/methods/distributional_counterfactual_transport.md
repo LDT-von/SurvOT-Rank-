@@ -78,6 +78,28 @@ evaluation rather than wasting training compute.
 There is deliberately no `low_risk_counterfactual < factual_risk <
 high_risk_counterfactual` loss.
 
+## 2026 follow-up diagnostics: U and M
+
+Two single-variable diagnostics are available without changing the default DCT:
+
+- **U / RTEM** sets `dct_geometry_reliability_strength=1.0`.  Each stage's
+  cosine/euclidean/dot costs are mapped to edge distributions; normalized
+  Jensen--Shannon agreement tempers how strongly evidence gates may move OT
+  marginals away from uniform.  It adds no parameters or auxiliary loss.
+- **M / risk-set memory** sets `dct_ipcw_rank_memory_size=64`.  Detached
+  risk/time/censoring values from earlier batches in the same epoch enlarge the
+  comparable-pair context for batch 8; the memory is cleared every epoch.
+
+They are diagnostic variants, not separate paper methods, and must be tested
+individually after the R/Q/G/L baseline screen:
+
+```bash
+python3 scripts/run_dct_v35_screen.py plan --variants u,m --cancers brca,blca,luad,ucec --folds 0,2
+```
+
+The literature boundary, slimming audit, mathematical definition and adoption
+thresholds are in [`../DCT_2026_RESEARCH_AND_SLIMMING.md`](../DCT_2026_RESEARCH_AND_SLIMMING.md).
+
 ## Sparse-event BRCA high-score candidate
 
 `configs/distributional_counterfactual_transport_brca_highscore.yaml` is an

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run controlled DCT v3.5 R/Q/G/L screening on selected cancers and folds."""
+"""Run controlled DCT v3.5 and 2026 follow-up screening on selected folds."""
 
 from __future__ import annotations
 
@@ -50,6 +50,8 @@ COMMON_OVERRIDES = {
     "dct_lambda_coordinate": 0.0,
     "dct_slot_eval_seed": 1729,
     "dct_evidence_marginal_strength": 1.0,
+    "dct_geometry_reliability_strength": 0.0,
+    "dct_geometry_reliability_temperature": 0.25,
     "wsi_projection_dim": 256,
     "otehv2_layers": 2,
 }
@@ -73,6 +75,16 @@ VARIANTS = {
         "dct_slot_init_mode": "deterministic",
         "wsi_projection_dim": 128,
         "otehv2_layers": 1,
+    },
+    "u": {
+        "label": "reliability-tempered evidence marginals",
+        "dct_slot_init_mode": "deterministic",
+        "dct_geometry_reliability_strength": 1.0,
+    },
+    "m": {
+        "label": "within-epoch IPCW risk-set memory",
+        "dct_slot_init_mode": "deterministic",
+        "dct_ipcw_rank_memory_size": 64,
     },
 }
 

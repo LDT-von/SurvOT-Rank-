@@ -14,17 +14,18 @@ from scripts.run_dct_v35_screen import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_v35_screen_covers_all_requested_cancers_and_four_single_change_variants():
+def test_v35_screen_covers_all_requested_cancers_and_single_change_variants():
     assert len(CANCERS) == 10
     assert parse_cancers("all") == list(CANCERS)
-    assert parse_variants("r,q,g,l") == ["r", "q", "g", "l"]
+    assert parse_variants("r,q,g,l,u,m") == ["r", "q", "g", "l", "u", "m"]
     assert parse_folds("0,2") == [0, 2]
-    assert set(VARIANTS) == {"r", "q", "g", "l"}
+    assert set(VARIANTS) == {"r", "q", "g", "l", "u", "m"}
     assert COMMON_OVERRIDES["batch_size"] == 8
     assert COMMON_OVERRIDES["fit_bins_on_train"] is True
     assert COMMON_OVERRIDES["event_sampling_fraction"] == 0.0
     assert COMMON_OVERRIDES["event_stratified_batches"] is True
     assert COMMON_OVERRIDES["dct_ipcw_rank_memory_size"] == 0
+    assert COMMON_OVERRIDES["dct_geometry_reliability_strength"] == 0.0
 
 
 def test_v35_command_is_fold_isolated_and_uses_existing_cancer_config():
@@ -46,3 +47,5 @@ def test_v35_variants_change_only_the_declared_architecture_controls():
     assert VARIANTS["g"]["dct_evidence_marginal_strength"] == 0.25
     assert VARIANTS["l"]["wsi_projection_dim"] == 128
     assert VARIANTS["l"]["otehv2_layers"] == 1
+    assert VARIANTS["u"]["dct_geometry_reliability_strength"] == 1.0
+    assert VARIANTS["m"]["dct_ipcw_rank_memory_size"] == 64

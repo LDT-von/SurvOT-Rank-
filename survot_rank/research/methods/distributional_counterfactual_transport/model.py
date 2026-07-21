@@ -76,6 +76,16 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         )
         if not 0.0 <= self.dct_evidence_marginal_strength <= 1.0:
             raise ValueError("dct_evidence_marginal_strength must be in [0, 1]")
+        self.dct_geometry_reliability_strength = float(
+            getattr(args, "dct_geometry_reliability_strength", 0.0)
+        )
+        self.dct_geometry_reliability_temperature = float(
+            getattr(args, "dct_geometry_reliability_temperature", 0.25)
+        )
+        if not 0.0 <= self.dct_geometry_reliability_strength <= 1.0:
+            raise ValueError("dct_geometry_reliability_strength must be in [0, 1]")
+        if self.dct_geometry_reliability_temperature <= 0.0:
+            raise ValueError("dct_geometry_reliability_temperature must be positive")
         self.dct_coupling_projection_iters = int(
             getattr(args, "dct_coupling_projection_iters", 1000)
         )
@@ -115,6 +125,7 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         self._rank_memory_risk = None
         self._rank_memory_times = None
         self._rank_memory_censorship = None
+        self._last_transport_reliability = None
 
     @staticmethod
     def _risk(logits):
@@ -203,6 +214,30 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         anneal = max(1, int(getattr(self.args, "rg_eps_anneal", 12)))
         return start + min(1.0, epoch / anneal) * (end - start)
 
+    def _geometry_reliability(self, stage_costs):
+        """Return agreement of the OT geometries for each patient and stage.
+
+        ``stage_costs`` has shape ``[B, G, K_w, K_o]``.  Each geometry is
+        converted to an edge distribution and their normalized
+        Jensen--Shannon divergence is mapped to reliability in ``[0, 1]``.
+        This adds no trainable parameters and is only active when the RTEM
+        screening switch is enabled.
+        """
+        geometry_count = stage_costs.size(1)
+        if geometry_count < 2:
+            return stage_costs.new_ones(stage_costs.size(0))
+        edge_prob = torch.softmax(
+            -stage_costs.flatten(2) / self.dct_geometry_reliability_temperature,
+            dim=-1,
+        )
+        mean_prob = edge_prob.mean(dim=1, keepdim=True).clamp_min(1e-8)
+        divergence = (
+            edge_prob.clamp_min(1e-8)
+            * (edge_prob.clamp_min(1e-8).log() - mean_prob.log())
+        ).sum(dim=-1).mean(dim=1)
+        normalized = divergence / max(math.log(float(geometry_count)), 1e-8)
+        return (1.0 - normalized).clamp(0.0, 1.0)
+
     def _cost_tensor(self, slots_wsi, slots_omic):
         """Return stage costs and evidence-conditioned OT marginals."""
         pair_tokens = self._pair_tokens(slots_wsi, slots_omic)
@@ -216,6 +251,7 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         )
 
         all_stage_costs, row_marginals, col_marginals, gates = [], [], [], []
+        reliabilities = []
         for stage_idx in range(self.spt_num_stages):
             stage_code = self.stage_embedding[stage_idx].view(1, 1, 1, dim)
             stage_code = stage_code.expand(bsz, sw, so, dim)
@@ -224,12 +260,15 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             )
             evidence_cost = self._normalize_stage_cost(-torch.log(gate.clamp_min(1e-6)))
             prognostic_cost = self._normalize_stage_cost(stage_cost[:, stage_idx])
-            all_stage_costs.append(torch.stack([
+            current_stage_costs = torch.stack([
                 base_cost
                 + self.spt_prog_cost_weight * prognostic_cost
                 + self.dct_evidence_cost_weight * evidence_cost
                 for base_cost in base_costs
-            ], dim=1))
+            ], dim=1)
+            all_stage_costs.append(current_stage_costs)
+            if self.dct_geometry_reliability_strength > 0.0:
+                reliabilities.append(self._geometry_reliability(current_stage_costs))
             # Gate affects both the energy and how much each semantic slot is
             # allowed to transport.  This avoids forcing weak evidence to carry
             # uniform mass merely because standard balanced OT requires it.
@@ -241,11 +280,24 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         rows = rows / rows.sum(dim=-1, keepdim=True)
         cols = cols / cols.sum(dim=-1, keepdim=True)
         strength = self.dct_evidence_marginal_strength
-        if strength < 1.0:
+        reliability_strength = self.dct_geometry_reliability_strength
+        if reliability_strength > 0.0:
+            reliability = torch.stack(reliabilities, dim=1)
+            effective_strength = strength * (
+                (1.0 - reliability_strength) + reliability_strength * reliability
+            )
             uniform_rows = torch.full_like(rows, 1.0 / rows.size(-1))
             uniform_cols = torch.full_like(cols, 1.0 / cols.size(-1))
-            rows = (1.0 - strength) * uniform_rows + strength * rows
-            cols = (1.0 - strength) * uniform_cols + strength * cols
+            rows = uniform_rows + effective_strength.unsqueeze(-1) * (rows - uniform_rows)
+            cols = uniform_cols + effective_strength.unsqueeze(-1) * (cols - uniform_cols)
+            self._last_transport_reliability = reliability.detach()
+        else:
+            if strength < 1.0:
+                uniform_rows = torch.full_like(rows, 1.0 / rows.size(-1))
+                uniform_cols = torch.full_like(cols, 1.0 / cols.size(-1))
+                rows = (1.0 - strength) * uniform_rows + strength * rows
+                cols = (1.0 - strength) * uniform_cols + strength * cols
+            self._last_transport_reliability = None
         return torch.stack(all_stage_costs, dim=1), rows, cols, torch.stack(gates, dim=1)
 
     @staticmethod
@@ -636,5 +688,9 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             "high_coupling_marginal_error": self._marginal_error(high_plans, rows, cols).detach(),
             "event_gate": factual_gate.detach(),
         }
+        if self._last_transport_reliability is not None:
+            self.last_explanations["transport_geometry_reliability"] = (
+                self._last_transport_reliability
+            )
 
         return factual_logits, 0.0
