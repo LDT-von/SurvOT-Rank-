@@ -93,5 +93,39 @@ U/M 是后续单变量诊断，不是新的论文方法，也不应早于 R/Q/G/
 5. evidence marginal entropy、IPCW pair 数没有异常塌缩；
 6. BRCA/UCEC 提升不能以明显损害 BLCA/LUAD 为代价。
 
+## BRCA 专属因果诊断与恢复线
+
+BRCA 不再复用多癌种 v3.5R 的批量覆盖参数。独立入口
+`scripts/run_dct_brca_recovery.py` 只读取 BRCA 配置，并写入
+`results/dct_brca_recovery/<variant>`，因此不会覆盖 BLCA、LUAD、LUSC 或
+SKCM 的模型和结果。
+
+第一阶段只跑 fold0/fold2，按 `ref -> det -> bin -> strat` 每次增加一个变化：
+
+- `ref`：复现 v3.3 随机验证 slot 协议；
+- `det`：仅把验证 slot 固定，用于估计旧 best-epoch 的随机乐观偏差；
+- `bin`：在 `det` 上仅增加训练折分箱；
+- `strat`：在 `bin` 上仅增加不重复患者的事件分层 batch，即 v3.5R 关键协议。
+
+第二阶段候选只相对 `det` 改一类因素：`a30` 加强未删失事件，`norank`
+关闭稀疏事件 IPCW 排序，`reg` 使用更保守的优化器参数。先完成第一阶段，定位
+掉分来源后再选择候选，不能把全部候选同时解释为方法增益。
+
+完整长时审计命令：
+
+```bash
+python3 scripts/run_dct_brca_recovery.py deep \
+  --variants ref,det,bin,strat --folds 0,2 --gpu 0
+```
+
+它依次执行 doctor、全量 pytest、每个变体的两批 smoke、正式 50-epoch
+fold0/fold2，并生成 `integrity_audit.csv`。审计会检查曲线、非有限指标、best
+checkpoint、final 结果及 best/last C-index。第一阶段结束后可按诊断结果运行：
+
+```bash
+python3 scripts/run_dct_brca_recovery.py run \
+  --variants a30,norank,reg --folds 0,2 --gpu 0
+```
+
 fold0/2 只负责淘汰。最终版本需跑完整 5-fold，并补充 NLL-only 对照、三种子、置信区间
 和结构消融。
