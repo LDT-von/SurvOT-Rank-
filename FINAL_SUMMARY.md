@@ -393,14 +393,14 @@
 |:----:|:----:|:--------:|:-----:|:------:|:---:|:-------:|--------|
 | BLCA | 381 | Y | Y | Y | 457 | **Done: 0.7311** | — |
 | BRCA | 418 | Y | Y | Y | 1131 | **Done: 0.6659** | — |
-| UCEC | 488 | Y | Y | Y | 0 | 待跑 | **WSI** |
-| LUAD | 467 | Y | Y | Y | 0 | 待跑 | **WSI** |
-| COADREAD | 573 | Y | Y | Y | 0 | 待跑 | **WSI** |
-| KIRC | 488 | Y | Y | Y | 0 | 待跑 | **WSI** |
-| LUSC | 460 | Y | Y | Y | 0 | 待跑 | **WSI** |
-| HNSC | 438 | Y | Y | Y | 0 | 待跑 | **WSI** |
-| SKCM | 409 | Y | Y | Y | 0 | 待跑 | **WSI** |
-| STAD | 366 | Y | Y | Y | 0 | 待跑 | **WSI** |
+| UCEC | 488 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
+| LUAD | 467 | Y | Y | Y | Y | v3.5R fold0 已有 | — |
+| COADREAD | 573 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
+| KIRC | 488 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
+| LUSC | 460 | Y | Y | Y | Y | v3.5R fold0 已有 | — |
+| HNSC | 438 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
+| SKCM | 409 | Y | Y | Y | Y | v3.5R fold0 已有 | — |
+| STAD | 366 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
 
 ### CPTAC 数据集
 
@@ -411,8 +411,10 @@
 
 ### 数据准备清单
 
-**只需 WSI patches（8 个）：** UCEC, LUAD, COADREAD, KIRC, LUSC, HNSC, SKCM, STAD
+**当前可运行 WSI patches（5 个）：** BRCA, LUAD, LUSC, BLCA, SKCM
 > 放置路径: `/data/CPathPatchFeature/{study}/uni/pt_files/*.pt`
+
+**当前无 WSI、不能进入 WSI+RNA 主实验（5 个）：** COADREAD, KIRC, UCEC, HNSC, STAD
 
 **只需 RNA 数据（2 个）：** CPTAC-LUAD, CPTAC-LUSC
 > 从 cBioPortal 下载 mRNA expression，处理后放入 `raw_rna_data_inter/`
