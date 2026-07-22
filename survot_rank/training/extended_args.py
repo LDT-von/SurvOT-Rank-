@@ -223,6 +223,11 @@ def build_base_parser() -> argparse.ArgumentParser:
         default=0,
         help="Within-epoch detached risk memory used to provide IPCW pairs beyond one micro-batch; 0 disables it.",
     )
+    parser.add_argument("--dct_lambda_etar", type=float, default=0.0)
+    parser.add_argument("--dct_etar_margin", type=float, default=0.02)
+    parser.add_argument("--dct_etar_uncertainty_weight", type=float, default=0.05)
+    parser.add_argument("--dct_etar_temperature", type=float, default=0.50)
+    parser.add_argument("--dct_etar_evidence_floor", type=float, default=0.10)
     # Legacy auxiliary objectives are opt-in ablations. The score-first recipe
     # intentionally does not optimise transport energy or duplicate rank losses.
     parser.add_argument("--dct_lambda_ot", type=float, default=0.0)

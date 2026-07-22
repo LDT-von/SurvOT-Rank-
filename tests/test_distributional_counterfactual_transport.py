@@ -28,6 +28,11 @@ def make_args():
         dct_ipcw_rank_temperature=0.50,
         dct_ipcw_max_weight=10.0,
         dct_ipcw_rank_memory_size=0,
+        dct_lambda_etar=0.0,
+        dct_etar_margin=0.02,
+        dct_etar_uncertainty_weight=0.05,
+        dct_etar_temperature=0.50,
+        dct_etar_evidence_floor=0.10,
         dct_lambda_ot=0.0,
         dct_lambda_rank=0.0,
         dct_lambda_anchor=0.0,
@@ -267,6 +272,33 @@ def test_ipcw_pairwise_rank_matches_cindex_direction():
     )
     assert correctly_ranked < reversed_rank
     assert model.last_ipcw_pair_count.item() == 1
+
+
+def test_etar_is_finite_and_records_transport_diagnostics():
+    torch.manual_seed(7)
+    args = make_args()
+    args.dct_lambda_ipcw_rank = 0.0
+    args.dct_lambda_etar = 0.10
+    model = DistributionalCounterfactualTransport(args, omic_input_dim=20)
+    model.configure_train_reference(
+        torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0]),
+        torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+    )
+    model.train()
+    logits, aux_loss = model(
+        x_wsi=torch.randn(5, 6, 16),
+        x_omics=torch.randn(5, 5, 20),
+        event_time=torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0]),
+        c=torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+    )
+    assert logits.shape == (5, 4)
+    assert torch.isfinite(aux_loss)
+    assert model.last_training_losses["etar_pairs"] > 0
+    assert model.last_training_losses["etar_evidence"] >= args.dct_etar_evidence_floor
+    assert torch.allclose(
+        aux_loss, args.dct_lambda_etar * model.last_training_losses["etar"]
+    )
+    aux_loss.backward()
 
 
 def test_ipcw_rank_memory_adds_cross_batch_pairs_without_attaching_old_logits():

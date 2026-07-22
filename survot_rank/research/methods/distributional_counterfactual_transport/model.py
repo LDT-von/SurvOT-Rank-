@@ -51,12 +51,30 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         self.dct_ipcw_rank_memory_size = int(
             getattr(args, "dct_ipcw_rank_memory_size", 0)
         )
+        # ETAR is opt-in.  With weight zero the v3.3 objective is unchanged.
+        self.dct_lambda_etar = float(getattr(args, "dct_lambda_etar", 0.0))
+        self.dct_etar_margin = float(getattr(args, "dct_etar_margin", 0.02))
+        self.dct_etar_uncertainty_weight = float(
+            getattr(args, "dct_etar_uncertainty_weight", 0.05)
+        )
+        self.dct_etar_temperature = float(
+            getattr(args, "dct_etar_temperature", 0.50)
+        )
+        self.dct_etar_evidence_floor = float(
+            getattr(args, "dct_etar_evidence_floor", 0.10)
+        )
         if self.dct_ipcw_rank_memory_size < 0:
             raise ValueError("dct_ipcw_rank_memory_size must be non-negative")
         if self.dct_ipcw_rank_temperature <= 0.0:
             raise ValueError("dct_ipcw_rank_temperature must be positive")
         if self.dct_ipcw_max_weight <= 0.0:
             raise ValueError("dct_ipcw_max_weight must be positive")
+        if self.dct_lambda_etar < 0.0:
+            raise ValueError("dct_lambda_etar must be non-negative")
+        if self.dct_etar_temperature <= 0.0:
+            raise ValueError("dct_etar_temperature must be positive")
+        if not 0.0 <= self.dct_etar_evidence_floor <= 1.0:
+            raise ValueError("dct_etar_evidence_floor must be in [0, 1]")
         self.dct_lambda_ot = float(getattr(args, "dct_lambda_ot", 0.0))
         self.dct_lambda_rank = float(getattr(args, "dct_lambda_rank", 0.0))
         self.dct_lambda_anchor = float(getattr(args, "dct_lambda_anchor", 0.0))
@@ -465,6 +483,53 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             pair_losses[comparable] * pair_weights
         ).sum() / pair_weights.sum().clamp_min(1e-6)
 
+    @staticmethod
+    def _transport_uncertainty(plans):
+        """Normalized entropy of the already-computed coupling plans."""
+        entropies = []
+        for stage_plans in plans:
+            for plan in stage_plans:
+                flat = plan.flatten(1).clamp_min(1e-8)
+                prob = flat / flat.sum(dim=1, keepdim=True).clamp_min(1e-8)
+                entropy = -(prob * prob.log()).sum(dim=1)
+                entropies.append(entropy / math.log(max(2, flat.size(1))))
+        return torch.stack(entropies, dim=1).mean(dim=1).clamp(0.0, 1.0)
+
+    def _etar_loss(self, factual_logits, event_time, censorship, evidence_gate, plans):
+        """Evidence-Transport Adaptive Ranking (ETAR).
+
+        IPCW corrects censoring, while DCT evidence mass downweights weak pairs
+        and coupling entropy expands the margin for ambiguous cross-modal
+        transport.  The censoring reference is always fit on the train fold.
+        """
+        risk = self._risk(factual_logits)
+        times = event_time.float().view(-1)
+        censorship = censorship.float().view(-1)
+        observed = censorship < 0.5
+        comparable = observed[:, None] & (times[:, None] < times[None, :])
+        self.last_etar_pair_count = comparable.sum().detach()
+        if not bool(comparable.any()):
+            return risk.sum() * 0.0
+
+        evidence = evidence_gate.mean(dim=(1, 2, 3)).clamp(0.0, 1.0)
+        evidence = evidence.clamp_min(self.dct_etar_evidence_floor)
+        uncertainty = self._transport_uncertainty(plans)
+        pair_uncertainty = 0.5 * (uncertainty[:, None] + uncertainty[None, :])
+        adaptive_margin = self.dct_etar_margin + (
+            self.dct_etar_uncertainty_weight * pair_uncertainty
+        )
+        differences = risk[:, None] - risk[None, :]
+        pair_losses = self.dct_etar_temperature * F.softplus(
+            (adaptive_margin - differences) / self.dct_etar_temperature
+        )
+        event_weights = self._ipcw(times).square().clamp_max(self.dct_ipcw_max_weight)
+        pair_weights = (
+            event_weights[:, None] * evidence[:, None] * evidence[None, :]
+        )[comparable]
+        self.last_etar_evidence = evidence.detach().mean()
+        self.last_etar_uncertainty = uncertainty.detach().mean()
+        return (pair_losses[comparable] * pair_weights).sum() / pair_weights.sum().clamp_min(1e-6)
+
     def _remember_ipcw_batch(self, risk, times, censorship):
         if self.dct_ipcw_rank_memory_size <= 0:
             return
@@ -574,6 +639,7 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         anchor_loss = factual_costs.new_zeros(())
         stage_risk_loss = factual_costs.new_zeros(())
         ipcw_rank_loss = factual_costs.new_zeros(())
+        etar_loss = factual_costs.new_zeros(())
         ipcw_pair_count = factual_costs.new_zeros(())
         if kwargs.get("event_time") is not None and kwargs.get("c") is not None:
             low_weights, high_weights = self._stage_membership_weights(kwargs["event_time"], kwargs["c"])
@@ -597,6 +663,14 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                         self._risk(factual_logits),
                         kwargs["event_time"].float().view(-1),
                         kwargs["c"].float().view(-1),
+                    )
+                if self.dct_lambda_etar != 0.0:
+                    etar_loss = self._etar_loss(
+                        factual_logits,
+                        kwargs["event_time"],
+                        kwargs["c"],
+                        evidence_gate,
+                        factual_plans,
                     )
                 self._update_risk_anchors(factual_costs.detach(), low_weights, high_weights)
 
@@ -636,6 +710,16 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             self.last_training_losses = {
                 "ot": ot_distance.detach(),
                 "ipcw_rank": ipcw_rank_loss.detach(),
+                "etar": etar_loss.detach(),
+                "etar_pairs": getattr(
+                    self, "last_etar_pair_count", factual_costs.new_zeros(())
+                ).detach(),
+                "etar_evidence": getattr(
+                    self, "last_etar_evidence", factual_costs.new_zeros(())
+                ).detach(),
+                "etar_uncertainty": getattr(
+                    self, "last_etar_uncertainty", factual_costs.new_zeros(())
+                ).detach(),
                 "ipcw_pairs": ipcw_pair_count.detach(),
                 "rank": rank_loss.detach(),
                 "anchor": anchor_loss.detach(),
@@ -649,6 +733,7 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             }
 
             aux_loss = self.dct_lambda_ipcw_rank * ipcw_rank_loss
+            aux_loss = aux_loss + self.dct_lambda_etar * etar_loss
             aux_loss = aux_loss + self.dct_lambda_ot * ot_distance
             aux_loss = aux_loss + self.dct_lambda_rank * rank_loss
             aux_loss = aux_loss + self.dct_lambda_anchor * anchor_loss
