@@ -129,6 +129,75 @@
 
 ---
 
+## 🧪 BRCA Recovery fold0 结果 (2026-07-22)
+
+> 脚本: [run_dct_brca_recovery.py](file:///home/ubuntu/SurvOT-Rank/scripts/run_dct_brca_recovery.py)
+> 提交: a3558da | max_epochs=50, batch=8, lr=5e-4, alpha_surv=0.15, dct_lambda_ipcw_rank=0.10, seed=3, early_stop_patience=0
+> 结果目录: `results/dct_brca_recovery/`
+
+### 变体说明
+
+| 变体 | slot | fit_bins | strat_batch | alpha_surv | ipcw_rank | lr | reg | legacy 等宽 |
+|:-----|:----:|:--------:|:-----------:|:----------:|:---------:|:--:|:---:|:-----------:|
+| ref | random | no | no | 0.15 | 0.10 | 5e-4 | 5e-4 | — |
+| det | determ. | no | no | 0.15 | 0.10 | 5e-4 | 5e-4 | — |
+| bin | determ. | yes | no | 0.15 | 0.10 | 5e-4 | 5e-4 | — |
+| strat | determ. | yes | yes | 0.15 | 0.10 | 5e-4 | 5e-4 | — |
+| a30 | determ. | no | no | **0.30** | 0.10 | 5e-4 | 5e-4 | — |
+| norank | determ. | no | no | 0.15 | **0.00** | 5e-4 | 5e-4 | — |
+| reg | determ. | no | no | 0.15 | 0.10 | **2e-4** | **1e-3** | — |
+
+> 每个变体有二分箱对照：默认 qcut（等频）vs `_legacy`（SlotSPE 原始等宽 pd.cut(4)）
+
+### fold0 结果汇总
+
+#### qcut 等频分箱
+
+| 变体 | Best Epoch | C-Index | IPCW | IBS | iAUC | Last C-Index | 状态 |
+|:-----|:----------:|:-------:|:----:|:---:|:----:|:------------:|:----:|
+| ref | 3 | 0.5932 | 0.5370 | 0.0293 | 0.6545 | 0.5476 | ⚠️ E21 中断 |
+| det | 32 | 0.6055 | 0.5015 | 0.0427 | 0.4932 | 0.4793 | ✅ |
+| bin | 3 | 0.6067 | 0.6053 | 0.0276 | 0.6090 | 0.5254 | ✅ |
+| strat | 2 | 0.6026 | 0.6815 | 0.0273 | 0.5938 | 0.4366 | ✅ |
+| a30 | 1 | 0.6067 | 0.5720 | 0.0295 | 0.6316 | 0.3282 | 🔄 E33/50 |
+| **norank** | 30 | 0.6096 | 0.6403 | 0.0657 | 0.5883 | 0.5371 | 🔄 E33/50 |
+| reg | 2 | 0.6271 | 0.5291 | 0.0291 | 0.6555 | 0.5634 | 🔄 E4/50 |
+
+#### legacy 等宽分箱 (SlotSPE 原始)
+
+| 变体 | Best Epoch | C-Index | IPCW | IBS | iAUC | Last C-Index | 状态 |
+|:-----|:----------:|:-------:|:----:|:---:|:----:|:------------:|:----:|
+| det_legacy | 11 | **0.6616** | 0.5435 | 0.1846 | 0.5246 | 0.4553 | ✅ |
+| bin_legacy | 3 | 0.5880 | 0.4339 | 0.1906 | 0.4171 | 0.3115 | ✅ |
+| strat_legacy | 4 | 0.6259 | 0.4975 | 0.2213 | 0.4408 | 0.4833 | ✅ |
+| a30_legacy | 3 | 0.6184 | 0.4460 | 0.1965 | 0.4533 | 0.5172 | 🔄 E34/50 |
+| **norank_legacy** | 15 | **0.6809** | 0.5384 | 0.2168 | 0.6005 | 0.5868 | 🔄 E31/50 |
+| reg_legacy | 3 | 0.6441 | 0.4251 | 0.2327 | 0.4524 | 0.6441 | 🔄 E4/50 |
+
+### 关键发现
+
+1. **qcut 分箱下 C-Index 集中在 0.59-0.63**，变体间差异极小（±0.02），BRCA 事件稀疏（~8% DSS events）是根本瓶颈
+2. **norank (IPCW=0) 在 qcut 下 epoch 30 仍在改进**，是唯一不早 peak 的变体
+3. **legacy 等宽分箱 C-Index 更高 (0.62-0.68)**，但 IBS 极差（0.18-0.23），原因：pd.cut(bins=4) 导致 bin2/3 几乎无样本，实质上退化为二分类
+4. **strat (event-stratified batches) 有害**：qcut 同 bin 条件下 strat=0.60 < bin=0.61，legacy 也类似
+5. **alpha_surv=0.30 无效**：a30=0.6067，和 det=0.6055 完全一致
+6. **reg (保守优化器) 刚重启**，lr=2e-4, reg=1e-3，Epoch 4 为 0.6271（qcut 最高），等完整训练后判断
+7. **普遍过拟合**：train C-Index 终端 0.98+，val 早期 peak 后持续退化
+
+### fold0 最佳 Top-5
+
+| 排名 | 变体 | C-Index | 分箱 | 备注 |
+|:----:|:-----|:-------:|:----:|:-----|
+| 1 | norank_legacy | 0.6809 | 等宽 | IBS=0.22，校准差 |
+| 2 | det_legacy | 0.6616 | 等宽 | IBS=0.18 |
+| 3 | reg_legacy | 0.6441 | 等宽 | 仅 E4 |
+| 4 | reg | 0.6271 | qcut | 仅 E4 |
+| 5 | strat_legacy | 0.6259 | 等宽 | IBS=0.22 |
+
+> ⚠️ fold2 全部未跑。等 fold0 全部完成后启动队列。
+
+---
+
 ## ⚠️ DCT v3.4 事件感知实验（已暂停）
 
 > 训练脚本: [run_dct_multicancer_formal.py](file:///home/ubuntu/SurvOT-Rank/scripts/run_dct_multicancer_formal.py)

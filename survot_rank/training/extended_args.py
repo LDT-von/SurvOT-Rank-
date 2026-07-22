@@ -88,6 +88,16 @@ def build_base_parser() -> argparse.ArgumentParser:
         help="Fit discrete survival bins from the current fold's uncensored training cases only.",
     )
     parser.add_argument(
+        "--binning_mode",
+        type=str,
+        default="global_qcut",
+        choices=["global_qcut", "legacy_equal_width"],
+        help=(
+            "global_qcut (default): equal-frequency qcut on all uncensored data. "
+            "legacy_equal_width: original SlotSPE equal-width pd.cut(bins=4)."
+        ),
+    )
+    parser.add_argument(
         "--event_sampling_fraction",
         type=float,
         default=0.0,

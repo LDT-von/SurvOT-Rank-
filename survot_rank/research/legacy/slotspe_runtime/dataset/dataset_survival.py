@@ -56,7 +56,8 @@ class SurvivalDatasetFactory:
                  eps=1e-6,
                  num_patches=4096,
                  num_genes=None,
-                 clinical_feature_cols=None):
+                 clinical_feature_cols=None,
+                 binning_mode="global_qcut"):
         self.study = study
         self.data_path = data_path
         self.signature = signature
@@ -72,6 +73,7 @@ class SurvivalDatasetFactory:
         self.label_col = label_col
         self.clinical_feature_cols = clinical_feature_cols
         self.use_clinical_modality = clinical_feature_cols is not None and len(clinical_feature_cols) > 0
+        self.binning_mode = binning_mode  # "global_qcut" (default) or "legacy_equal_width"
 
         if self.label_col == "survival_months_os":
             self.survival_endpoint = "OS"
@@ -114,31 +116,40 @@ class SurvivalDatasetFactory:
 
         # discretize the label
         # The training runner refits these labels from each fold's training split.
-        self._disc_label(self._get_uncensored_data())
+        if self.binning_mode == "legacy_equal_width":
+            self._legacy_disc_label(self._get_uncensored_data())
+        else:
+            self._disc_label(self._get_uncensored_data())
 
     def _get_uncensored_data(self):
         uncensored_df = self.clinical_df[self.clinical_df[self.censorship_var] < 1]
         return uncensored_df
 
-    def _legacy_disc_label(self, uncensored_df):
-        # 修复历史 bug：原实现先用 pd.qcut 在未删失（uncensored）病人身上算出正确的
-        # 等频分位数边界 q_bins，但紧接着又调用 pd.cut 对*全部*病人（含删失）做等宽
-        # 分箱并覆盖掉 disc_labels/q_bins，导致第一行 qcut 的计算完全是死代码。
-        # 实际生效的等宽分箱在右删失比例高（时间分布长尾）的生存数据上会把绝大多数
-        # 病人塞进第一个箱、最后一个箱只剩个位数样本（如 BLCA 4 类分布曾是
-        # {0:310, 1:50, 2:16, 3:4}，箱3 仅占 1.1%），5-fold 切分后某些折几乎分不到
-        # 箱3/箱2 样本，导致 C-index 在不同 fold 间出现看似随机、实则系统性的大幅波动。
-        #
-        # 修复：改用 pd.qcut 算出的等频边界，再用这组边界（两端扩展到覆盖全体病人，
-        # 而不仅是未删失病人，避免删失病人时间超出未删失病人范围时落到区间外变成
-        # NaN）对全部病人分箱，保证四个类别样本数大致均衡。
-        disc_labels, q_bins = pd.qcut(uncensored_df[self.label_col], q=self.n_bins, retbins=True, labels=False)
-        q_bins[0] = self.clinical_df[self.label_col].min() - self.eps
-        q_bins[-1] = self.clinical_df[self.label_col].max() + self.eps
-        disc_labels = pd.cut(self.clinical_df[self.label_col], bins=q_bins, labels=False,
-                              right=False, include_lowest=True)
-        self.clinical_df.insert(2, 'label', disc_labels.values.astype(int))
-        self.bins = q_bins
+    def _legacy_disc_label(self, df):
+        """Original SlotSPE equal-width binning via pd.cut(bins=4).
+
+        The original code first called pd.qcut, then immediately overwrote the
+        result with pd.cut(bins=self.n_bins).  Since n_bins is an integer (4),
+        pd.cut divides the full survival time range into 4 equal-width intervals.
+
+        Bin boundaries are computed from *df* so that the caller controls which
+        subset defines the range (all uncensored in __init__; training-fold
+        uncensored in fit_label_bins).  The resulting boundaries are then applied
+        to every row in self.clinical_df.
+        """
+        _, bins = pd.cut(
+            df[self.label_col],
+            bins=self.n_bins,
+            retbins=True,
+            labels=False,
+        )
+        disc_labels = pd.cut(
+            self.clinical_df[self.label_col],
+            bins=bins,
+            labels=False,
+        )
+        self.clinical_df["label"] = disc_labels.values.astype(int)
+        self.bins = bins
 
     def _disc_label(self, uncensored_df):
         """Fit train-only quantile bins and apply them to all clinical rows."""
@@ -179,7 +190,11 @@ class SurvivalDatasetFactory:
         ]
         if train_df.empty:
             raise ValueError("Training split is empty; cannot fit survival bins")
-        self._disc_label(train_df[train_df[self.censorship_var] < 1])
+        uncensored = train_df[train_df[self.censorship_var] < 1]
+        if self.binning_mode == "legacy_equal_width":
+            self._legacy_disc_label(uncensored)
+        else:
+            self._disc_label(uncensored)
 
     def _setup_signatures(self, rna_data_df):
         if self.signature == "six":

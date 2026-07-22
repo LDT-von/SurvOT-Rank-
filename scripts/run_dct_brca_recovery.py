@@ -59,10 +59,21 @@ VARIANTS = {
         "label": "v3.3 with deterministic validation slots",
         "dct_slot_init_mode": "deterministic",
     },
+    "det_legacy": {
+        "label": "det with legacy SlotSPE equal-width binning (pd.cut bins=4)",
+        "dct_slot_init_mode": "deterministic",
+        "binning_mode": "legacy_equal_width",
+    },
     "bin": {
         "label": "det + train-fold survival bins",
         "dct_slot_init_mode": "deterministic",
         "fit_bins_on_train": True,
+    },
+    "bin_legacy": {
+        "label": "bin with legacy SlotSPE equal-width binning",
+        "dct_slot_init_mode": "deterministic",
+        "fit_bins_on_train": True,
+        "binning_mode": "legacy_equal_width",
     },
     "strat": {
         "label": "bin + patient-complete event-stratified batches (v3.5R)",
@@ -70,25 +81,47 @@ VARIANTS = {
         "fit_bins_on_train": True,
         "event_stratified_batches": True,
     },
+    "strat_legacy": {
+        "label": "strat with legacy SlotSPE equal-width binning",
+        "dct_slot_init_mode": "deterministic",
+        "fit_bins_on_train": True,
+        "event_stratified_batches": True,
+        "binning_mode": "legacy_equal_width",
+    },
     "a30": {
         "label": "det + moderate uncensored-event emphasis",
         "dct_slot_init_mode": "deterministic",
         "alpha_surv": 0.30,
+    },
+    "a30_legacy": {
+        "label": "a30 with legacy SlotSPE equal-width binning",
+        "dct_slot_init_mode": "deterministic",
+        "alpha_surv": 0.30,
+        "binning_mode": "legacy_equal_width",
     },
     "norank": {
         "label": "det + NLL-only control for sparse BRCA events",
         "dct_slot_init_mode": "deterministic",
         "dct_lambda_ipcw_rank": 0.0,
     },
+    "norank_legacy": {
+        "label": "norank with legacy SlotSPE equal-width binning",
+        "dct_slot_init_mode": "deterministic",
+        "dct_lambda_ipcw_rank": 0.0,
+        "binning_mode": "legacy_equal_width",
+    },
     "reg": {
         "label": "det + conservative BRCA optimizer",
         "dct_slot_init_mode": "deterministic",
         "lr": 0.0002,
         "reg": 0.001,
-        "early_stop_patience": 8,
-        "early_stop_min_delta": 0.002,
-        "early_stop_metric": "val_cindex",
-        "early_stop_warmup": 5,
+    },
+    "reg_legacy": {
+        "label": "reg with legacy SlotSPE equal-width binning",
+        "dct_slot_init_mode": "deterministic",
+        "lr": 0.0002,
+        "reg": 0.001,
+        "binning_mode": "legacy_equal_width",
     },
 }
 

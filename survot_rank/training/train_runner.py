@@ -531,6 +531,7 @@ def train_one_fold(args, dataset_factory, fold, log_file):
         log_file,
         f"[data] train_events={train_events} val_events={val_events} "
         f"train_bins={train_bins} val_bins={val_bins} "
+        f"binning_mode={getattr(args, 'binning_mode', 'global_qcut')} "
         f"fit_bins_on_train={bool(getattr(args, 'fit_bins_on_train', False))} "
         f"event_sampling_fraction={float(getattr(args, 'event_sampling_fraction', 0.0) or 0.0):.3f}",
     )
@@ -691,6 +692,7 @@ def run(args):
         num_genes=args.num_genes,
         num_patches=args.num_patches,
         clinical_feature_cols=clinical_feature_cols,
+        binning_mode=getattr(args, "binning_mode", "global_qcut"),
     )
 
     # 传递临床模态开关给模型
