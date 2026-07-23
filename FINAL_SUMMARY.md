@@ -103,10 +103,30 @@
 1. **_final.pkl 中 IPCW/IBS/iAUC 为 0** — epoch_curve.csv 值正常，仅 pkl 存储有误
 2. **BLCA fold0 未生成 final.pkl** — 训练在 epoch 17 中断
 3. **Fold2 全部未跑** — 脚本在处理 fold2 前退出
-4. **5 癌种无 WSI 数据** — COADREAD/KIRC/UCEC/HNSC/STAD 暂无法运行
+4. ~~**5 癌种无 WSI 数据**~~ — 已于 2026-07-23 全部解压完毕，现 11 癌种 WSI 特征均可用
 
 ### 数据完整性
-全部 10 癌种基因数据和生存标签完整，临床无缺失 RNA。WSI 缺失：BRCA 2 个 (DX2)、LUAD 1 个。
+全部 10 癌种基因数据和生存标签完整，临床无缺失 RNA。
+
+**WSI 特征文件状态 (2026-07-23):**
+
+> UNI2-h pt 特征已全部解压至 `/data1/TCGA-UNI2-h-features/<cancer>/uni2-h/pt_files/`
+
+| 癌种 | 状态 | 解压时间 | 耗时 |
+|:-----|:----:|:--------:|:----:|
+| BLCA | ✅ | 07:26 | — |
+| BRCA (IDC) | ✅ | 07:50 | 24min |
+| COAD | ✅ | 08:27 | 37min |
+| READ | ✅ | 08:39 | 12min |
+| HNSC | ✅ | 08:43 | 4min |
+| KIRC | ✅ | 08:55 | 12min |
+| LUAD | ✅ | 09:18 | 23min |
+| LUSC | ✅ | 09:45 | 27min |
+| SKCM | ✅ | 10:11 | 26min |
+| STAD | ✅ | 10:29 | 18min |
+| UCEC | ✅ | 10:42 | 13min |
+
+> 全部 11 个癌种 WSI 特征可用。少数样本级缺失：BRCA 2 个 (DX2)、LUAD 1 个。
 
 ---
 
@@ -195,7 +215,41 @@
 | 4 | reg_legacy | 0.6441 | 等宽 | ✅ |
 | 5 | strat_legacy | 0.6259 | 等宽 | IBS=0.22 |
 
-> 13/13 fold0 全部完成（50 epochs）。fold2 运行中（ref 进行中）。
+> 13/13 fold0 全部完成（50 epochs）。
+
+### fold2 结果与任务取舍 (2026-07-23)
+
+> fold2 队列原含 13 变体，经评估后保留关键分箱对照，其余停止。
+
+#### fold2 已完成/运行中
+
+| 变体 | Best Epoch | C-Index | 与 fold0 差异 | 状态 |
+|:-----|:----------:|:-------:|:------------:|:----:|
+| ref | 17 | **0.7510** | **+0.1578** | ✅ |
+| det | 21 | 0.6951 | +0.0896 | ✅ |
+| bin | 22 | 0.6440 | +0.0373 | ✅ |
+| reg | 4 | 0.5709 | **-0.0983** | ✅ |
+| a30_legacy | 16 | 0.7247 | +0.1063 | ✅ |
+| strat | — | — | — | 🔄 运行中 |
+| det_legacy | — | — | — | 🔄 运行中 |
+| bin_legacy | — | — | — | ⏳ 排队 (g4) |
+
+#### 已停止排队
+
+| 变体 | 停止原因 |
+|:-----|:---------|
+| strat_legacy | 分箱对照已由 det_legacy/bin_legacy 覆盖 |
+| norank_legacy | IPCW=0 非分箱核心变量，fold0 已完成 |
+| reg_legacy | 保守优化器非分箱核心变量 |
+| norank | IPCW=0 非分箱核心变量 |
+| a30 | alpha=0.30 fold0 已证明与 det 无差异 |
+
+#### 当前结论
+
+- det vs det_legacy 在 fold0/fold2 **方向相反**（fold0: det<det_legacy, fold2: det>det_legacy），两折平均几乎一致
+- fold0/fold2 差异大（BRCA ~8% 事件率导致），**两折仅用于筛选，不能形成论文结论**
+- SlotSPE 等宽分箱暂无稳定优势
+- 最终需 det/bin 在同 commit 下跑完整 5 折量化分箱影响
 
 ---
 
