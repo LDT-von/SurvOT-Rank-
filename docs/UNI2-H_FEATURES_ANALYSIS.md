@@ -55,10 +55,20 @@ TCGA-BT-A3PH-01Z-00-DX1.18FB196C-9F66-4676-81DC-F58A0A5577D8.h5
 | 存储方式 | 扁平目录，每 WSI 一个 `.pt` 文件 | 每癌种一个 `tar.gz`，内部含所有 `.h5` |
 | 路径前缀 | `data/TCGA-PatchFeature/` 或 `data/TCGA_uni_features/pt_files/` | `/data1/TCGA-UNI2-h-features/{cancer}/uni2-h/pt_files/` |
 | 编码器 | UNI v1 | **UNI v2 (H)** |
-| encoding_dim | **768** | **待确认** (可能是 1024/1536/2048) |
-| num_patches | 待确认 | **待确认**（可能不同） |
+| encoding_dim | **768** | **1536** ✅ 已确认 |
+| num_patches | 固定 4096 | **不固定**（约 4977，每 WSI 不同） |
+| H5 结构 | — | `features(1,N,1536)`, `coords(1,N,2)`, `annots(1,N,1)`, `coords_patching(N,2)` |
 
-### 3.2 加载代码对比
+### 3.2 实际数据验证
+
+```python
+# features: shape=(1, 4977, 1536), dtype=float32
+# coords: shape=(1, 4977, 2), dtype=int64
+# annots: shape=(1, 4977, 1), dtype=int64
+# coords_patching: shape=(4977, 2), dtype=int64
+```
+
+### 3.3 加载代码对比
 
 **当前 SurvOT-Rank 加载方式** (`dataset_survival.py:312-326`):
 ```python
@@ -80,7 +90,7 @@ def load_wsi(self, slides):
 - 需要使用 `h5py` 替代 `torch.load`
 - 文件名匹配逻辑不变 (slide_id → UUID mapping)
 
-### 3.3 癌种覆盖
+### 3.4 癌种覆盖
 
 | 癌种 | 当前是否有 WSI | UNI2-h |
 |:-----|:------------:|:------:|
