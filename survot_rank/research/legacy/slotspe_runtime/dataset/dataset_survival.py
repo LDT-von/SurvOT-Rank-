@@ -148,6 +148,8 @@ class SurvivalDatasetFactory:
             bins=bins,
             labels=False,
         )
+        disc_labels = disc_labels.fillna(0).clip(0, self.n_bins - 1)
+        disc_labels = disc_labels.fillna(0).clip(0, self.n_bins - 1)
         self.clinical_df["label"] = disc_labels.values.astype(int)
         self.bins = bins
 
