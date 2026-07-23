@@ -47,6 +47,10 @@ bash scripts/run_dct_multicancer_formal.sh run
 # Smoke-test only the BRCA and LUSC launch paths
 python scripts/run_dct_multicancer_formal.py smoke --cancers brca,lusc
 
+# DCT v3.7: train-fold-clean screening with extracted UNI2-h HDF5 features
+python scripts/run_dct_v37_uni2h_screen.py doctor
+python scripts/run_dct_v37_uni2h_screen.py plan --cancers blca,brca --folds 0,2
+
 # Ensemble evaluation for multiple seed result folders
 python -m survot_rank.cli ensemble --dirs results/seed3 results/seed5
 ```
@@ -161,6 +165,9 @@ survot_rank/research/legacy/slotspe_runtime/dataset_csv/
 ```
 
 Adjust `data_root_dir` and `data_path` in YAML if your data lives elsewhere.
+The DCT v3.7 UNI2-h launcher instead expects
+`/data1/TCGA-UNI2-h-features/<study>/uni2-h/pt_files/*.{h5,hdf5,pt}` and checks
+that the feature dimension is 1536 before server-side screening.
 
 ## Notes
 

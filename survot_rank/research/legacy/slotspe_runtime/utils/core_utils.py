@@ -40,7 +40,8 @@ def _get_split(args, dataset_factory, cur):
     print('\nInit train/val splits...', end=' ')
     
     # 根据 study + encoder 动态构建路径 - /data/CPathPatchFeature/{study}/{encoder}/pt_files
-    base_path = f'/data/CPathPatchFeature/{args.study}'
+    data_root = getattr(args, "data_root_dir", None) or "/data/CPathPatchFeature"
+    base_path = os.path.join(data_root, args.study)
     wsi_path = f'{base_path}/{args.wsi_encoder}/pt_files'
     
     train_data = SurvivalDataset(dataset_factory, wsi_path, 'train', cur, args.encoding_dim)

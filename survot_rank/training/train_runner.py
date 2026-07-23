@@ -240,8 +240,14 @@ def get_split(args, dataset_factory, fold):
         # cannot influence the fold's label representation.
         dataset_factory.fit_label_bins(split_df["train"].dropna().tolist())
 
-    train_data = SurvivalDataset(dataset_factory, args.data_root_dir, 'train', fold, args.encoding_dim)
-    test_data = SurvivalDataset(dataset_factory, args.data_root_dir, 'val', fold, args.encoding_dim)
+    wsi_path = os.path.join(
+        args.data_root_dir,
+        dataset_factory.study,
+        getattr(args, "wsi_encoder", "uni"),
+        "pt_files",
+    )
+    train_data = SurvivalDataset(dataset_factory, wsi_path, 'train', fold, args.encoding_dim)
+    test_data = SurvivalDataset(dataset_factory, wsi_path, 'val', fold, args.encoding_dim)
 
     # 鍚敤澶氳繘绋嬫暟鎹姞杞藉拰椤甸攣瀹氬唴瀛樹互鍔犻€?GPU 璁粌
     num_workers = getattr(args, 'num_workers', 4)

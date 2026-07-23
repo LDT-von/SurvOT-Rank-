@@ -7,6 +7,8 @@
 @time:12/20/24 4:17 PM
 '''
 import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import torch
@@ -285,6 +287,7 @@ class SurvivalDataset(Dataset):
         self.split_key = split_key
         self.fold = fold  # which fold to use
         self.encoding_dim = encoding_dim
+        self._wsi_feature_index = None
 
         if split_key in ['train', 'val']:
             self.label_df = self._load_split()
@@ -311,6 +314,66 @@ class SurvivalDataset(Dataset):
 
         return clinical_df_splits
 
+    def _build_wsi_feature_index(self):
+        """Index supported feature files once, including nested archive layouts."""
+        root = Path(self.wsi_path)
+        index = {}
+        if root.is_dir():
+            for suffix in ("*.pt", "*.h5", "*.hdf5"):
+                for feature_path in root.rglob(suffix):
+                    index.setdefault(feature_path.stem, feature_path)
+        self._wsi_feature_index = index
+
+    def _resolve_wsi_feature_path(self, slide_id):
+        stem = str(slide_id).removesuffix(".svs")
+        root = Path(self.wsi_path)
+        for suffix in (".pt", ".h5", ".hdf5"):
+            candidate = root / f"{stem}{suffix}"
+            if candidate.is_file():
+                return candidate
+        if self._wsi_feature_index is None:
+            self._build_wsi_feature_index()
+        return self._wsi_feature_index.get(stem)
+
+    def _load_wsi_feature(self, feature_path):
+        feature_path = Path(feature_path)
+        if feature_path.suffix == ".pt":
+            features = torch.load(feature_path, map_location="cpu")
+        elif feature_path.suffix in {".h5", ".hdf5"}:
+            try:
+                import h5py
+            except ImportError as error:
+                raise ImportError(
+                    "Loading UNI2-h .h5 features requires h5py. "
+                    "Install the project requirements before training."
+                ) from error
+            with h5py.File(feature_path, "r") as handle:
+                if "features" not in handle:
+                    raise KeyError(f"missing HDF5 dataset 'features': {feature_path}")
+                features = torch.from_numpy(handle["features"][...])
+        else:
+            raise ValueError(f"unsupported WSI feature format: {feature_path}")
+
+        if isinstance(features, dict):
+            if "features" not in features:
+                raise KeyError(f"missing tensor key 'features': {feature_path}")
+            features = features["features"]
+        if not isinstance(features, torch.Tensor):
+            features = torch.as_tensor(features)
+        if features.ndim == 3 and features.size(0) == 1:
+            features = features.squeeze(0)
+        if features.ndim != 2:
+            raise ValueError(
+                f"WSI features must have shape (patches, dim), got "
+                f"{tuple(features.shape)} from {feature_path}"
+            )
+        if features.size(1) != self.encoding_dim:
+            raise ValueError(
+                f"WSI encoding dimension mismatch for {feature_path}: "
+                f"expected {self.encoding_dim}, got {features.size(1)}"
+            )
+        return features.to(dtype=torch.float32)
+
     def load_wsi(self, slides):
         if str(slides) == "nan":
             return torch.zeros((1))
@@ -318,9 +381,9 @@ class SurvivalDataset(Dataset):
             slide_ids = slides.split(", ")
             wsi = []
             for slide_id in slide_ids:
-                wsi_path = os.path.join(self.wsi_path, '{}.pt'.format(slide_id.rstrip('.svs')))
-                if os.path.exists(wsi_path):
-                    wsi.append(torch.load(wsi_path))
+                feature_path = self._resolve_wsi_feature_path(slide_id)
+                if feature_path is not None:
+                    wsi.append(self._load_wsi_feature(feature_path))
                 else:
                     wsi.append(torch.zeros((self.dataset_factory.num_patches, self.encoding_dim)))
                     print("missing file: ", slide_id)

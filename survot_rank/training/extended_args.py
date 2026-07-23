@@ -43,7 +43,12 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--num_genes", type=int, default=None)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--label_col", type=str, default="survival_months_dss")
-    parser.add_argument("--wsi_encoder", type=str, default="uni", choices=["uni", "gigap", "r50", "chief"])
+    parser.add_argument(
+        "--wsi_encoder",
+        type=str,
+        default="uni",
+        choices=["uni", "uni2-h", "gigap", "r50", "chief"],
+    )
     parser.add_argument("--rna_format", type=str, default="Pathways", choices=["RNASeq", "Pathways", "GeneEmbedding"])
     parser.add_argument("--signature", type=str, default="combine", choices=["all", "six", "hallmarks", "combine", "xena"])
     parser.add_argument("--clinical_feature_cols", type=str, default=None, help="Comma-separated clinical feature column names, e.g. 'age,gender'")
