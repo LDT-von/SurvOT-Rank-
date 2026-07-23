@@ -34,11 +34,9 @@ COMMON_OVERRIDES = {
     "num_patches": 2048,
     "batch_size": 8,
     "max_epochs": 50,
-    "fit_bins_on_train": True,
     "binning_mode": "global_qcut",
     "event_sampling_fraction": 0.0,
     "event_stratified_batches": False,
-    "dct_slot_init_mode": "deterministic",
     "dct_lambda_ipcw_rank": 0.10,
     "dct_ipcw_rank_memory_size": 0,
     "dct_lambda_etar": 0.0,
@@ -48,6 +46,19 @@ COMMON_OVERRIDES = {
     "dct_lambda_anchor": 0.0,
     "dct_lambda_stage_risk": 0.0,
     "dct_lambda_coordinate": 0.0,
+}
+
+VARIANTS = {
+    "highscore": {
+        "label": "v3.3 high-score protocol with UNI2-h as the only intended change",
+        "fit_bins_on_train": False,
+        "dct_slot_init_mode": "gaussian",
+    },
+    "clean": {
+        "label": "train-fold-only binning and deterministic slots",
+        "fit_bins_on_train": True,
+        "dct_slot_init_mode": "deterministic",
+    },
 }
 
 
@@ -68,6 +79,10 @@ def _selection(value: str, allowed: tuple[str, ...], name: str) -> list[str]:
 
 def parse_cancers(value: str) -> list[str]:
     return _selection(value, CANCERS, "cancer")
+
+
+def parse_variants(value: str) -> list[str]:
+    return _selection(value, tuple(VARIANTS), "variant")
 
 
 def parse_folds(value: str) -> list[int]:
@@ -137,6 +152,7 @@ def inspect_feature_directory(data_root: str | Path, cancer: str) -> dict[str, o
 def build_train_command(
     python_bin: str,
     cancer: str,
+    variant: str,
     fold: int,
     gpu: str,
     num_workers: str,
@@ -146,8 +162,10 @@ def build_train_command(
 ) -> tuple[list[str], Path]:
     config = Path("configs") / f"distributional_counterfactual_transport_{cancer}.yaml"
     result_root = "dct_v3.7_uni2h_smoke" if smoke else "dct_v3.7_uni2h"
-    result_dir = Path("results") / result_root / cancer
+    result_dir = Path("results") / result_root / variant / cancer
     overrides = dict(COMMON_OVERRIDES)
+    overrides.update(VARIANTS[variant])
+    overrides.pop("label", None)
     overrides.update(
         {
             "data_root_dir": data_root,
@@ -156,7 +174,9 @@ def build_train_command(
             "gpu": gpu,
             "num_workers": num_workers,
             "results_dir": result_dir.as_posix(),
-            "specific_simple": f"dct_v3_7_uni2h_{cancer}{'_smoke' if smoke else ''}",
+            "specific_simple": (
+                f"dct_v3_7_uni2h_{variant}_{cancer}{'_smoke' if smoke else ''}"
+            ),
         }
     )
     if smoke:
@@ -179,6 +199,12 @@ def build_parser() -> argparse.ArgumentParser:
         "mode", choices=("doctor", "plan", "smoke", "run"), nargs="?", default="plan"
     )
     parser.add_argument("--cancers", type=parse_cancers, default=parse_cancers("all"))
+    parser.add_argument(
+        "--variants",
+        type=parse_variants,
+        default=parse_variants("highscore"),
+        help="highscore is the default v3.3-compatible protocol; clean is an audit control",
+    )
     parser.add_argument("--folds", type=parse_folds, default=parse_folds("0,2"))
     parser.add_argument("--data-root", default=os.environ.get("UNI2H_ROOT", DEFAULT_DATA_ROOT))
     parser.add_argument("--gpu", default=os.environ.get("GPU", "0"))
@@ -207,34 +233,39 @@ def main() -> int:
             failed = failed or not report["ok"]
         return int(failed)
 
-    for cancer in args.cancers:
-        config = Path("configs") / f"distributional_counterfactual_transport_{cancer}.yaml"
-        if not config.exists():
-            print(f"[ERROR] missing config: {config}")
-            return 2
-        for fold in args.folds:
-            command, result_dir = build_train_command(
-                args.python_bin,
-                cancer,
-                fold,
-                args.gpu,
-                args.num_workers,
-                args.data_root,
-                smoke=args.mode == "smoke",
-            )
-            completed = list(result_dir.rglob(f"split_{fold}_results_final.pkl"))
-            if completed and not args.force and args.mode == "run":
-                print(f"[skip] {cancer.upper()} fold{fold}: {completed[0]}")
-                continue
-            print("\n" + "=" * 76)
-            print(f"[DCT v3.7-UNI2H] {cancer.upper()} fold{fold}")
-            print("$ " + " ".join(command))
-            print("=" * 76)
-            if args.mode == "plan":
-                continue
-            result = subprocess.run(command, check=False)
-            if result.returncode != 0:
-                return result.returncode
+    for variant in args.variants:
+        for cancer in args.cancers:
+            config = Path("configs") / f"distributional_counterfactual_transport_{cancer}.yaml"
+            if not config.exists():
+                print(f"[ERROR] missing config: {config}")
+                return 2
+            for fold in args.folds:
+                command, result_dir = build_train_command(
+                    args.python_bin,
+                    cancer,
+                    variant,
+                    fold,
+                    args.gpu,
+                    args.num_workers,
+                    args.data_root,
+                    smoke=args.mode == "smoke",
+                )
+                completed = list(result_dir.rglob(f"split_{fold}_results_final.pkl"))
+                if completed and not args.force and args.mode == "run":
+                    print(f"[skip] {variant} {cancer.upper()} fold{fold}: {completed[0]}")
+                    continue
+                print("\n" + "=" * 76)
+                print(
+                    f"[DCT v3.7-UNI2H/{variant}] {cancer.upper()} fold{fold} | "
+                    f"{VARIANTS[variant]['label']}"
+                )
+                print("$ " + " ".join(command))
+                print("=" * 76)
+                if args.mode == "plan":
+                    continue
+                result = subprocess.run(command, check=False)
+                if result.returncode != 0:
+                    return result.returncode
     return 0
 
 

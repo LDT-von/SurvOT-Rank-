@@ -47,9 +47,9 @@ bash scripts/run_dct_multicancer_formal.sh run
 # Smoke-test only the BRCA and LUSC launch paths
 python scripts/run_dct_multicancer_formal.py smoke --cancers brca,lusc
 
-# DCT v3.7: train-fold-clean screening with extracted UNI2-h HDF5 features
+# DCT v3.7: v3.3 high-score protocol with extracted UNI2-h HDF5 features
 python scripts/run_dct_v37_uni2h_screen.py doctor
-python scripts/run_dct_v37_uni2h_screen.py plan --cancers blca,brca --folds 0,2
+python scripts/run_dct_v37_uni2h_screen.py plan --variants highscore --cancers blca,brca --folds 0,2
 
 # Ensemble evaluation for multiple seed result folders
 python -m survot_rank.cli ensemble --dirs results/seed3 results/seed5
