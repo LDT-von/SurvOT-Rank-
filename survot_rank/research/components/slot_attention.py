@@ -70,6 +70,12 @@ class MultiHeadSlotAttention(Module):
             nn.ReLU(),
             nn.Linear(max(dim, hidden_dim), dim),
         )
+        # Explanation capture is opt-in so existing methods keep the same
+        # outputs and memory footprint.  DCT v3.6 toggles this only for
+        # evaluation batches that are explicitly exported.
+        self.capture_attention = False
+        self.last_token_assignment = None
+        self.last_pooling_attention = None
 
     def forward(self, inputs, num_slots: int | None = None):
         b, _, _, device, dtype = *inputs.shape, inputs.device, inputs.dtype
@@ -102,8 +108,8 @@ class MultiHeadSlotAttention(Module):
             q = self.split_heads(self.to_q(slots))
 
             dots = einsum("... i d, ... j d -> ... i j", q, k) * self.scale
-            attn = dots.softmax(dim=-2)
-            attn = F.normalize(attn + self.eps, p=1, dim=-1)
+            token_assignment = dots.softmax(dim=-2)
+            attn = F.normalize(token_assignment + self.eps, p=1, dim=-1)
 
             updates = einsum("... j d, ... i j -> ... i d", v, attn)
             updates = self.combine_heads(self.merge_heads(updates))
@@ -113,6 +119,16 @@ class MultiHeadSlotAttention(Module):
             slots = self.gru(updates, slots_prev)
             (slots,) = unpack(slots, packed_shape, "* d")
             slots = slots + self.mlp(self.norm_pre_ff(slots))
+
+        if self.capture_attention:
+            # [B, slots, tokens].  ``token_assignment`` sums to one over slots
+            # for every input token; ``attn`` sums to one over tokens for every
+            # slot and is the exact pooling weight used by the final update.
+            self.last_token_assignment = token_assignment.mean(dim=1).detach()
+            self.last_pooling_attention = attn.mean(dim=1).detach()
+        else:
+            self.last_token_assignment = None
+            self.last_pooling_attention = None
 
         return slots
 

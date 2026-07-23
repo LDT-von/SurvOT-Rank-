@@ -100,6 +100,20 @@ python3 scripts/run_dct_v35_screen.py plan --variants u,m --cancers brca,blca,lu
 The literature boundary, slimming audit, mathematical definition and adoption
 thresholds are in [`../DCT_2026_RESEARCH_AND_SLIMMING.md`](../DCT_2026_RESEARCH_AND_SLIMMING.md).
 
+## Experimental v3.6 listwise screen
+
+`dct_listwise_transport` is a separately registered experimental subclass.  It
+compares a conventional global Plackett--Luce risk-set control (GPL) with the
+same objective applied to the factual transport representation at the event
+patient's train-fold stage (TCL).  It also exports the complete patch → local
+slot → global prototype → stage coupling → pathway explanation chain.
+
+The implementation, matched controls, explanation command, and pre-registered
+promotion gate are documented in
+[`../DCT_V36_LISTWISE.md`](../DCT_V36_LISTWISE.md).  GPL/TCL are diagnostic
+variants of DCT, not independent paper methods, and do not replace the current
+score-first mainline without complete validation.
+
 ## Sparse-event BRCA high-score candidate
 
 `configs/distributional_counterfactual_transport_brca_highscore.yaml` is an

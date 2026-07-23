@@ -381,6 +381,21 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
         batch_objective = loss_surv + slot_loss
         loss = batch_objective / accumulation_steps
         loss.backward()
+        if hasattr(model, "dct_lambda_listwise"):
+            finite_gradient_values = [
+                torch.isfinite(parameter.grad).to(torch.float32).mean()
+                for parameter in model.parameters()
+                if parameter.grad is not None
+            ]
+            finite_gradient_fraction = (
+                torch.stack(finite_gradient_values).mean().item()
+                if finite_gradient_values
+                else 0.0
+            )
+            method_diagnostic_sums["listwise_finite_gradients"] = (
+                method_diagnostic_sums.get("listwise_finite_gradients", 0.0)
+                + finite_gradient_fraction
+            )
 
         # 统一的累积更新：每 accumulation_steps 个 micro-batch 更新一次，
         # 并在 epoch 最后一个 batch 冲刷残余梯度（避免尾部样本梯度丢失）。

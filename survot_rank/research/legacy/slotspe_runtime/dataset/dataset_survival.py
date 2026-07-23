@@ -193,7 +193,7 @@ class SurvivalDatasetFactory:
         if train_df.empty:
             raise ValueError("Training split is empty; cannot fit survival bins")
         uncensored = train_df[train_df[self.censorship_var] < 1]
-        if self.binning_mode == "legacy_equal_width":
+        if getattr(self, "binning_mode", "global_qcut") == "legacy_equal_width":
             self._legacy_disc_label(uncensored)
         else:
             self._disc_label(uncensored)

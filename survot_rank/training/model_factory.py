@@ -49,6 +49,15 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "distributional_counterfactual_transport"),
         "DistributionalCounterfactualTransport",
     ),
+    "dct_listwise_transport": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "dct_listwise_transport",
+        ),
+        "DCTListwiseTransport",
+    ),
     "censoring_aware_temporal_evidence_transport": (
         os.path.join("survot_rank", "research", "methods", "censoring_aware_temporal_evidence_transport"),
         "CensoringAwareTemporalEvidenceTransport",

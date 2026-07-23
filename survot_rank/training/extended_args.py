@@ -276,6 +276,25 @@ def build_base_parser() -> argparse.ArgumentParser:
         default=0.25,
         help="Softmax temperature used to estimate cross-geometry edge agreement.",
     )
+    parser.add_argument(
+        "--dct_listwise_mode",
+        type=str,
+        default="stage_transport",
+        choices=["global", "stage_transport"],
+        help=(
+            "DCT v3.6 listwise channel: final factual risk (global/GPL) or "
+            "the event-time stage's factual transport representation (TCL)."
+        ),
+    )
+    parser.add_argument("--dct_lambda_listwise", type=float, default=0.10)
+    parser.add_argument("--dct_listwise_temperature", type=float, default=0.50)
+    parser.add_argument("--dct_listwise_memory_size", type=int, default=64)
+    parser.add_argument(
+        "--dct_listwise_tie_method",
+        type=str,
+        default="breslow",
+        choices=["breslow"],
+    )
 
     # Censoring-aware temporal evidence transport mainline.
     parser.add_argument("--catet_num_stages", type=int, default=4)
