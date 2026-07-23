@@ -522,3 +522,46 @@
 > 从 cBioPortal 下载 mRNA expression，处理后放入 `raw_rna_data_inter/`
 
 **配置文件**: 每个癌种需要 `configs/distributional_counterfactual_transport_{study}.yaml`，与 BLCA 完全相同参数（仅替换 study 名和结果目录）。
+
+---
+
+## 🔄 运行中任务状态 (2026-07-23 15:00 CST)
+
+### v3.5R fold2 — 5 癌种并行
+
+| 癌种 | Epochs | Best C-Index | Best Ep | 状态 |
+|:-----|:------:|:------------:|:-------:|:----:|
+| BLCA | 50 | 0.6589 | 6 | ✅ |
+| LUAD | 15/50 | 0.6551 | 3 | 🔄 |
+| LUSC | 14/50 | 0.5939 | 0 | 🔄 |
+| SKCM | 17/50 | 0.6572 | 4 | 🔄 |
+| BRCA | 16/50 | 0.6821 | 16 | 🔄 |
+
+### BRCA Recovery fold2 — 13 变体 (3 组串行)
+
+| 已完成 | C-Index | Best Ep |
+|:-------|:-------:|:-------:|
+| ref | 0.7510 | 17 |
+| det | 0.6951 | 21 |
+
+| 组 | 当前 | Epoch | Best C-Index | 排队 |
+|:--:|:-----|:-----:|:------------:|:-----|
+| g0 | bin | 32/50 | 0.6440@22 | strat, a30, norank |
+| g4 | reg | 32/50 | 0.5709@4 | det_legacy, bin_legacy, strat_legacy |
+| g8 | a30_legacy | 13/50 | 0.6793@13 | norank_legacy, reg_legacy |
+
+### 待补齐
+
+| 任务 | 备注 |
+|:-----|:-----|
+| v3.5R BLCA fold0 | E17 中断，需重跑 50 ep |
+
+### 预估完成时间
+
+| 队列 | 预估 |
+|:-----|:----|
+| v3.5R fold2 (4癌种) | ~1 小时 |
+| BRCA Recovery g0/g4/g8 (全部变体) | ~4 小时 |
+| **全部完成** | **约 4-5 小时 (CST 19:00-20:00)** |
+
+---
