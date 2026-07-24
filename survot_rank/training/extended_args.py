@@ -19,6 +19,8 @@ METHOD_CHOICES = [
     "faithful_evidence_transport",
     "distributional_counterfactual_transport",
     "dct_listwise_transport",
+    "dct_transport_intervention_consistency",
+    "dct_v38",
     "censoring_aware_temporal_evidence_transport",
     "v60_ot_event_rank",
     "cohort_anchored_adaptive_prognostic_slot_attention",
@@ -300,6 +302,29 @@ def build_base_parser() -> argparse.ArgumentParser:
         type=str,
         default="breslow",
         choices=["breslow"],
+    )
+    # DCT v3.8 transport-intervention consistency. Each term is independently
+    # switchable so direction, dose response, and coupling reconfiguration can
+    # be ablated without changing the v3.3 factual path.
+    parser.add_argument("--dct_v38_lambda_direction", type=float, default=0.05)
+    parser.add_argument("--dct_v38_lambda_dose", type=float, default=0.03)
+    parser.add_argument(
+        "--dct_v38_lambda_reconfiguration", type=float, default=0.02
+    )
+    parser.add_argument("--dct_v38_direction_margin", type=float, default=0.02)
+    parser.add_argument("--dct_v38_dose_margin", type=float, default=0.005)
+    parser.add_argument(
+        "--dct_v38_reconfiguration_margin", type=float, default=0.02
+    )
+    parser.add_argument("--dct_v38_temperature", type=float, default=0.05)
+    parser.add_argument("--dct_v38_alpha_mid", type=float, default=0.50)
+    parser.add_argument("--dct_v38_alpha_full", type=float, default=1.00)
+    parser.add_argument("--dct_v38_warmup_epochs", type=int, default=1)
+    parser.add_argument(
+        "--dct_v38_dose_every",
+        type=int,
+        default=1,
+        help="Evaluate the extra midpoint Sinkhorn branches every N post-warmup epochs.",
     )
 
     # Censoring-aware temporal evidence transport mainline.

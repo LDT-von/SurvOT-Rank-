@@ -608,6 +608,27 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         logits = torch.einsum("be,bec->bc", gate, event_logits)
         return logits, gate
 
+    def _training_transport_objective(
+        self,
+        *,
+        factual_costs,
+        factual_plans,
+        factual_logits,
+        slots_wsi,
+        slots_omic,
+        rows,
+        cols,
+        epoch,
+    ):
+        """Extension hook for objectives that explicitly re-solve transport.
+
+        The score-first DCT v3.3 path intentionally returns an exact zero here.
+        Later registered methods can supervise the transport-intervention chain
+        without changing the original method's numerical objective.
+        """
+
+        return factual_costs.new_zeros(()), {}
+
     def forward(self, **kwargs):
         x_wsi_proj = self.wsi_mlp(kwargs["x_wsi"])
         x_omics = self._encode_omics(kwargs)
@@ -675,11 +696,20 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                 self._update_risk_anchors(factual_costs.detach(), low_weights, high_weights)
 
         if self.training:
-            # Counterfactual branches are post-hoc queries, not training losses.
-            # The former implementation solved two extra Sinkhorn systems and
-            # decoded them on every training batch even though their outputs had
-            # no path to the objective.  Keep training factual-only and evaluate
-            # counterfactual sensitivity with the selected checkpoint.
+            transport_objective, transport_metrics = self._training_transport_objective(
+                factual_costs=factual_costs,
+                factual_plans=factual_plans,
+                factual_logits=factual_logits,
+                slots_wsi=slots_wsi,
+                slots_omic=slots_omic,
+                rows=rows,
+                cols=cols,
+                epoch=epoch,
+            )
+            # The base v3.3 hook is an exact zero, so its counterfactual branches
+            # remain post-hoc queries. Registered extensions such as v3.8 can
+            # explicitly opt into a re-solved transport objective through the
+            # hook above without changing the original score-first recipe.
             self.last_explanations = None
 
             rank_loss = factual_costs.new_zeros(())
@@ -731,6 +761,16 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                     [row_entropy.flatten(), col_entropy.flatten()]
                 ).mean().detach(),
             }
+            self.last_training_losses.update(
+                {
+                    name: (
+                        value.detach()
+                        if torch.is_tensor(value)
+                        else factual_costs.new_tensor(float(value))
+                    )
+                    for name, value in transport_metrics.items()
+                }
+            )
 
             aux_loss = self.dct_lambda_ipcw_rank * ipcw_rank_loss
             aux_loss = aux_loss + self.dct_lambda_etar * etar_loss
@@ -739,6 +779,7 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             aux_loss = aux_loss + self.dct_lambda_anchor * anchor_loss
             aux_loss = aux_loss + self.dct_lambda_stage_risk * stage_risk_loss
             aux_loss = aux_loss + self.dct_lambda_coordinate * coordinate_loss
+            aux_loss = aux_loss + transport_objective
             return factual_logits, aux_loss
 
         low_costs, high_costs = self._counterfactual_costs(factual_costs)

@@ -51,6 +51,10 @@ python scripts/run_dct_multicancer_formal.py smoke --cancers brca,lusc
 python scripts/run_dct_v37_uni2h_screen.py doctor
 python scripts/run_dct_v37_uni2h_screen.py plan --variants highscore --cancers blca,brca --folds 0,2
 
+# DCT v3.8: train the cost-intervention -> re-Sinkhorn -> risk-response chain
+# (plan is read-only; real cancer training remains server-side)
+python scripts/run_dct_v38_transport_consistency.py plan
+
 # Ensemble evaluation for multiple seed result folders
 python -m survot_rank.cli ensemble --dirs results/seed3 results/seed5
 ```

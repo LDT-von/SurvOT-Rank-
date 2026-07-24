@@ -58,6 +58,15 @@ METHOD_REGISTRY = {
         ),
         "DCTListwiseTransport",
     ),
+    "dct_transport_intervention_consistency": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "dct_transport_intervention_consistency",
+        ),
+        "DCTTransportInterventionConsistency",
+    ),
     "censoring_aware_temporal_evidence_transport": (
         os.path.join("survot_rank", "research", "methods", "censoring_aware_temporal_evidence_transport"),
         "CensoringAwareTemporalEvidenceTransport",
@@ -94,6 +103,7 @@ METHOD_ALIASES = {
     "45v2": "otehv2_rankevent_v2",
     "50": "otehv2_timelocal_competing",
     "60": "v60_ot_event_rank",
+    "dct_v38": "dct_transport_intervention_consistency",
     "ca_psa": "cohort_anchored_adaptive_prognostic_slot_attention",
     "capsa": "cohort_anchored_adaptive_prognostic_slot_attention",
     "70": "v70_patient_specific_prognostic_circuits",
