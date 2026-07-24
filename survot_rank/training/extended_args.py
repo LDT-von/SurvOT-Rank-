@@ -18,6 +18,7 @@ METHOD_CHOICES = [
     "stagewise_prognostic_transport",
     "faithful_evidence_transport",
     "distributional_counterfactual_transport",
+    "dct_listwise_transport",
     "censoring_aware_temporal_evidence_transport",
     "v60_ot_event_rank",
     "cohort_anchored_adaptive_prognostic_slot_attention",

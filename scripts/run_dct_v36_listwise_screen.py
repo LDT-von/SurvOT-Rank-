@@ -232,15 +232,11 @@ def main() -> int:
                     args.num_workers,
                     smoke=args.mode == "smoke",
                 )
-                completed_file = result_dir / f"split_{fold}_results_final.pkl"
-                if (
-                    completed_file.exists()
-                    and not args.force
-                    and args.mode == "run"
-                ):
+                completed = list(result_dir.rglob(f"split_{fold}_results_final.pkl"))
+                if completed and not args.force and args.mode == "run":
                     print(
                         f"[skip] {variant.upper()} {cancer.upper()} fold{fold}: "
-                        f"{completed_file}"
+                        f"{completed[0]}"
                     )
                     continue
 
@@ -256,9 +252,10 @@ def main() -> int:
                 completed = subprocess.run(command, check=False)
                 if completed.returncode != 0:
                     return completed.returncode
-                if args.mode == "run" and not completed_file.exists():
+                remaining = list(result_dir.rglob(f"split_{fold}_results_final.pkl"))
+                if args.mode == "run" and not remaining:
                     print(
-                        f"[ERROR] training returned without final result: {completed_file}"
+                        f"[ERROR] training returned without final result in: {result_dir}"
                     )
                     return 3
     return 0
