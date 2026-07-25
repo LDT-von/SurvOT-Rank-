@@ -21,6 +21,9 @@ METHOD_CHOICES = [
     "dct_listwise_transport",
     "dct_transport_intervention_consistency",
     "dct_v38",
+    "intervention_stable_survival_transport",
+    "v40",
+    "ist_surv",
     "censoring_aware_temporal_evidence_transport",
     "v60_ot_event_rank",
     "cohort_anchored_adaptive_prognostic_slot_attention",
@@ -326,6 +329,22 @@ def build_base_parser() -> argparse.ArgumentParser:
         default=1,
         help="Evaluate the extra midpoint Sinkhorn branches every N post-warmup epochs.",
     )
+
+    # V4.0 intervention-stable survival transport.  Unlike the DCT evolution,
+    # this is an independent raw patch-pathway architecture whose hazard logits
+    # exactly decompose into signed transport-edge contributions.
+    parser.add_argument("--ist_eps", type=float, default=0.05)
+    parser.add_argument("--ist_sinkhorn_iters", type=int, default=40)
+    parser.add_argument("--ist_num_interventions", type=int, default=3)
+    parser.add_argument("--ist_keep_ratio", type=float, default=0.75)
+    parser.add_argument("--ist_stability_beta", type=float, default=1.0)
+    parser.add_argument("--ist_stability_strength", type=float, default=0.10)
+    parser.add_argument("--ist_lambda_plan", type=float, default=0.05)
+    parser.add_argument("--ist_lambda_attribution", type=float, default=0.05)
+    parser.add_argument("--ist_lambda_risk", type=float, default=0.02)
+    parser.add_argument("--ist_edge_value_scale", type=float, default=4.0)
+    parser.add_argument("--ist_eval_seed", type=int, default=20260725)
+    parser.add_argument("--ist_deletion_penalty", type=float, default=8.0)
 
     # Censoring-aware temporal evidence transport mainline.
     parser.add_argument("--catet_num_stages", type=int, default=4)

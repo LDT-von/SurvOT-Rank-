@@ -67,6 +67,15 @@ METHOD_REGISTRY = {
         ),
         "DCTTransportInterventionConsistency",
     ),
+    "intervention_stable_survival_transport": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "intervention_stable_survival_transport",
+        ),
+        "InterventionStableSurvivalTransport",
+    ),
     "censoring_aware_temporal_evidence_transport": (
         os.path.join("survot_rank", "research", "methods", "censoring_aware_temporal_evidence_transport"),
         "CensoringAwareTemporalEvidenceTransport",
@@ -104,6 +113,8 @@ METHOD_ALIASES = {
     "50": "otehv2_timelocal_competing",
     "60": "v60_ot_event_rank",
     "dct_v38": "dct_transport_intervention_consistency",
+    "v40": "intervention_stable_survival_transport",
+    "ist_surv": "intervention_stable_survival_transport",
     "ca_psa": "cohort_anchored_adaptive_prognostic_slot_attention",
     "capsa": "cohort_anchored_adaptive_prognostic_slot_attention",
     "70": "v70_patient_specific_prognostic_circuits",

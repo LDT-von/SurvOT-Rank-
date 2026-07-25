@@ -55,6 +55,13 @@ python scripts/run_dct_v37_uni2h_screen.py plan --variants highscore --cancers b
 # (plan is read-only; real cancer training remains server-side)
 python scripts/run_dct_v38_transport_consistency.py plan
 
+# IST-Surv v4.0: no slots; intervention-stable patch-pathway transport with
+# exact signed hazard-logit decomposition. Defaults to BLCA/BRCA folds 0-4.
+python scripts/run_v40_intervention_stable_transport.py plan
+
+# Read-only plan for recent v3.6-v4.0 BLCA/BRCA five-fold candidates
+python scripts/run_recent_transport_5fold.py plan
+
 # Ensemble evaluation for multiple seed result folders
 python -m survot_rank.cli ensemble --dirs results/seed3 results/seed5
 ```
