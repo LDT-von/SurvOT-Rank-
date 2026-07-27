@@ -1,621 +1,425 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-07-21 | Seed: 3 | DCT v3.3 Score-First + v3.5R fold0 筛选
+> 更新时间: 2026-07-27 09:30 | Seed: 3 | 全版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8
 
 ---
 
-## 🆕 多癌种 DCT v3.3 Score-First 实验结果 (2026-07-21)
+## 版本总览
 
-> 本轮实验：BRCA、LUAD、LUSC 三个癌种各完成 5 折交叉验证
-> 参数配置: max_epochs=50, batch_size=8, lr=5e-4, alpha_surv=0.15, dct_lambda_ipcw_rank=0.10
-> 日志目录: `logs/{dataset}_fold{0-4}.log`
-- BRCA: [configs/distributional_counterfactual_transport_brca.yaml](file:///home/ubuntu/SurvOT-Rank/configs/distributional_counterfactual_transport_brca.yaml)
-- LUAD: [configs/distributional_counterfactual_transport_luad.yaml](file:///home/ubuntu/SurvOT-Rank/configs/distributional_counterfactual_transport_luad.yaml)
-- LUSC: [configs/distributional_counterfactual_transport_lusc.yaml](file:///home/ubuntu/SurvOT-Rank/configs/distributional_counterfactual_transport_lusc.yaml)
-
-### BRCA (5/5 folds)
-| Fold | Best C-Index | Best Epoch |
-|:----:|:------------:|:----------:|
-| 0 | 0.6639 | 24 |
-| 1 | 0.7432 | 3 |
-| 2 | **0.7510** | 17 |
-| 3 | 0.6486 | 10 |
-| 4 | 0.7245 | 29 |
-| **Mean±Std** | **0.7062±0.0420** | — |
-
-### LUAD (5/5 folds)
-| Fold | Best C-Index | Best Epoch |
-|:----:|:------------:|:----------:|
-| 0 | **0.7662** | 32 |
-| 1 | 0.6987 | 13 |
-| 2 | 0.7297 | 2 |
-| 3 | 0.6899 | 22 |
-| 4 | 0.6656 | 17 |
-| **Mean±Std** | **0.7100±0.0348** | — |
-
-### LUSC (5/5 folds)
-| Fold | Best C-Index | Best Epoch |
-|:----:|:------------:|:----------:|
-| 0 | 0.6407 | 0 |
-| 1 | 0.5837 | 3 |
-| 2 | 0.5800 | 22 |
-| 3 | **0.6631** | 0 |
-| 4 | 0.6596 | 8 |
-| **Mean±Std** | **0.6254±0.0364** | — |
-
-### 多癌种性能对比
-
-| 排名 | 癌种 | 样本数 | Best mean±std | 最佳单折 |
-|:----:|:----:|:------:|:-------------:|:--------:|
-| 1 | **LUAD** | 467 | **0.7100±0.0348** | 0.7662 |
-| 2 | **BRCA** | 418 | **0.7062±0.0420** | 0.7510 |
-| 3 | **LUSC** | 460 | **0.6254±0.0364** | 0.6631 |
-
-> 观察:
-> - LUAD 和 BRCA 性能接近，LUSC 明显偏弱（约低 8-9 个百分点）
-> - LUSC 的 fold1 出现 IPCW/IBS/IAUC 全 0 的异常（详见 [logs/lusc_fold1.log](file:///home/ubuntu/SurvOT-Rank/logs/lusc_fold1.log)）
-> - LUSC fold0/fold3 在 epoch 0 即达到最佳，提示可能存在训练不稳定
-> - 三个癌种的 Best Epoch 分布差异较大，过拟合趋势明显
-
-### 与历史 BLCA 结果对比
-
-| 癌种 | Best mean±std | Last mean | Best-Last Gap | 备注 |
-|:----:|:-------------:|:---------:|:-------------:|------|
-| **BLCA** | 0.7311±0.0293 | 0.6589 | 9.9% | 历史最优 |
-| **LUAD** | 0.7100±0.0348 | — | — | 新结果 |
-| **BRCA** | 0.7062±0.0420 | — | — | 新结果（超过历史 BRCA stable 0.6659）|
-| **LUSC** | 0.6254±0.0364 | — | — | 新结果 |
-
-> BRCA 新结果 (0.7062) 显著优于历史 BRCA stable (0.6659)，提升 +0.0403
+| 版本 | 名称 | 方法 | WSI编码器 | 损失函数 | 状态 |
+|:----:|------|------|:--------:|----------|:----:|
+| **v3.3** | Score-First | distributional_counterfactual_transport | UNI v1 (1024d) | NLL + IPCW rank | 🔄 6/10 癌种 |
+| **v3.4** | BRCA Recovery | 多种消融实验 | UNI v1 (1024d) | NLL 等 | ⚠️ 仅BRCA调试 |
+| **v3.5** | Smoke Tests | 烟雾测试 | UNI v1 (1024d) | — | ⚠️ 非正式版本 |
+| **v3.6** | Listwise | 6变体: NLL/IPCW/ETAR/IPCW+ETAR/GPL/TCL | UNI v1 (1024d) | NLL + listwise | 🔄 fold0+2完成 |
+| **v3.7** | UNI2-h HighScore | distributional_counterfactual_transport | UNI2-h (1536d) | NLL + IPCW rank | 🔄 4/10 癌种 |
+| **v3.8** | Transport Consistency | dct_transport_intervention_consistency | UNI2-h (1536d) | direction+dose+reconfiguration | 🔄 运行中 |
 
 ---
 
-## 🧪 DCT v3.5R Fold0 结果 (2026-07-21)
+## DCT v3.3 Score-First (UNI v1)
 
-> 运行入口：`scripts/run_dct_v35_screen.py --variants r`
-> 参数: alpha_surv=0.15, event_stratified_batches=True, slot_init_mode=deterministic, evidence_marginal_strength=1.0
-> 状态: **5/5 有WSI癌种 fold0 完成**（4成功 + 1中断），指标从 epoch_curve.csv 提取
+> survot_method: distributional_counterfactual_transport
+> 参数: max_epochs=50, batch_size=8, lr=5e-4, alpha_surv=0.15, dct_lambda_ipcw_rank=0.10
+> dct_lambda_etar=0.0, dct_lambda_listwise=0.0, dct_lambda_ot=0.0
+> 结果目录: `results/dct_v3.3_score_first_<cancer>/`
+> 目标: 10 个癌种 (blca/brca/coadread/hnsc/kirc/luad/lusc/skcm/stad/ucec)
 
-| 癌种 | Fold0 C-Index | Best Epoch | IPCW | IBS | iAUC | 状态 |
-|:----:|:-------------:|:----------:|:-----:|:----:|:----:|:----:|
-| **LUAD** | **0.7828** | 17 | 0.6210 | 0.2477 | 0.5200 | ✅ |
-| **SKCM** | **0.6686** | 4 | 0.6738 | 0.1493 | 0.8025 | ✅ |
-| **BRCA** | **0.6026** | 2 | 0.6815 | 0.0273 | 0.5938 | ✅ |
-| **LUSC** | **0.5962** | 3 | 0.5927 | 0.1334 | 0.8404 | ✅ |
-| **BLCA** | ❌ 中断 | — | — | — | — | ⚠️ E17/50 |
-| COADREAD | — | — | — | — | — | 无WSI |
-| KIRC | — | — | — | — | — | 无WSI |
-| UCEC | — | — | — | — | — | 无WSI |
-| HNSC | — | — | — | — | — | 无WSI |
-| STAD | — | — | — | — | — | 无WSI |
+### UCEC (488 样本) — Mean: 0.7964 ± 0.0342 ✅
 
-### 对比 v3.3 Score-First
+| Fold | C-Index | Best Epoch | Stopped |
+|:----:|:------:|:----------:|:-------:|
+| 0 | 0.7565 | 7 | 49 |
+| 1 | 0.8104 | 49 | 49 |
+| 2 | 0.7548 | 36 | 49 |
+| 3 | **0.8340** | 34 | 49 |
+| 4 | 0.8265 | 47 | 49 |
 
-| 癌种 | v3.3 Fold0 | v3.5R Fold0 | 差异 |
-|:----:|:----------:|:-----------:|:----:|
-| LUAD | 0.7662 | **0.7828** | +1.7% |
-| BRCA | 0.6639 | 0.6026 | -6.1% |
-| LUSC | 0.6407 | 0.5962 | -4.5% |
-| BLCA | 0.7552 | ❌ | — |
-| SKCM | — | 0.6686 | 新 |
+### KIRC (488 样本) — Mean: 0.7958 ± 0.0168 ✅
 
-### 已知 Bug
-1. **_final.pkl 中 IPCW/IBS/iAUC 为 0** — epoch_curve.csv 值正常，仅 pkl 存储有误
-2. **BLCA fold0 未生成 final.pkl** — 训练在 epoch 17 中断
-3. **Fold2 全部未跑** — 脚本在处理 fold2 前退出
-4. ~~**5 癌种无 WSI 数据**~~ — 已于 2026-07-23 全部解压完毕，现 11 癌种 WSI 特征均可用
+| Fold | C-Index | Best Epoch | Stopped |
+|:----:|:------:|:----------:|:-------:|
+| 0 | **0.8164** | 24 | 49 |
+| 1 | 0.7886 | 6 | 49 |
+| 2 | 0.7842 | 6 | 49 |
+| 3 | 0.7750 | 3 | 49 |
+| 4 | 0.8149 | 24 | 49 |
 
-### 数据完整性
-全部 10 癌种基因数据和生存标签完整，临床无缺失 RNA。
+### BLCA (381 样本) — Mean: 0.7311 ± 0.0262 ✅
 
-**WSI 特征文件状态 (2026-07-23):**
+> Fold 2 曾在 epoch 7 因 NaN 崩溃，从 `dct_v3_3_fold2_nan_fix` 单独重跑
 
-> UNI2-h pt 特征已全部解压至 `/data1/TCGA-UNI2-h-features/<cancer>/uni2-h/pt_files/`
+| Fold | C-Index | Best Epoch | Stopped | 来源 |
+|:----:|:------:|:----------:|:-------:|:-----|
+| 0 | 0.7552 | 4 | 49 | diagnostics/full |
+| 1 | 0.7157 | 5 | 49 | diagnostics/full |
+| 2 | 0.7046 | 18 | 49 | fold2_nan_fix |
+| 3 | 0.7104 | 34 | 49 | diagnostics/full |
+| 4 | **0.7696** | 36 | 49 | diagnostics/full |
 
-| 癌种 | 状态 | 解压时间 | 耗时 |
-|:-----|:----:|:--------:|:----:|
-| BLCA | ✅ | 07:26 | — |
-| BRCA (IDC) | ✅ | 07:50 | 24min |
-| COAD | ✅ | 08:27 | 37min |
-| READ | ✅ | 08:39 | 12min |
-| HNSC | ✅ | 08:43 | 4min |
-| KIRC | ✅ | 08:55 | 12min |
-| LUAD | ✅ | 09:18 | 23min |
-| LUSC | ✅ | 09:45 | 27min |
-| SKCM | ✅ | 10:11 | 26min |
-| STAD | ✅ | 10:29 | 18min |
-| UCEC | ✅ | 10:42 | 13min |
+### COADREAD (573 样本) — Mean: 0.6774 ± 0.0515 ✅
 
-> 全部 11 个癌种 WSI 特征可用。少数样本级缺失：BRCA 2 个 (DX2)、LUAD 1 个。
+| Fold | C-Index | Best Epoch | Stopped |
+|:----:|:------:|:----------:|:-------:|
+| 0 | **0.7306** | 41 | 49 |
+| 1 | 0.6017 | 7 | 49 |
+| 2 | 0.6321 | 46 | 49 |
+| 3 | 0.7241 | 41 | 49 |
+| 4 | 0.6985 | 29 | 49 |
 
----
+### SKCM (409 样本) — Mean: 0.6770 ± 0.0513 ✅
 
-## 🧪 DCT v3.5 R/Q/G/L 受控筛选（计划）
+| Fold | C-Index | Best Epoch | Stopped |
+|:----:|:------:|:----------:|:-------:|
+| 0 | 0.6988 | 6 | 49 |
+| 1 | 0.7155 | 11 | 49 |
+| 2 | 0.6466 | 11 | 49 |
+| 3 | 0.5920 | 2 | 49 |
+| 4 | **0.7321** | 8 | 49 |
 
-> 运行入口：`scripts/run_dct_v35_screen.py`
->
-> 开发协议：十癌种仅 fold0/2，batch=8，train-only bins，患者无放回分层批次，
-> `alpha_surv=0.15`，IPCW rank memory 关闭。
+### STAD (366 样本) — Mean: 0.6596 ± 0.0216 ✅
 
-| 版本 | 单一变量 | 正式结果目录 |
-|---|---|---|
-| v3.5R | 确定性验证 slots，修复基线 | `results/dct_v3.5_screen/r/<cancer>` |
-| v3.5Q | 每个 slot 独立 learned query | `results/dct_v3.5_screen/q/<cancer>` |
-| v3.5G | evidence marginal strength=0.25 | `results/dct_v3.5_screen/g/<cancer>` |
-| v3.5L | projection=128、Transformer=1 层 | `results/dct_v3.5_screen/l/<cancer>` |
+| Fold | C-Index | Best Epoch | Stopped |
+|:----:|:------:|:----------:|:-------:|
+| 0 | 0.6713 | 28 | 49 |
+| 1 | 0.6185 | 7 | 49 |
+| 2 | 0.6683 | 47 | 49 |
+| 3 | 0.6592 | 41 | 49 |
+| 4 | **0.6806** | 34 | 49 |
 
-完整运行顺序、命令和入选规则见 `docs/DCT_V35_SCREENING.md`。fold0/2 只用于筛选，
-最终候选仍须补齐固定 5-fold。
+### BRCA (418 样本) — 🔄 运行中 (0/5 folds)
 
----
+> 启动: Jul 27 04:45, 当前 fold0 epoch ~33/50
 
-## 🧪 BRCA Recovery fold0 结果 (2026-07-22)
+### LUAD (467 样本) — ⏳ 未开始
 
-> 脚本: [run_dct_brca_recovery.py](file:///home/ubuntu/SurvOT-Rank/scripts/run_dct_brca_recovery.py)
-> 提交: a3558da | max_epochs=50, batch=8, lr=5e-4, alpha_surv=0.15, dct_lambda_ipcw_rank=0.10, seed=3, early_stop_patience=0
-> 结果目录: `results/dct_brca_recovery/`
+### LUSC (460 样本) — ⏳ 未开始
 
-### 变体说明
+### HNSC (438 样本) — ⏳ 未开始 (首次因 checkpoint 损坏失败, 本次重跑)
 
-| 变体 | slot | fit_bins | strat_batch | alpha_surv | ipcw_rank | lr | reg | legacy 等宽 |
-|:-----|:----:|:--------:|:-----------:|:----------:|:---------:|:--:|:---:|:-----------:|
-| ref | random | no | no | 0.15 | 0.10 | 5e-4 | 5e-4 | — |
-| det | determ. | no | no | 0.15 | 0.10 | 5e-4 | 5e-4 | — |
-| bin | determ. | yes | no | 0.15 | 0.10 | 5e-4 | 5e-4 | — |
-| strat | determ. | yes | yes | 0.15 | 0.10 | 5e-4 | 5e-4 | — |
-| a30 | determ. | no | no | **0.30** | 0.10 | 5e-4 | 5e-4 | — |
-| norank | determ. | no | no | 0.15 | **0.00** | 5e-4 | 5e-4 | — |
-| reg | determ. | no | no | 0.15 | 0.10 | **2e-4** | **1e-3** | — |
+### v3.3 汇总
 
-> 每个变体有二分箱对照：默认 qcut（等频）vs `_legacy`（SlotSPE 原始等宽 pd.cut(4)）
-
-### fold0 结果汇总
-
-#### qcut 等频分箱
-
-| 变体 | Best Epoch | C-Index | IPCW | IBS | iAUC | Last C-Index | 状态 |
-|:-----|:----------:|:-------:|:----:|:---:|:----:|:------------:|:----:|
-| ref | 3 | 0.5932 | 0.5370 | 0.0293 | 0.6545 | 0.5476 | ⚠️ E21 中断 |
-| det | 32 | 0.6055 | 0.5015 | 0.0427 | 0.4932 | 0.4793 | ✅ |
-| bin | 3 | 0.6067 | 0.6053 | 0.0276 | 0.6090 | 0.5254 | ✅ |
-| strat | 2 | 0.6026 | 0.6815 | 0.0273 | 0.5938 | 0.4366 | ✅ |
-| a30 | 1 | 0.6067 | 0.5720 | 0.0295 | 0.6316 | 0.3816 | ✅ |
-| **norank** | 30 | 0.6096 | 0.6403 | 0.0657 | 0.5883 | 0.5611 | ✅ |
-| reg | 9 | **0.6692** | 0.4818 | 0.0350 | 0.6509 | 0.5009 | ✅ |
-
-#### legacy 等宽分箱 (SlotSPE 原始)
-
-| 变体 | Best Epoch | C-Index | IPCW | IBS | iAUC | Last C-Index | 状态 |
-|:-----|:----------:|:-------:|:----:|:---:|:----:|:------------:|:----:|
-| det_legacy | 11 | **0.6616** | 0.5435 | 0.1846 | 0.5246 | 0.4553 | ✅ |
-| bin_legacy | 3 | 0.5880 | 0.4339 | 0.1906 | 0.4171 | 0.3115 | ✅ |
-| strat_legacy | 4 | 0.6259 | 0.4975 | 0.2213 | 0.4408 | 0.4833 | ✅ |
-| a30_legacy | 3 | 0.6184 | 0.4460 | 0.1965 | 0.4533 | 0.5570 | ✅ |
-| **norank_legacy** | 15 | **0.6809** | 0.5384 | 0.2168 | 0.6005 | 0.5500 | ✅ |
-| reg_legacy | 3 | 0.6441 | 0.4251 | 0.2327 | 0.4524 | 0.6014 | ✅ |
-
-### 关键发现
-
-1. **qcut 分箱下 C-Index 集中在 0.59-0.67**，reg 逆势突围到 0.6692，其余变体间差异小（±0.02），BRCA 事件稀疏（~8% DSS events）是根本瓶颈
-2. **reg (保守优化器) 是 qcut 最佳**：lr=2e-4, reg=1e-3，best=**0.6692 @ E9**（较 E4 的 0.6271 大幅提升），已完成
-3. **norank (IPCW=0) 在 qcut 下 epoch 30 才 peak**，是唯一不早 peak 的变体
-4. **legacy 等宽分箱 C-Index 更高 (0.62-0.68)**，但 IBS 极差（0.18-0.23），原因：pd.cut(bins=4) 导致 bin2/3 几乎无样本，实质上退化为二分类
-5. **strat (event-stratified batches) 有害**：qcut 同 bin 条件下 strat=0.60 < bin=0.61，legacy 也类似
-6. **alpha_surv=0.30 无效**：a30=0.6067，和 det=0.6055 完全一致
-7. **普遍过拟合**：train C-Index 终端 0.98+，val 早期 peak 后持续退化
-8. **10/13 变体已完成 fold0**：reg/reg_legacy 仍在 E28/50，ref 在 E21 中断
-
-### fold0 最佳 Top-5
-
-| 排名 | 变体 | C-Index | 分箱 | 备注 |
-|:----:|:-----|:-------:|:----:|:-----|
-| 1 | norank_legacy | 0.6809 | 等宽 | IBS=0.22，校准差 |
-| 2 | **reg** | **0.6692** | qcut | 🔄 E28，qcut 最高 |
-| 3 | det_legacy | 0.6616 | 等宽 | IBS=0.18 |
-| 4 | reg_legacy | 0.6441 | 等宽 | ✅ |
-| 5 | strat_legacy | 0.6259 | 等宽 | IBS=0.22 |
-
-> 13/13 fold0 全部完成（50 epochs）。
-
-### fold2 结果与任务取舍 (2026-07-23)
-
-> fold2 队列原含 13 变体，经评估后保留关键分箱对照，其余停止。
-
-#### fold2 已完成/运行中
-
-| 变体 | Best Epoch | C-Index | 与 fold0 差异 | 状态 |
-|:-----|:----------:|:-------:|:------------:|:----:|
-| ref | 17 | **0.7510** | **+0.1578** | ✅ |
-| det | 21 | 0.6951 | +0.0896 | ✅ |
-| bin | 22 | 0.6440 | +0.0373 | ✅ |
-| reg | 4 | 0.5709 | **-0.0983** | ✅ |
-| a30_legacy | 16 | 0.7247 | +0.1063 | ✅ |
-| strat | — | — | — | 🔄 运行中 |
-| det_legacy | — | — | — | 🔄 运行中 |
-| bin_legacy | — | — | — | ⏳ 排队 (g4) |
-
-#### 已停止排队
-
-| 变体 | 停止原因 |
-|:-----|:---------|
-| strat_legacy | 分箱对照已由 det_legacy/bin_legacy 覆盖 |
-| norank_legacy | IPCW=0 非分箱核心变量，fold0 已完成 |
-| reg_legacy | 保守优化器非分箱核心变量 |
-| norank | IPCW=0 非分箱核心变量 |
-| a30 | alpha=0.30 fold0 已证明与 det 无差异 |
-
-#### 当前结论
-
-- det vs det_legacy 在 fold0/fold2 **方向相反**（fold0: det<det_legacy, fold2: det>det_legacy），两折平均几乎一致
-- fold0/fold2 差异大（BRCA ~8% 事件率导致），**两折仅用于筛选，不能形成论文结论**
-- SlotSPE 等宽分箱暂无稳定优势
-- 最终需 det/bin 在同 commit 下跑完整 5 折量化分箱影响
+| 排名 | 癌种 | 样本 | Mean ± Std | 最佳 | 最差 | Δ | 状态 |
+|:----:|:----:|:---:|:----------:|:----:|:----:|:--:|:----:|
+| 1 | UCEC | 488 | 0.7964 ± 0.0342 | 0.8340 | 0.7548 | 0.0792 | ✅ |
+| 2 | KIRC | 488 | 0.7958 ± 0.0168 | 0.8164 | 0.7750 | 0.0414 | ✅ |
+| 3 | BLCA | 381 | 0.7311 ± 0.0262 | 0.7696 | 0.7046 | 0.0650 | ✅ |
+| 4 | COADREAD | 573 | 0.6774 ± 0.0515 | 0.7306 | 0.6017 | 0.1289 | ✅ |
+| 5 | SKCM | 409 | 0.6770 ± 0.0513 | 0.7321 | 0.5920 | 0.1401 | ✅ |
+| 6 | STAD | 366 | 0.6596 ± 0.0216 | 0.6806 | 0.6185 | 0.0621 | ✅ |
+| 7 | BRCA | 418 | — | — | — | — | 🔄 |
+| 8 | LUAD | 467 | — | — | — | — | ⏳ |
+| 9 | LUSC | 460 | — | — | — | — | ⏳ |
+| 10 | HNSC | 438 | — | — | — | — | ⏳ |
 
 ---
 
-## 🧪 ETAR (Evidence-Transport Adaptive Ranking) 实验 (2026-07-22)
+## DCT v3.4 — BRCA Recovery 消融实验
 
-> 脚本: [run_dct_etar_20260723.py](file:///home/ubuntu/SurvOT-Rank/scripts/run_dct_etar_20260723.py)
-> 提交: 8bfa909 | 损失: NLL + ETAR | max_epochs=50, batch=8, lr=5e-4, alpha_surv=0.15
-> 结果目录: `results/dct_etar_20260723_<cancer>`
-> 状态: BLCA/BRCA fold0+fold2 全部完成 ✅
+> 仅针对 BRCA 的调试/消融版本。对比不同 alpha_surv (0.30 vs 0.15)、binning 策略、deterministic slot 初始化等对收敛的影响。
+> 非正式多癌种扫描版本，仅作参考。
 
-### BLCA
+| 实验 | Fold0 | Fold2 | 说明 |
+|:----:|:-----:|:-----:|------|
+| **ref** | — | **0.7510** | 基线参考 (alpha=0.15, binning, det) |
+| **norank_legacy** | 0.6809 | — | 无rank损失, legacy模式 |
+| **reg** | 0.6692 | 0.5709 | 降低reg=0.0002 |
+| **det_legacy** | 0.6616 | — | deterministic, legacy |
+| **det** | 0.6055 | 0.6951 | deterministic slot |
+| **bin_legacy** | 0.5880 | 0.7312 | binning, legacy |
+| **bin** | 0.6067 | 0.6440 | binning |
+| **a30_legacy** | 0.6184 | 0.7247 | alpha=0.30, legacy |
+| **a30** | 0.6067 | — | alpha=0.30 |
+| **strat_legacy** | 0.6259 | — | stratified, legacy |
+| **strat** | 0.6026 | — | stratified |
+| **norank** | 0.6096 | — | 无rank损失 |
+| **reg_legacy** | 0.6441 | — | 降低reg, legacy |
 
-| Fold | Best Epoch | C-Index | IPCW | IBS | iAUC | Last C-Index |
-|:----:|:----------:|:-------:|:----:|:---:|:----:|:------------:|
-| 0 | 20 | **0.7385** | 0.8555 | 0.2837 | 0.7510 | 0.6561 |
-| 2 | 39 | **0.6813** | 0.6755 | 0.1613 | 0.8753 | 0.6613 |
-
-### BRCA
-
-| Fold | Best Epoch | C-Index | IPCW | IBS | iAUC | Last C-Index |
-|:----:|:----------:|:-------:|:----:|:---:|:----:|:------------:|
-| 0 | 8 | **0.6674** | 0.5289 | 0.0317 | 0.5414 | 0.5096 |
-| 2 | 4 | **0.6815** | nan | 0.0391 | nan | 0.3919 |
-
-### 与 v3.3 对比 (fold0+2 平均)
-
-| 癌种 | v3.3 均值 | ETAR 均值 | 差异 |
-|:-----|:---------:|:---------:|:----:|
-| BLCA | 0.7299 | 0.7099 | -2.0% |
-| BRCA | 0.7570 | 0.6745 | -8.3% |
-
-> 观察: ETAR 在 BLCA 上接近 v3.3，但 BRCA fold2 下降显著（0.75→0.68）。仅 fold0+2 不代表完整 5 折表现。
+> 仅有 ref 的 fold2 达到 0.7510，其他消融实验均显著低于该基线。
 
 ---
 
-## ⚠️ DCT v3.4 事件感知实验（已暂停）
+## DCT v3.5 — Smoke Tests
 
-> 训练脚本: [run_dct_multicancer_formal.py](file:///home/ubuntu/SurvOT-Rank/scripts/run_dct_multicancer_formal.py)
-> 日志: [logs/multicancer_formal.log](file:///home/ubuntu/SurvOT-Rank/logs/multicancer_formal.log)
-> 状态: 已暂停（BRCA Fold 0, Epoch 21/50）
-> 参数配置: max_epochs=50, batch_size=8, lr=5e-4, alpha_surv=0.6667, dct_lambda_ipcw_rank=0.10
-> 事件感知采样: target=0.250, expected_events_per_batch=2.00
-
-### BRCA Fold 0（v3.4 事件感知）详细记录
-
-| Epoch | train_loss | train_cindex | val_cindex | ipcw | IBS | iAUC |
-|:-----:|:----------:|:------------:|:----------:|:----:|:---:|:----:|
-| 0 | 0.6635 | 0.4505 | **0.6189** | 0.5427 | 0.0836 | 0.5356 |
-| 1 | 0.6264 | 0.4977 | 0.5114 | 0.5141 | 0.2380 | 0.5028 |
-| 2 | 0.3508 | 0.7930 | 0.5552 | 0.4076 | 0.1040 | 0.6007 |
-| 3 | 0.3974 | 0.8005 | 0.3793 | 0.3171 | 0.0538 | 0.5923 |
-| 4 | 0.2199 | 0.9148 | 0.4342 | 0.3356 | 0.1290 | 0.5382 |
-| 5 | 0.2105 | 0.9354 | 0.5605 | 0.5223 | 0.0388 | 0.5925 |
-| 6 | 0.0911 | 0.9544 | 0.4769 | 0.3448 | 0.1755 | 0.5511 |
-| 7 | 0.1196 | 0.8826 | 0.6055 | 0.3175 | 0.0449 | 0.7025 |
-| 8 | 0.1142 | 0.9587 | 0.5365 | 0.5091 | 0.0404 | 0.5564 |
-| 9 | 0.1225 | 0.9363 | 0.5932 | 0.4689 | 0.0324 | 0.6127 |
-| 10 | 0.0824 | 0.9602 | 0.4874 | 0.4407 | 0.0300 | 0.5459 |
-| 11 | 0.2244 | 0.8740 | 0.6067 | 0.3587 | 0.0610 | 0.6990 |
-| 12 | 0.2134 | 0.9566 | 0.4348 | 0.3548 | 0.0772 | 0.4695 |
-| 13 | 0.0758 | 0.9618 | 0.5733 | 0.5642 | 0.0281 | 0.4972 |
-| 14 | 0.0317 | 0.9513 | 0.5546 | 0.4095 | 0.0337 | 0.5689 |
-| 15 | 0.0145 | 0.9686 | 0.5769 | 0.5145 | 0.0272 | 0.6248 |
-| 16 | 0.0075 | 0.9721 | 0.5038 | 0.3512 | 0.0366 | 0.6420 |
-| 17 | 0.0060 | 0.9707 | 0.5625 | 0.4339 | 0.0473 | 0.6029 |
-| 18 | 0.0061 | 0.9774 | 0.4863 | 0.3453 | 0.0308 | 0.5584 |
-| 19 | 0.0059 | 0.9775 | 0.5961 | 0.3849 | 0.0367 | 0.6723 |
-| 20 | 0.0054 | 0.9836 | 0.5663 | 0.3695 | 0.0301 | 0.5878 |
-| 21 | 0.0050 | 0.9775 | 0.5456 | 0.4345 | 0.0314 | 0.5623 |
-
-### 关键指标汇总
-
-| 指标 | 值 | 备注 |
-|------|:---:|------|
-| **最佳 val C-Index** | **0.6189** | @Epoch 0 |
-| **最终 train C-Index** | **0.9775** | @Epoch 21 |
-| **最终 val C-Index** | **0.5456** | @Epoch 21 |
-| **train/val 差距** | **0.4319** | 严重过拟合 |
-| **ipcw 范围** | 0.31-0.56 | 偏低且波动 |
-| **IBS 范围** | 0.027-0.238 | 不稳定 |
-| **iAUC 范围** | 0.47-0.70 | 中等 |
-
-### 问题分析
-
-1. **严重过拟合**: 训练集 C-Index 从 0.45 快速升至 0.98，但验证集始终在 0.44-0.62 之间波动
-2. **验证集不收敛**: val C-Index 在 Epoch 0 达到峰值后持续震荡，无明显上升趋势
-3. **alpha_surv=0.6667**: 可能设置过高，导致生存损失权重过大，模型过度拟合训练集
-4. **缺失 WSI 文件**: 2个样本缺少 UNI 特征（TCGA-A7-A6VX, TCGA-A7-A0CD），但影响有限
-5. **与 v3.3 对比**: v3.3 BRCA fold0 最佳 C-Index 为 0.6639，v3.4 仅 0.6189，下降约 4.5%
-
-### 建议
-
-- **降低 alpha_surv**: 从 0.6667 降至 0.3-0.5
-- **增加正则化**: 添加 dropout 或 weight decay
-- **降低学习率**: 从 5e-4 降至 1e-4
-- **早停机制**: 设置 patience=5-10，避免过度训练
+> 烟雾测试版本，仅用于验证 pipeline 是否正常运行。
+> 典型参数: max_epochs=2, max_smoke_batches=2
+> **非正式实验结果，不纳入性能对比。**
 
 ---
 
-## 历史实验记录
+## DCT v3.6_listwise (UNI v1)
+
+> 结果目录: `results/dct_v3.6_listwise/<variant>/<cancer>/`
+> 参数: max_epochs=50, batch_size=8, lr=5e-4, alpha_surv=0.15
+> tie_method: breslow (TCL), fit_bins_on_train=true, slot_init=deterministic
+> 目标: 4 癌种 (blca/brca/luad/lusc), 6 变体, 5 折
+> **当前仅完成 fold0 和 fold2**
 
 ---
 
-> 历史更新: 2026-07-20 | Seed: 3 | Max Epochs: 35 | Batch: 8 | 5-Fold CV | DCT v3.3 Score-First
+### 类别 A: 消融实验变体 (survot_method=distributional_counterfactual_transport)
+
+#### A1. NLL (纯 NLL 生存损失)
+
+| 癌种 | Fold0 | Epoch | Fold2 | Epoch | Mean (2f) |
+|:----:|:-----:|:-----:|:-----:|:-----:|:---------:|
+| BLCA | 0.7314 | 8 | 0.6693 | 12 | 0.7004 |
+| BRCA | 0.6775 | 2 | 0.7055 | 7 | 0.6915 |
+| LUAD | 0.7828 | 15 | 0.7466 | 9 | 0.7647 |
+| LUSC | 0.6525 | 8 | 0.5757 | 0 | 0.6141 |
+
+#### A2. IPCW (NLL + IPCW rank, lambda=0.10)
+
+| 癌种 | Fold0 | Epoch | Fold2 | Epoch | Mean (2f) |
+|:----:|:-----:|:-----:|:-----:|:-----:|:---------:|
+| BLCA | 0.6989 | 17 | 0.6589 | 6 | 0.6789 |
+| BRCA | **0.8375** | 16 | 0.7669 | 9 | **0.8022** |
+| LUAD | 0.7828 | 17 | 0.7017 | 3 | 0.7423 |
+| LUSC | 0.5962 | 3 | 0.5739 | 0 | 0.5850 |
+
+#### A3. ETAR (NLL + ETAR, lambda=0.10)
+
+| 癌种 | Fold0 | Epoch | Fold2 | Epoch | Mean (2f) |
+|:----:|:-----:|:-----:|:-----:|:-----:|:---------:|
+| BLCA | 0.7282 | 14 | 0.6765 | 9 | 0.7024 |
+| BRCA | 0.6976 | 5 | 0.7644 | 14 | 0.7310 |
+| LUAD | 0.8104 | 12 | 0.7051 | 3 | 0.7577 |
+| LUSC | 0.5795 | 0 | 0.6096 | 10 | 0.5946 |
+
+#### A4. IPCW+ETAR (NLL + IPCW rank 0.10 + ETAR 0.10)
+
+| 癌种 | Fold0 | Epoch | Fold2 | Epoch | Mean (2f) |
+|:----:|:-----:|:-----:|:-----:|:-----:|:---------:|
+| BLCA | 0.7163 | 3 | 0.6589 | 8 | 0.6876 |
+| BRCA | 0.7541 | 5 | 0.7583 | 38 | 0.7562 |
+| LUAD | 0.7654 | 16 | 0.6975 | 3 | 0.7314 |
+| LUSC | 🔄 运行中 | — | ⏳ 未开始 | — | — |
+
+#### 消融实验对比汇总
+
+| 癌种 | NLL | IPCW | ETAR | IPCW+ETAR | 最佳 |
+|:----:|:----:|:----:|:----:|:--------:|:----:|
+| BLCA | 0.7004 | 0.6789 | **0.7024** | 0.6876 | ETAR |
+| BRCA | 0.6915 | **0.8022** | 0.7310 | 0.7562 | IPCW |
+| LUAD | **0.7647** | 0.7423 | 0.7577 | 0.7314 | NLL |
+| LUSC | 0.6141 | 0.5850 | 0.5946 | — | NLL |
 
 ---
 
-## 排名总览 (按 Best C-Index mean)
+### 类别 B: Listwise Transport 变体 (survot_method=dct_listwise_transport)
 
-| 排名 | 方法 | Folds | Best mean±std | Last mean±std | Last5 mean±std |
-|:----:|------|:-----:|:-------------:|:-------------:|:--------------:|
-| 1 | **DCT v3.3 — BLCA** | 5/5 | **0.7311±0.0293** | 0.6589±0.0794 | 0.6453±0.0706 |
-| 2 | **V60 CA-PSA** | 5/5 | 0.7217±0.0383 | 0.6369±0.0771 | 0.6338±0.0800 |
-| 3 | **dct_v3_score/no_stage_risk** | 3/5 | 0.7306±0.0301 | 0.6032±0.0299 | — |
-| 4 | **dct_v3_score/no_anchor** | 3/5 | 0.6993±0.0155 | 0.6422±0.0456 | — |
-| 5 | **dct_v3_score/full** | 3/5 | 0.6925±0.0196 | 0.5907±0.0337 | — |
-| 6 | **DCT v3.3 — BRCA stable** | 5/5 | 0.6659±0.0445 | 0.5562±0.0676 | — |
-| 7 | **DCT v3.3 — BRCA norank** | 5/5 | 0.6630±0.0501 | 0.5377±0.0660 | — |
-| 8 | **dct_v3_score/evidence_cost** | 3/5 | 0.6864±0.0213 | 0.5852±0.0260 | — |
-| 9 | **V70 PSPC** | 5/5 | 0.6786±0.0335 | 0.6167±0.0277 | 0.6168±0.0283 |
+> dct_lambda_listwise=0.10, dct_lambda_ipcw_rank=0.0, dct_lambda_etar=0.0
 
----
+#### B1. GPL (Global Plackett-Luce)
 
-## 1. DCT v3.3 Score-First (Distributional Counterfactual Transport)
+> dct_listwise_mode=global
+> 全癌种 5 折: **❌ 尚未开始运行**
 
-- **Config**: `configs/distributional_counterfactual_transport_blca.yaml`
-- **方法**: score-first ranking + IPCW rank + anchor loss + stage risk + coordinate loss
-- **Results dir**: `results/dct_v3_score_first_diagnostics/full` (folds 0,1,3,4) + `results/dct_v3_3_fold2_nan_fix` (fold 2)
+#### B2. TCL (Transport-Conditioned Listwise)
 
-| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index | Last5 Mean | Source |
-|:----:|:------:|:------------:|:----------:|:------------:|:----------:|--------|
-| 0 | 50 | **0.7552** | 5 | 0.6482 | 0.6569 | dct_v3_score_first_diagnostics/full |
-| 1 | 50 | **0.7157** | 6 | 0.5431 | 0.5314 | dct_v3_score_first_diagnostics/full |
-| 2 | 50 | **0.7046** | 19 | 0.6429 | 0.6474 | dct_v3_3_fold2_nan_fix |
-| 3 | 50 | **0.7104** | 35 | 0.7049 | 0.6656 | dct_v3_score_first_diagnostics/full |
-| 4 | 50 | **0.7696** | 37 | 0.7553 | 0.7253 | dct_v3_score_first_diagnostics/full |
-| **Mean±Std** | | **0.7311±0.0293** | | **0.6589±0.0794** | **0.6453±0.0706** | |
+> dct_listwise_mode=stage_transport
+> 全癌种 5 折: **❌ 尚未开始运行**
 
 ---
 
-## 2. DCT v3.3 Score-First — BRCA Stable (IPCW rank enabled)
+### v3.6 完整待办清单
 
-- **Config**: `configs/distributional_counterfactual_transport_brca_stable.yaml`
-- **Results dir**: `results/dct_v3.3_score_first_brca_stable`
-- **改进**: train-fold binning + sparse-event rank memory (64) + conservative LR (0.0002) + early stop (patience=6)
-- **alpha_surv**: 0.50 (BRCA ~9% DSS events)
-
-| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index | IPCW Pairs |
-|:----:|:------:|:------------:|:----------:|:------------:|:----------:|
-| 0 | 7* | **0.7253** | 1 | 0.4109 | 33.2 |
-| 1 | 9* | **0.6925** | 3 | 0.6603 | 34.7 |
-| 2 | 12* | **0.6635** | 6 | 0.5889 | 26.4 |
-| 3 | 6* | **0.6333** | 0 | 0.5404 | 23.5 |
-| 4 | 14* | **0.6148** | 10 | 0.5804 | 26.5 |
-| **Mean±Std** | | **0.6659±0.0445** | | **0.5562±0.0676** | |
-
-> *Early stopped. Stable vs norank gap: +0.0029. IPCW rank 有微弱正向效果，方差略小，但提升不显著。
-
-### 2.1 DCT v3.3 Score-First — BRCA Norank Control
-
-- **Config**: `configs/distributional_counterfactual_transport_brca_norank_control.yaml`
-- **Results dir**: `results/dct_v3.3_score_first_brca_norank_control`
-- **变化**: dct_lambda_ipcw_rank=0.0, dct_ipcw_rank_memory_size=0, 其余与 stable 相同
-
-| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index |
-|:----:|:------:|:------------:|:----------:|:------------:|
-| 0 | 7* | **0.7300** | 1 | 0.5430 |
-| 1 | 9* | **0.6931** | 3 | 0.6009 |
-| 2 | 12* | **0.6595** | 6 | 0.4737 |
-| 3 | 6* | **0.6281** | 0 | 0.6162 |
-| 4 | 11* | **0.6045** | 5 | 0.4546 |
-| **Mean±Std** | | **0.6630±0.0501** | | **0.5377±0.0660** |
-
-> 对照组。与 stable 相比差距极小 (+0.0029)，IPCW rank 在 BRCA 上贡献有限。
+| 类别 | 变体 | 癌种 | 已完成 | 剩余 |
+|:----:|:----:|:----:|:-----:|:---:|
+| A | NLL | blca/brca/luad/lusc | fold0+2 (8次) | fold1/3/4 (12次) |
+| A | IPCW | blca/brca/luad/lusc | fold0+2 (8次) | fold1/3/4 (12次) |
+| A | ETAR | blca/brca/luad/lusc | fold0+2 (8次) | fold1/3/4 (12次) |
+| A | IPCW+ETAR | blca/brca/luad/lusc | fold0+2 (7次) | LUSC fold2 + fold1/3/4 (13次) |
+| B | GPL | blca/brca/luad/lusc | 0次 | 全5折 (20次) |
+| B | TCL | blca/brca/luad/lusc | 0次 | 全5折 (20次) |
+| **合计** | | | **31/120** | **89 次** |
 
 ---
 
-### BLCA vs BRCA 对比
+## DCT v3.7_uni2h_highscore (UNI2-h)
 
-| 指标 | BLCA (381) | BRCA stable (418) | BRCA norank (418) |
-|------|:----------:|:-----------------:|:-----------------:|
-| Best Mean | **0.7311** | 0.6659 | 0.6630 |
-| Last Mean | **0.6589** | 0.5562 | 0.5377 |
-| Best-Last Gap | 9.9% | 16.5% | 18.9% |
-| Best Std | ±0.0293 | ±0.0445 | ±0.0501 |
+> survot_method: distributional_counterfactual_transport
+> 参数: max_epochs=50, batch_size=8, lr=5e-4, alpha_surv=0.15, dct_lambda_ipcw_rank=0.10
+> wsi_encoder=uni2-h, encoding_dim=1536, fit_bins_on_train=false, slot_init=gaussian
+> 结果目录: `results/dct_v3.7_uni2h/highscore/<cancer>/`
+> 目标: 10 个癌种
 
-> BRCA 效果远低于 BLCA，过拟合也更严重。IPCW rank 几乎无贡献（+0.0029）。
+### BLCA (381 样本) — Mean: 0.7249 ± 0.0359 ✅
 
----
+| Fold | C-Index | Best Epoch | Stopped |
+|:----:|:------:|:----------:|:-------:|
+| 0 | 0.7448 | 5 | 49 |
+| 1 | **0.7555** | 9 | 49 |
+| 2 | 0.6597 | 13 | 49 |
+| 3 | 0.7126 | 17 | 49 |
+| 4 | 0.7518 | 40 | 49 |
 
-## 4. V60 CA-PSA (Cohort-Anchored Adaptive Prognostic Slot Attention)
+### BRCA (418 样本) — Mean: 0.7130 ± 0.0433 ✅
 
-- **Config**: `configs/cohort_anchored_adaptive_prognostic_slot_attention_blca.yaml`
-- **Results dir**: `results/v60_caapsa_dct_matched_blca`
+| Fold | C-Index | Best Epoch | Stopped |
+|:----:|:------:|:----------:|:-------:|
+| 0 | 0.7465 | 41 | 49 |
+| 1 | 0.6733 | 48 | 49 |
+| 2 | 0.7067 | 4 | 49 |
+| 3 | **0.7765** | 24 | 49 |
+| 4 | 0.6620 | 14 | 49 |
 
-| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index | Last5 Mean |
-|:----:|:------:|:------------:|:----------:|:------------:|:----------:|
-| 0 | 50 | **0.7274** | 7 | 0.5571 | 0.5479 |
-| 1 | 50 | **0.7623** | 2 | 0.6134 | 0.6105 |
-| 2 | 50 | **0.6605** | 19 | 0.5773 | 0.5747 |
-| 3 | 50 | **0.7421** | 36 | 0.7224 | 0.7220 |
-| 4 | 50 | **0.7162** | 44 | 0.7144 | 0.7139 |
-| **Mean±Std** | | **0.7217±0.0383** | | **0.6369±0.0771** | **0.6338±0.0800** |
+### COADREAD (573 样本) — Mean: 0.7384 ± 0.0405 ✅
 
-> Fold 0/1 早期过拟合严重 (Best@epoch 7/2); fold 2 首次运行卡死在 epoch 24，重跑完成; fold 3/4 相对稳定
+| Fold | C-Index | Best Epoch | Stopped |
+|:----:|:------:|:----------:|:-------:|
+| 0 | **0.7803** | 17 | 49 |
+| 1 | 0.7764 | 31 | 49 |
+| 2 | 0.6692 | 1 | 49 |
+| 3 | 0.7423 | 22 | 49 |
+| 4 | 0.7240 | 1 | 49 |
 
----
+### HNSC (438 样本) — Mean: 0.6406 ± 0.0244 ✅
 
-## 5. V70 PSPC (Patient-Specific Prognostic Circuits)
+| Fold | C-Index | Best Epoch | Stopped |
+|:----:|:------:|:----------:|:-------:|
+| 0 | 0.6652 | 22 | 49 |
+| 1 | 0.6359 | 6 | 49 |
+| 2 | **0.6722** | 13 | 49 |
+| 3 | 0.6193 | 7 | 49 |
+| 4 | 0.6105 | 14 | 49 |
 
-- **Config**: `configs/v70_pspc_blca.yaml`
-- **Results dir**: `results/v70_pspc_dct_matched_blca`
+### KIRC (488 样本) — Mean: 0.8154 (3/5 folds) 🔄
 
-| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index | Last5 Mean |
-|:----:|:------:|:------------:|:----------:|:------------:|:----------:|
-| 0 | 50 | **0.6648** | 4 | 0.6054 | 0.6048 |
-| 1 | 50 | **0.6701** | 6 | 0.6058 | 0.6051 |
-| 2 | 50 | **0.6373** | 15 | 0.5821 | 0.5821 |
-| 3 | 50 | **0.6951** | 14 | 0.6470 | 0.6466 |
-| 4 | 50 | **0.7260** | 34 | 0.6432 | 0.6457 |
-| **Mean±Std** | | **0.6786±0.0335** | | **0.6167±0.0277** | **0.6168±0.0283** |
+| Fold | C-Index | Best Epoch | Stopped | 状态 |
+|:----:|:------:|:----------:|:-------:|:----:|
+| 0 | **0.8323** | 10 | 49 | ✅ |
+| 1 | 0.8152 | 27 | 49 | ✅ |
+| 2 | 0.7987 | 30 | 49 | ✅ |
+| 3 | — | — | — | 🔄 运行中 |
+| 4 | — | — | — | ⏳ |
 
-> 整体偏弱，过拟合明显 (fold 0/1 best@epoch 4/6)
+### 剩余癌种 — ⏳ 未开始
 
----
+| 癌种 | 样本 | 状态 |
+|:----:|:---:|:----:|
+| LUAD | 467 | ⏳ |
+| LUSC | 460 | ⏳ |
+| SKCM | 409 | ⏳ |
+| STAD | 366 | ⏳ |
+| UCEC | 488 | ⏳ |
 
-## 6. dct_v3_score ablated variants (仅 3/5 fold)
+### v3.7 汇总
 
-### 6.1 dct_v3_score / no_stage_risk
-
-| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index |
-|:----:|:------:|:------------:|:----------:|:------------:|
-| 0 | 50 | **0.7599** | 10 | 0.5697 |
-| 2 | 50 | **0.6998** | 40 | 0.6125 |
-| 3 | 50 | **0.7322** | 27 | 0.6273 |
-| **Mean (3/5)** | | **0.7306** | | **0.6032** |
-
-### 6.2 dct_v3_score / no_anchor
-
-| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index |
-|:----:|:------:|:------------:|:----------:|:------------:|
-| 0 | 50 | **0.6933** | 4 | 0.6743 |
-| 2 | 50 | **0.6878** | 19 | 0.5901 |
-| 3 | 50 | **0.7169** | 32 | 0.6623 |
-| **Mean (3/5)** | | **0.6993** | | **0.6422** |
-
-### 6.3 dct_v3_score / full
-
-| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index |
-|:----:|:------:|:------------:|:----------:|:------------:|
-| 0 | 50 | **0.7068** | 9 | 0.5523 |
-| 2 | 50 | **0.6701** | 28 | 0.6045 |
-| 3 | 50 | **0.7005** | 44 | 0.6153 |
-| **Mean (3/5)** | | **0.6925** | | **0.5907** |
-
-### 6.4 dct_v3_score / evidence_cost
-
-| Fold | Epochs | Best C-Index | Best Epoch | Last C-Index |
-|:----:|:------:|:------------:|:----------:|:------------:|
-| 0 | 50 | **0.7044** | 7 | 0.6149 |
-| 2 | 50 | **0.6629** | 8 | 0.5669 |
-| 3 | 50 | **0.6918** | 13 | 0.5738 |
-| **Mean (3/5)** | | **0.6864** | | **0.5852** |
+| 排名 | 癌种 | 样本 | Mean ± Std | 最佳 | 最差 | Δ | 状态 |
+|:----:|:----:|:---:|:----------:|:----:|:----:|:--:|:----:|
+| 1 | KIRC | 488 | 0.8154 (3/5) | 0.8323 | 0.7987 | 0.034 | 🔄 |
+| 2 | COADREAD | 573 | 0.7384 ± 0.0405 | 0.7803 | 0.6692 | 0.111 | ✅ |
+| 3 | BLCA | 381 | 0.7249 ± 0.0359 | 0.7555 | 0.6597 | 0.096 | ✅ |
+| 4 | BRCA | 418 | 0.7130 ± 0.0433 | 0.7765 | 0.6620 | 0.115 | ✅ |
+| 5 | HNSC | 438 | 0.6406 ± 0.0244 | 0.6722 | 0.6105 | 0.062 | ✅ |
+| 6-10 | — | — | — | — | — | — | ⏳ |
 
 ---
 
-## 与 SlotSPE 基准对比
+## DCT v3.8 Transport Consistency (UNI2-h)
 
-| 方法 | Best mean | Last mean | 备注 |
-|------|:---------:|:---------:|------|
-| ot_v3 (SlotSPE 最高) | 0.7282 | 0.6013 | |
-| otehv2_capacity (最稳定) | 0.7075 | **0.6708** | |
-| otehv2_rankevent_seed5 | 0.7158 | 0.6604 | |
-| **DCT v3.3 Score-First (BLCA)** | **0.7311** | 0.6589 | |
-| **DCT v3.3 — BRCA stable** | 0.6659 | 0.5562 | IPCW rank +0.0029, 几乎无效果 |
-| **DCT v3.3 — BRCA norank** | 0.6630 | 0.5377 | 对照组 |
-| V60 CA-PSA | 0.7217 | 0.6369 | |
-| V70 PSPC | 0.6786 | 0.6167 | |
+> survot_method: dct_transport_intervention_consistency
+> 参数: max_epochs=50, batch_size=8, UNI2-h (1536d), ipcw_rank=0.10
+> v38_lambda_direction=0.05, v38_lambda_dose=0.03, v38_lambda_reconfiguration=0.02
+> protocol: highscore (fit_bins_on_train=false, slot_init=gaussian)
+> variant: full (direction + dose + reconfiguration)
+> 结果目录: `results/dct_v3.8_transport_consistency/highscore/full/<cancer>/`
+> 目标: 4 癌种 (blca/brca/luad/lusc), 5 折
+> 启动: Jul 27 04:45, 调度器 PID 3953441
+
+### 当前进度
+
+| 癌种 | Fold | 状态 | 备注 |
+|:----:|:----:|:----:|------|
+| BLCA | 0 | 🔄 epoch ~38/50 | best so far: 0.7147 @ epoch 24 |
+| BLCA | 1-4 | ⏳ | — |
+| BRCA | 0-4 | ⏳ | — |
+| LUAD | 0-4 | ⏳ | — |
+| LUSC | 0-4 | ⏳ | — |
+
+> 每 fold 约 6-7h (UNI2-h 1536维), 全部 20 个 fold 预计 5-6 天
+
+---
+
+## 📈 版本对比 (UNI v1 vs UNI2-h vs v3.6)
+
+| 癌种 | v3.3 (UNIv1) | v3.6 最佳 (UNIv1) | v3.7 (UNI2-h) | v3.8 (UNI2-h) |
+|:----:|:------------:|:-----------------:|:-------------:|:-------------:|
+| UCEC | **0.7964** | — | ⏳ | — |
+| KIRC | 0.7958 | — | 0.8154 (3/5) | — |
+| COADREAD | 0.6774 | — | **0.7384** | — |
+| BLCA | 0.7311 | 0.7024 (ETAR) | 0.7249 | 🔄 fold0 |
+| BRCA | 🔄 | **0.8022** (IPCW) | 0.7130 | ⏳ |
+| HNSC | ❌ | — | 0.6406 | — |
+| LUAD | ⏳ | 0.7647 (NLL) | ⏳ | ⏳ |
+| LUSC | ⏳ | 0.6141 (NLL) | ⏳ | ⏳ |
+| SKCM | 0.6770 | — | ⏳ | — |
+| STAD | 0.6596 | — | ⏳ | — |
+
+---
+
+## 🏆 排名总览 (按 Best C-Index)
+
+| 排名 | 版本 | 变体 | 癌种 | 分数 | 类型 | 状态 |
+|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
+| 1 | v3.6 | IPCW | BRCA | **0.8375** | Fold0 单折 | ✅ |
+| 2 | v3.3 | — | UCEC | **0.8340** | Fold3 单折 | ✅ |
+| 3 | v3.7 | — | KIRC | **0.8323** | Fold0 单折 | ✅ |
+| 4 | v3.3 | — | UCEC | 0.8265 | Fold4 单折 | ✅ |
+| 5 | v3.3 | — | KIRC | 0.8164 | Fold0 单折 | ✅ |
+| 6 | v3.7 | — | KIRC | 0.8152 | Fold1 单折 | ✅ |
+| 7 | v3.6 | ETAR | LUAD | 0.8104 | Fold0 单折 | ✅ |
+| 8 | v3.7 | — | KIRC | 0.7987 | Fold2 单折 | ✅ |
+| 9 | v3.3 | — | UCEC | **0.7964** | **5折均值** | ✅ |
+| 10 | v3.3 | — | KIRC | **0.7958** | **5折均值** | ✅ |
+
+---
+
+## 🔄 当前运行状态 (2026-07-27 09:30)
+
+### 运行中进程
+
+| 版本 | 癌种/变体 | 当前进度 | 剩余 |
+|:----:|:-----------|:--------|:---:|
+| v3.3 | BRCA fold0 | epoch 33/50 | 20 fold |
+| v3.6 | LUSC ipcw_etar fold0 | epoch ~5/50 | 2 fold (LUSC) |
+| v3.7 | KIRC fold3 | 运行中 | 2 fold (KIRC) + 5癌种×5fold |
+| v3.8 | BLCA fold0 | epoch ~38/50 | 19 fold |
+
+### 待办优先级 (按紧急程度)
+
+| 优先级 | 任务 | 预计次数 |
+|:------:|:-----|:--------:|
+| 🔴 高 | v3.6 GPL 变体 (4癌种×5折) | 20 |
+| 🔴 高 | v3.6 TCL 变体 (4癌种×5折) | 20 |
+| 🟡 中 | v3.6 消融实验 fold1/3/4 (4变体×4癌种×3折) | 48 |
+| 🟡 中 | v3.7 剩余5癌种 (LUAD/LUSC/SKCM/STAD/UCEC) | 25 |
+| 🟢 低 | v3.8 按调度器顺序自动完成 | 20 |
+
+---
+
+## 多癌种数据集总览 (10 个)
+
+| 癌种 | 样本数 | v3.3 | v3.6 最佳 | v3.7 | v3.8 |
+|:----:|:-----:|:-----:|:---------:|:----:|:----:|
+| BLCA | 381 | 0.7311 ✅ | 0.7024 ETAR | 0.7249 ✅ | 🔄 |
+| BRCA | 418 | 🔄 | **0.8022** IPCW | 0.7130 ✅ | ⏳ |
+| COADREAD | 573 | 0.6774 ✅ | — | 0.7384 ✅ | — |
+| HNSC | 438 | ⏳ | — | 0.6406 ✅ | — |
+| KIRC | 488 | 0.7958 ✅ | — | 0.8154 🔄 | — |
+| LUAD | 467 | ⏳ | 0.7647 NLL | ⏳ | ⏳ |
+| LUSC | 460 | ⏳ | 0.6141 NLL | ⏳ | ⏳ |
+| SKCM | 409 | 0.6770 ✅ | — | ⏳ | — |
+| STAD | 366 | 0.6596 ✅ | — | ⏳ | — |
+| UCEC | 488 | 0.7964 ✅ | — | ⏳ | — |
 
 ---
 
 ## 结论
 
-1. **DCT v3.3 BLCA (0.7311)** 达到 SlotSPE ot_v3 (0.7282) 水平，且 Last mean (0.6589) 优于 ot_v3 (0.6013)
-2. **DCT v3.3 BRCA stable (0.6659)** vs norank (0.6630)：IPCW rank 提升仅 +0.0029，几乎无效
-3. BRCA 效果远低于 BLCA，原因待分析（数据异质性、事件率低等）
-4. 所有方法存在不同程度的过拟合，Last/Best 差距约 0.07-0.13
-5. dct_v3_score 消融实验中 no_anchor 变体 Last mean 最高 (0.6422)，去除 anchor 对稳定性有益
-6. V70 PSPC 整体偏弱 (0.6786)，不推荐继续
-7. 归档文件: `reproducibility_archives/` (summary CSV + epoch curves + manifest)
-
----
-
-## 多癌种数据集目录 (10 个)
-
-| 癌种 | 样本 | Clinical | Omics | 5-fold | WSI | DCT 3.3 | 缺失项 |
-|:----:|:----:|:--------:|:-----:|:------:|:---:|:-------:|--------|
-| BLCA | 381 | Y | Y | Y | 457 | **Done: 0.7311** | — |
-| BRCA | 418 | Y | Y | Y | 1131 | **Done: 0.6659** | — |
-| UCEC | 488 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
-| LUAD | 467 | Y | Y | Y | Y | v3.5R fold0 已有 | — |
-| COADREAD | 573 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
-| KIRC | 488 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
-| LUSC | 460 | Y | Y | Y | Y | v3.5R fold0 已有 | — |
-| HNSC | 438 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
-| SKCM | 409 | Y | Y | Y | Y | v3.5R fold0 已有 | — |
-| STAD | 366 | Y | Y | Y | 0 | 不运行 | **无 WSI** |
-
-### CPTAC 数据集
-
-| 癌种 | 样本 | Clinical | Omics | 5-fold | WSI | 缺失项 |
-|:----:|:----:|:--------:|:-----:|:------:|:---:|--------|
-| CPTAC-LUAD | 57 | Y | **空** | Y | — | **RNA pathway data** |
-| CPTAC-LUSC | 33 | Y | **空** | Y | — | **RNA pathway data** |
-
-### 数据准备清单
-
-**当前可运行 WSI patches（5 个）：** BRCA, LUAD, LUSC, BLCA, SKCM
-> 放置路径: `/data/CPathPatchFeature/{study}/uni/pt_files/*.pt`
-
-**当前无 WSI、不能进入 WSI+RNA 主实验（5 个）：** COADREAD, KIRC, UCEC, HNSC, STAD
-
-**只需 RNA 数据（2 个）：** CPTAC-LUAD, CPTAC-LUSC
-> 从 cBioPortal 下载 mRNA expression，处理后放入 `raw_rna_data_inter/`
-
-**配置文件**: 每个癌种需要 `configs/distributional_counterfactual_transport_{study}.yaml`，与 BLCA 完全相同参数（仅替换 study 名和结果目录）。
-
----
-
-## 🔄 运行中任务状态 (2026-07-23 15:00 CST)
-
-### v3.5R fold2 — 5 癌种并行
-
-| 癌种 | Epochs | Best C-Index | Best Ep | 状态 |
-|:-----|:------:|:------------:|:-------:|:----:|
-| BLCA | 50 | 0.6589 | 6 | ✅ |
-| LUAD | 15/50 | 0.6551 | 3 | 🔄 |
-| LUSC | 14/50 | 0.5939 | 0 | 🔄 |
-| SKCM | 17/50 | 0.6572 | 4 | 🔄 |
-| BRCA | 16/50 | 0.6821 | 16 | 🔄 |
-
-### BRCA Recovery fold2 — 13 变体 (3 组串行)
-
-| 已完成 | C-Index | Best Ep |
-|:-------|:-------:|:-------:|
-| ref | 0.7510 | 17 |
-| det | 0.6951 | 21 |
-
-| 组 | 当前 | Epoch | Best C-Index | 排队 |
-|:--:|:-----|:-----:|:------------:|:-----|
-| g0 | bin | 32/50 | 0.6440@22 | strat, a30, norank |
-| g4 | reg | 32/50 | 0.5709@4 | det_legacy, bin_legacy, strat_legacy |
-| g8 | a30_legacy | 13/50 | 0.6793@13 | norank_legacy, reg_legacy |
-
-### 待补齐
-
-| 任务 | 备注 |
-|:-----|:-----|
-| v3.5R BLCA fold0 | E17 中断，需重跑 50 ep |
-
-### 预估完成时间
-
-| 队列 | 预估 |
-|:-----|:----|
-| v3.5R fold2 (4癌种) | ~1 小时 |
-| BRCA Recovery g0/g4/g8 (全部变体) | ~4 小时 |
-| **全部完成** | **约 4-5 小时 (CST 19:00-20:00)** |
-
----
+1. **v3.6 BRCA IPCW = 0.8375** 是目前全版本最高单折分数
+2. **UNI2-h (v3.7) 优于 UNI v1 (v3.3)**: KIRC +2.8%, COADREAD +6.1%, BLCA 持平
+3. **v3.6 IPCW** 在 BRCA 上显著优于其他变体 (0.8022 vs 0.69~0.76)
+4. **v3.6 GPL/TCL 尚未运行**, 是 v3.6 最核心的对比实验
+5. **v3.8 正在运行**, 新增 direction + dose + reconfiguration 三个 transport 一致性约束
