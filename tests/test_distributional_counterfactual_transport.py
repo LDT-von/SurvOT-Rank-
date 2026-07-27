@@ -33,18 +33,11 @@ def make_args():
         dct_etar_uncertainty_weight=0.05,
         dct_etar_temperature=0.50,
         dct_etar_evidence_floor=0.10,
-        dct_lambda_ot=0.0,
-        dct_lambda_rank=0.0,
-        dct_lambda_anchor=0.0,
-        dct_lambda_stage_risk=0.0,
-        dct_stage_risk_margin=0.02,
-        dct_anchor_margin=0.02,
         dct_anchor_momentum=0.90,
         dct_evidence_cost_weight=0.0,
         dct_evidence_mass_floor=0.05,
         dct_coupling_projection_iters=1000,
         dct_coupling_projection_tol=1e-4,
-        dct_lambda_coordinate=0.0,
         dct_coordinate_temperature=0.30,
         dct_mix_ratio=0.50,
         fet_lambda_sparse=0.0,
@@ -234,22 +227,6 @@ def test_competitive_semantic_slots_separate_opposite_token_evidence():
     _, weights = model._semantic_slots(tokens, prototypes)
     assert weights[0, 0, 0] > weights[0, 1, 0]
     assert weights[0, 1, 1] > weights[0, 0, 1]
-
-
-def test_stage_risk_contrast_uses_observed_high_and_low_risk_sets():
-    model = DistributionalCounterfactualTransport(make_args(), omic_input_dim=20)
-    low = torch.zeros(2, 4)
-    high = torch.zeros(2, 4)
-    low[1, 0] = 1.0
-    high[0, 0] = 1.0
-    separated = model._stage_risk_contrast_loss(
-        torch.tensor([[4.0, -4.0, -4.0, -4.0], [-4.0, -4.0, -4.0, -4.0]]), low, high
-    )
-    reversed_loss = model._stage_risk_contrast_loss(
-        torch.tensor([[-4.0, -4.0, -4.0, -4.0], [4.0, -4.0, -4.0, -4.0]]), low, high
-    )
-    assert separated == 0
-    assert reversed_loss > 0
 
 
 def test_ipcw_pairwise_rank_matches_cindex_direction():

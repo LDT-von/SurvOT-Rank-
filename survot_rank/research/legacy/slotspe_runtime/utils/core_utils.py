@@ -184,11 +184,13 @@ def _process_data_and_forward(args, model, data, device, test=False):
     input_args = {"x_wsi": data_wsi}
 
     input_args["cur_epoch"] = args.cur_epoch
+    input_args["wsi_missing"] = False
     input_args['omic_missing'] = False
     if test:
         input_args['y'] = None
         input_args['c'] = None
 
+        input_args["wsi_missing"] = getattr(args, "wsi_missing", False)
         input_args['omic_missing'] = args.omic_missing
     else:
         input_args['y'] = y_disc

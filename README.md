@@ -55,6 +55,10 @@ python scripts/run_dct_v37_uni2h_screen.py plan --variants highscore --cancers b
 # (plan is read-only; real cancer training remains server-side)
 python scripts/run_dct_v38_transport_consistency.py plan
 
+# DCT v4.1: original survival-evidence ledger slots + the v3.3 DCT backbone.
+# Fixed protocol: UNI; BLCA/BRCA/STAD/HNSC; folds 0,2,4 only.
+python scripts/run_dct_v41_survival_evidence_ledger.py plan
+
 # IST-Surv v4.0: no slots; intervention-stable patch-pathway transport with
 # exact signed hazard-logit decomposition. Defaults to BLCA/BRCA folds 0-4.
 python scripts/run_v40_intervention_stable_transport.py plan
@@ -97,6 +101,8 @@ survot_rank/research/methods/v60_ot_event_rank/
                               compact V60 paper-facing method
 survot_rank/research/methods/cohort_anchored_adaptive_prognostic_slot_attention/
                               experimental cohort-anchored adaptive slots
+survot_rank/research/methods/dct_v41_survival_evidence_ledger/
+                              missing-aware evidence-conserving ledger slots + DCT v3.3
 survot_rank/research/methods/v70_patient_specific_prognostic_circuits/
                               experimental patient-specific sparse circuits
 survot_rank/research/methods/prognostic_event_transport/

@@ -49,6 +49,15 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "distributional_counterfactual_transport"),
         "DistributionalCounterfactualTransport",
     ),
+    "dct_v41_survival_evidence_ledger": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "dct_v41_survival_evidence_ledger",
+        ),
+        "DCTV41SurvivalEvidenceLedger",
+    ),
     "dct_listwise_transport": (
         os.path.join(
             "survot_rank",
@@ -113,6 +122,8 @@ METHOD_ALIASES = {
     "50": "otehv2_timelocal_competing",
     "60": "v60_ot_event_rank",
     "dct_v38": "dct_transport_intervention_consistency",
+    "dct_v41": "dct_v41_survival_evidence_ledger",
+    "dct_v4_1": "dct_v41_survival_evidence_ledger",
     "v40": "intervention_stable_survival_transport",
     "ist_surv": "intervention_stable_survival_transport",
     "ca_psa": "cohort_anchored_adaptive_prognostic_slot_attention",

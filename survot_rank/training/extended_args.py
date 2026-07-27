@@ -18,6 +18,9 @@ METHOD_CHOICES = [
     "stagewise_prognostic_transport",
     "faithful_evidence_transport",
     "distributional_counterfactual_transport",
+    "dct_v41_survival_evidence_ledger",
+    "dct_v41",
+    "dct_v4_1",
     "dct_listwise_transport",
     "dct_transport_intervention_consistency",
     "dct_v38",
@@ -89,6 +92,7 @@ def build_base_parser() -> argparse.ArgumentParser:
                         help="梯度裁剪范数上限；0 = 不裁剪（原行为）")
     parser.add_argument("--gpu", type=str, default="0")
     parser.add_argument("--only_test", action="store_true", default=False)
+    parser.add_argument("--wsi_missing", action="store_true", default=False)
     parser.add_argument("--omic_missing", action="store_true", default=False)
     parser.add_argument("--max_smoke_batches", type=int, default=0)
     parser.add_argument("--min_free_space_gb", type=float, default=2.0)
@@ -329,6 +333,18 @@ def build_base_parser() -> argparse.ArgumentParser:
         default=1,
         help="Evaluate the extra midpoint Sinkhorn branches every N post-warmup epochs.",
     )
+
+    # DCT v4.1 Survival-Evidence Ledger (SELC). This method replaces the
+    # inherited slot mechanism while retaining the verified v3.3 DCT path.
+    parser.add_argument("--v41_modality_dropout", type=float, default=0.35)
+    parser.add_argument("--v41_ledger_temperature", type=float, default=0.25)
+    parser.add_argument(
+        "--v41_missing_confidence_cap", type=float, default=0.65
+    )
+    parser.add_argument("--v41_confidence_floor", type=float, default=0.05)
+    parser.add_argument("--v41_lambda_completion", type=float, default=0.05)
+    parser.add_argument("--v41_lambda_ledger", type=float, default=0.02)
+    parser.add_argument("--v41_lambda_survival", type=float, default=0.05)
 
     # V4.0 intervention-stable survival transport.  Unlike the DCT evolution,
     # this is an independent raw patch-pathway architecture whose hazard logits

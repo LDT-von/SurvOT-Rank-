@@ -39,9 +39,9 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
 
         # Score-first default: NLL is supplied by the trainer and DCT adds one
         # censoring-aware objective that is aligned with the reported C-index.
-        # The older OT/rank/anchor/stage/coordinate penalties remain available
-        # only as explicit ablations; jointly enabling all five created a
-        # poorly-scaled six-objective optimisation problem.
+        # The obsolete five-objective ablation path was removed after v3.3 was
+        # frozen; keeping it here made the paper method look more complicated
+        # than the objective that actually produced the reported results.
         self.dct_lambda_ipcw_rank = float(getattr(args, "dct_lambda_ipcw_rank", 0.10))
         self.dct_ipcw_rank_margin = float(getattr(args, "dct_ipcw_rank_margin", 0.02))
         self.dct_ipcw_rank_temperature = float(
@@ -75,13 +75,6 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             raise ValueError("dct_etar_temperature must be positive")
         if not 0.0 <= self.dct_etar_evidence_floor <= 1.0:
             raise ValueError("dct_etar_evidence_floor must be in [0, 1]")
-        self.dct_lambda_ot = float(getattr(args, "dct_lambda_ot", 0.0))
-        self.dct_lambda_rank = float(getattr(args, "dct_lambda_rank", 0.0))
-        self.dct_lambda_anchor = float(getattr(args, "dct_lambda_anchor", 0.0))
-        self.dct_lambda_stage_risk = float(getattr(args, "dct_lambda_stage_risk", 0.0))
-        self.dct_stage_risk_margin = float(getattr(args, "dct_stage_risk_margin", 0.02))
-        self.dct_lambda_coordinate = float(getattr(args, "dct_lambda_coordinate", 0.0))
-        self.dct_anchor_margin = float(getattr(args, "dct_anchor_margin", 0.02))
         self.dct_anchor_momentum = float(getattr(args, "dct_anchor_momentum", 0.90))
         self.dct_evidence_cost_weight = float(
             getattr(args, "dct_evidence_cost_weight", 0.0)
@@ -219,12 +212,28 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         slots = torch.einsum("bkn,bnd->bkd", weights, tokens)
         return slots, weights
 
-    def _coordinate_loss(self):
-        def _orthogonality(prototypes):
-            gram = F.normalize(prototypes, dim=-1) @ F.normalize(prototypes, dim=-1).transpose(0, 1)
-            return (gram - torch.eye(gram.size(0), device=gram.device, dtype=gram.dtype)).square().mean()
+    def _encode_transport_slots(self, x_wsi_proj, x_omics, kwargs):
+        """Encode the two modalities into the coordinates consumed by DCT.
 
-        return _orthogonality(self.shared_wsi_prototypes) + _orthogonality(self.shared_omic_prototypes)
+        Subclasses may replace the complete slot mechanism through this hook
+        without copying the censoring, transport, anchor, and survival forward
+        path.  The base implementation is the frozen v3.3 local-slot followed
+        by shared-prototype coordinate alignment.
+        """
+        local_slots_wsi = self.slot_attention_wsi(x_wsi_proj)
+        local_slots_omic = self.slot_attention_omic(x_omics)
+        slots_wsi, wsi_coordinate_assignment = self._semantic_slots(
+            local_slots_wsi, self.shared_wsi_prototypes
+        )
+        slots_omic, omic_coordinate_assignment = self._semantic_slots(
+            local_slots_omic, self.shared_omic_prototypes
+        )
+        return (
+            slots_wsi,
+            slots_omic,
+            wsi_coordinate_assignment,
+            omic_coordinate_assignment,
+        )
 
     def _sinkhorn_eps(self, epoch):
         end = float(getattr(self.args, "otehv2_eps", 0.05))
@@ -386,49 +395,6 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                 torch.full_like(event_time, upper)
             )
         return low, high
-
-    def _anchor_contrastive_loss(self, costs, low_weights, high_weights):
-        losses = []
-        for stage_idx in range(self.spt_num_stages):
-            for risk_idx, weights in (
-                (self._LOW_RISK, low_weights[:, stage_idx]),
-                (self._HIGH_RISK, high_weights[:, stage_idx]),
-            ):
-                if not bool(self.risk_anchor_seen[stage_idx].all()):
-                    continue
-                valid = weights > 0
-                if not bool(valid.any()):
-                    continue
-                values = costs[valid, stage_idx]
-                own = self.risk_anchor_costs[stage_idx, risk_idx].to(dtype=costs.dtype)
-                other = self.risk_anchor_costs[stage_idx, 1 - risk_idx].to(dtype=costs.dtype)
-                own_distance = (values - own).square().mean(dim=(1, 2, 3))
-                other_distance = (values - other).square().mean(dim=(1, 2, 3))
-                hinge = F.relu(self.dct_anchor_margin + own_distance - other_distance)
-                losses.append((hinge * weights[valid]).sum() / weights[valid].sum().clamp_min(1e-6))
-        return torch.stack(losses).mean() if losses else costs.new_zeros(())
-
-    def _stage_risk_contrast_loss(self, factual_logits, low_weights, high_weights):
-        """Directly supervise factual stage risk from IPCW event/risk sets.
-
-        This retains the useful directional signal of old DCT's CF hinge, but
-        grounds it in observed events and confirmed stage survivors instead of
-        imposing an ordering on synthetic counterfactual predictions.
-        """
-        hazards = torch.sigmoid(factual_logits)
-        cumulative_risk = 1.0 - torch.cumprod(1.0 - hazards, dim=1)
-        losses = []
-        for stage_idx in range(self.spt_num_stages):
-            risk_idx = min(stage_idx, cumulative_risk.size(1) - 1)
-            low = low_weights[:, stage_idx]
-            high = high_weights[:, stage_idx]
-            if not bool((low > 0).any() and (high > 0).any()):
-                continue
-            stage_risk = cumulative_risk[:, risk_idx]
-            high_mean = (stage_risk * high).sum() / high.sum().clamp_min(1e-6)
-            low_mean = (stage_risk * low).sum() / low.sum().clamp_min(1e-6)
-            losses.append(F.relu(self.dct_stage_risk_margin - (high_mean - low_mean)))
-        return torch.stack(losses).mean() if losses else factual_logits.new_zeros(())
 
     def _ipcw_pairwise_ranking_loss(self, factual_logits, event_time, censorship):
         """Smooth Uno-style ranking over the exact validation risk score.
@@ -633,18 +599,15 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         x_wsi_proj = self.wsi_mlp(kwargs["x_wsi"])
         x_omics = self._encode_omics(kwargs)
 
-        # Preserve the high-capacity patient-local representation used by the
-        # earlier high-scoring DCT, then align those local slots to global
-        # prototype coordinates. Directly pooling thousands of raw tokens with
-        # the global dictionary discarded Slot Attention's within-patient
-        # competition and was a factual-prediction bottleneck.
-        local_slots_wsi = self.slot_attention_wsi(x_wsi_proj)
-        local_slots_omic = self.slot_attention_omic(x_omics)
-        slots_wsi, wsi_coordinate_assignment = self._semantic_slots(
-            local_slots_wsi, self.shared_wsi_prototypes
-        )
-        slots_omic, omic_coordinate_assignment = self._semantic_slots(
-            local_slots_omic, self.shared_omic_prototypes
+        (
+            slots_wsi,
+            slots_omic,
+            wsi_coordinate_assignment,
+            omic_coordinate_assignment,
+        ) = self._encode_transport_slots(
+            x_wsi_proj,
+            x_omics,
+            kwargs,
         )
         epoch = int(getattr(self.args, "cur_epoch", kwargs.get("cur_epoch", 0)))
         if self.training:
@@ -657,22 +620,12 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
 
         low_weights = factual_costs.new_zeros(factual_costs.size(0), self.spt_num_stages)
         high_weights = torch.zeros_like(low_weights)
-        anchor_loss = factual_costs.new_zeros(())
-        stage_risk_loss = factual_costs.new_zeros(())
         ipcw_rank_loss = factual_costs.new_zeros(())
         etar_loss = factual_costs.new_zeros(())
         ipcw_pair_count = factual_costs.new_zeros(())
         if kwargs.get("event_time") is not None and kwargs.get("c") is not None:
             low_weights, high_weights = self._stage_membership_weights(kwargs["event_time"], kwargs["c"])
             if self.training:
-                if self.dct_lambda_anchor != 0.0:
-                    anchor_loss = self._anchor_contrastive_loss(
-                        factual_costs, low_weights, high_weights
-                    )
-                if self.dct_lambda_stage_risk != 0.0:
-                    stage_risk_loss = self._stage_risk_contrast_loss(
-                        factual_logits, low_weights, high_weights
-                    )
                 if self.dct_lambda_ipcw_rank != 0.0:
                     ipcw_rank_loss = self._ipcw_pairwise_ranking_loss(
                         factual_logits, kwargs["event_time"], kwargs["c"]
@@ -712,20 +665,6 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             # hook above without changing the original score-first recipe.
             self.last_explanations = None
 
-            rank_loss = factual_costs.new_zeros(())
-            if (
-                self.dct_lambda_rank != 0.0
-                and kwargs.get("event_time") is not None
-                and kwargs.get("c") is not None
-            ):
-                rank_loss = self._continuous_ranking_loss(
-                    factual_logits, kwargs["event_time"], kwargs["c"]
-                )
-            coordinate_loss = (
-                self._coordinate_loss()
-                if self.dct_lambda_coordinate != 0.0
-                else factual_costs.new_zeros(())
-            )
             active_stage_fraction = (
                 ((low_weights > 0).any(dim=0) & (high_weights > 0).any(dim=0))
                 .to(factual_costs.dtype)
@@ -751,10 +690,6 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                     self, "last_etar_uncertainty", factual_costs.new_zeros(())
                 ).detach(),
                 "ipcw_pairs": ipcw_pair_count.detach(),
-                "rank": rank_loss.detach(),
-                "anchor": anchor_loss.detach(),
-                "stage_risk": stage_risk_loss.detach(),
-                "coordinate": coordinate_loss.detach(),
                 "active_stage_fraction": active_stage_fraction.detach(),
                 "anchor_coverage": self.risk_anchor_seen.to(factual_costs.dtype).mean().detach(),
                 "evidence_marginal_entropy": torch.cat(
@@ -774,11 +709,6 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
 
             aux_loss = self.dct_lambda_ipcw_rank * ipcw_rank_loss
             aux_loss = aux_loss + self.dct_lambda_etar * etar_loss
-            aux_loss = aux_loss + self.dct_lambda_ot * ot_distance
-            aux_loss = aux_loss + self.dct_lambda_rank * rank_loss
-            aux_loss = aux_loss + self.dct_lambda_anchor * anchor_loss
-            aux_loss = aux_loss + self.dct_lambda_stage_risk * stage_risk_loss
-            aux_loss = aux_loss + self.dct_lambda_coordinate * coordinate_loss
             aux_loss = aux_loss + transport_objective
             return factual_logits, aux_loss
 
@@ -808,7 +738,6 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             "stage_edges": self.dct_stage_edges.detach(),
             "low_risk_set_ipcw": low_weights.detach(),
             "high_event_ipcw": high_weights.detach(),
-            "stage_risk_contrast_loss": stage_risk_loss.detach(),
             "factual_coupling_marginal_error": self._marginal_error(factual_plans, rows, cols).detach(),
             "low_coupling_marginal_error": self._marginal_error(low_plans, rows, cols).detach(),
             "high_coupling_marginal_error": self._marginal_error(high_plans, rows, cols).detach(),

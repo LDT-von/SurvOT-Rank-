@@ -1,0 +1,80 @@
+name: dct_v41_survival_evidence_ledger_brca
+description: DCT v4.1 Survival-Evidence Ledger on BRCA DSS with UNI features.
+
+data:
+  study: brca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  wsi_encoder: uni
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 1
+
+train:
+  survot_method: dct_v41_survival_evidence_ledger
+  specific_simple: dct_v4.1_survival_evidence_ledger_brca
+  results_dir: results/dct_v4.1_survival_evidence_ledger/brca
+  max_epochs: 50
+  batch_size: 8
+  grad_accum_steps: 1
+  warmup_epochs: 5
+  grad_clip_norm: 1.0
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  fit_bins_on_train: true
+  event_stratified_batches: true
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 3
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  otehv2_eps: 0.05
+  otehv2_iter: 50
+  otehv2_heads: 4
+  otehv2_layers: 2
+  otehv2_dropout: 0.15
+  dct_num_stages: 4
+  dct_lambda_ipcw_rank: 0.10
+  dct_ipcw_rank_margin: 0.02
+  dct_ipcw_rank_temperature: 0.50
+  dct_ipcw_max_weight: 10.0
+  dct_lambda_etar: 0.0
+  dct_anchor_momentum: 0.90
+  dct_evidence_cost_weight: 0.0
+  dct_evidence_mass_floor: 0.05
+  dct_coupling_projection_iters: 1000
+  dct_coupling_projection_tol: 0.0001
+  dct_coordinate_temperature: 0.30
+  dct_mix_ratio: 0.50
+  fet_lambda_sparse: 0.0
+  fet_lambda_faith: 0.0
+  spt_prog_cost: 0.20
+  rg_eps_start: 0.10
+  rg_eps_anneal: 12
+  v41_modality_dropout: 0.35
+  v41_ledger_temperature: 0.25
+  v41_missing_confidence_cap: 0.65
+  v41_confidence_floor: 0.05
+  v41_lambda_completion: 0.05
+  v41_lambda_ledger: 0.02
+  v41_lambda_survival: 0.05

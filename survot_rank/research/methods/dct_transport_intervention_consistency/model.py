@@ -78,14 +78,9 @@ class DCTTransportInterventionConsistency(DistributionalCounterfactualTransport)
         if self.dct_v38_dose_every <= 0:
             raise ValueError("dct_v38_dose_every must be positive")
 
-        # v3.8 is a controlled v3.3 extension.  Do not silently combine it with
-        # ETAR or the older five-objective ablations.
+        # v3.8 is a controlled v3.3 extension. Do not silently combine it with
+        # the optional ETAR objective.
         self.dct_lambda_etar = 0.0
-        self.dct_lambda_ot = 0.0
-        self.dct_lambda_rank = 0.0
-        self.dct_lambda_anchor = 0.0
-        self.dct_lambda_stage_risk = 0.0
-        self.dct_lambda_coordinate = 0.0
 
     def _costs_at_alpha(self, factual_costs, alpha):
         alpha = min(1.0, max(0.0, float(alpha)))

@@ -141,11 +141,6 @@ class DCTListwiseTransport(DistributionalCounterfactualTransport):
         # Controls using IPCW and/or ETAR continue to use the original DCT class.
         self.dct_lambda_ipcw_rank = 0.0
         self.dct_lambda_etar = 0.0
-        self.dct_lambda_ot = 0.0
-        self.dct_lambda_rank = 0.0
-        self.dct_lambda_anchor = 0.0
-        self.dct_lambda_stage_risk = 0.0
-        self.dct_lambda_coordinate = 0.0
 
         dim = self.wsi_projection_dim
         self.stage_listwise_head = nn.Sequential(
