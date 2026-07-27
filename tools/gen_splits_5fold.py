@@ -8,9 +8,9 @@ Usage:
     python gen_splits_5fold.py --study luad --n_folds 5 --seed 42
 
 Output format:
-    ,train,val
-    0,TCGA-XX-XXXX,TCGA-YY-YYYY
-    1,...
+    train,val
+    TCGA-XX-XXXX,TCGA-YY-YYYY
+    ...
 
 Stratification key: 4 buckets = (event, time_quartile) on label_col
 """
@@ -28,6 +28,17 @@ DEFAULT_DATA_PATH = PROJECT_ROOT / "survot_rank" / "research" / "legacy" / "slot
 def make_strat_key(df: pd.DataFrame, label_col: str, censor_col: str):
     """Return (strat_key_array, sub_df_with_case_id_and_strat)."""
     sub = df[['case id', label_col, censor_col]].dropna().copy()
+    duplicated = sub[sub.duplicated(subset=['case id'], keep=False)]
+    if not duplicated.empty:
+        conflicting = duplicated.groupby('case id')[[label_col, censor_col]].nunique()
+        conflicting = conflicting[(conflicting[label_col] > 1) | (conflicting[censor_col] > 1)]
+        if not conflicting.empty:
+            raise ValueError(
+                "Conflicting survival labels for duplicate case IDs: "
+                f"{conflicting.index.tolist()[:10]}"
+            )
+        sub = sub.drop_duplicates(subset=['case id'], keep='first')
+
     sub['event'] = (sub[censor_col] == 0).astype(int)
     sub['time_q'] = pd.qcut(sub[label_col], q=4, labels=False, duplicates='drop')
     sub['time_q'] = sub['time_q'].fillna(0).astype(int)
@@ -48,13 +59,14 @@ def gen(study: str,
     df = pd.read_csv(csv, index_col=0)
     print(f"[{study}] loaded {len(df)} rows from {csv}")
 
-    # rows with valid label
+    # Survival training requires both the endpoint and censoring indicator.
     valid_mask = df[label_col].notna() & df[censor_col].notna()
-    valid_cases = df.loc[valid_mask, "case id"].tolist()
-    print(f"[{study}] {len(valid_cases)} cases have valid {label_col}")
-
     sub = df.loc[valid_mask].copy()
     strat_key, sub2 = make_strat_key(sub, label_col, censor_col)
+    print(
+        f"[{study}] {len(sub2)} unique cases have valid {label_col} "
+        f"({len(sub) - len(sub2)} duplicate rows removed)"
+    )
 
     skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
     fold_assign = np.zeros(len(sub2), dtype=int)
@@ -63,23 +75,43 @@ def gen(study: str,
 
     sub2['fold'] = fold_assign
 
-    # write per fold (each row = one train/val case pair, indexing from 0)
+    # Write unequal-length train/val columns without a synthetic CSV index.
+    # Using zip(train, val) silently truncated train to the shorter val length.
     target_dir = os.path.join(out_dir, study)
     os.makedirs(target_dir, exist_ok=True)
     n_total = len(sub2)
     print(f"[{study}] writing {n_folds} fold CSVs to {target_dir}")
+    expected_cases = set(sub2['case id'])
+    validation_counts = {case_id: 0 for case_id in expected_cases}
 
     for k in range(n_folds):
         train = sub2.loc[sub2['fold'] != k, 'case id'].tolist()
         val = sub2.loc[sub2['fold'] == k, 'case id'].tolist()
-        # interleave to match BLCA format: index, train, val
-        # (BLCA shows train[i] paired with val[i] but they're independent lists)
-        rows = list(zip(train, val))
-        out = pd.DataFrame(rows, columns=['train', 'val'])
-        out.index.name = ''
+        train_set = set(train)
+        val_set = set(val)
+        if train_set & val_set:
+            raise RuntimeError(f"{study} fold_{k} has train/val patient overlap")
+        if train_set | val_set != expected_cases:
+            raise RuntimeError(f"{study} fold_{k} does not cover the eligible cohort")
+        for case_id in val:
+            validation_counts[case_id] += 1
+
+        out = pd.DataFrame({
+            'train': pd.Series(train, dtype='object'),
+            'val': pd.Series(val, dtype='object'),
+        })
         out_path = os.path.join(target_dir, f"fold_{k}.csv")
-        out.to_csv(out_path)
+        out.to_csv(out_path, index=False)
         print(f"  fold_{k}.csv : train={len(train)} val={len(val)}")
+
+    invalid_validation_counts = {
+        case_id: count for case_id, count in validation_counts.items() if count != 1
+    }
+    if invalid_validation_counts:
+        raise RuntimeError(
+            f"{study} cases must appear in validation exactly once: "
+            f"{list(invalid_validation_counts.items())[:10]}"
+        )
 
 
 def main():

@@ -112,7 +112,22 @@ class SurvivalDatasetFactory:
                 if clinical_df[col].dtype == "object":
                     clinical_df[col] = pd.Categorical(clinical_df[col]).codes
 
-        self.clinical_df = clinical_df.dropna()
+        clinical_df = clinical_df.dropna()
+        duplicated = clinical_df[
+            clinical_df.duplicated(subset=["case id"], keep=False)
+        ]
+        if not duplicated.empty:
+            value_cols = [col for col in cols if col != "case id"]
+            conflicting = duplicated.groupby("case id")[value_cols].nunique(dropna=False)
+            conflicting = conflicting[conflicting.max(axis=1) > 1]
+            if not conflicting.empty:
+                raise ValueError(
+                    "Conflicting clinical rows for duplicate case IDs: "
+                    f"{conflicting.index.tolist()[:10]}"
+                )
+            clinical_df = clinical_df.drop_duplicates(subset=["case id"], keep="first")
+
+        self.clinical_df = clinical_df
         # reindex the clinical data
         self.clinical_df = self.clinical_df.reset_index(drop=True)
 
