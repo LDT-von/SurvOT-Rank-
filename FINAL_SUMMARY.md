@@ -1,6 +1,6 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-07-27 18:00 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v4.0 / v4.1
+> 更新时间: 2026-07-28 01:30 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v4.0 / v4.1
 
 ---
 
@@ -49,8 +49,8 @@
 | **v3.6** | Listwise | 6变体: NLL/IPCW/ETAR/IPCW+ETAR/GPL/TCL | UNI v1 | NLL + listwise | 🔄 运行中 |
 | **v3.7** | UNI2-h HighScore | distributional_counterfactual_transport | UNI2-h (1536d) | NLL + IPCW rank | 🔄 5/10 |
 | **v3.8** | Transport Consistency | dct_transport_intervention_consistency | UNI2-h (1536d) | direction+dose+reconfiguration | 🔄 运行中 |
-| **v4.0** | IST-Surv | intervention_stable_survival_transport | UNI2-h (1536d) | 干预稳定性 | ⏳ 未开始 |
-| **v4.1** | Survival Evidence Ledger | dct_v41_survival_evidence_ledger | UNI2-h (1536d) | 证据账本 | ⏳ 未开始 |
+| **v4.0** | IST-Surv | intervention_stable_survival_transport | UNI2-h (1536d) | 干预稳定性 | 🔄 运行中 |
+| **v4.1** | Survival Evidence Ledger | dct_v41_survival_evidence_ledger | UNI v1 (1024d) | 证据账本 | ❌ 已暂停 |
 
 ---
 
@@ -230,7 +230,17 @@
 
 #### B2. TCL (Transport-Conditioned Listwise)
 
-> ❌ 尚未开始运行
+> survot_method: dct_listwise_transport, dct_listwise_mode=stage_transport, dct_lambda_listwise=0.10
+> 调度器已退出（仅完成 BLCA fold0）。GPL/TCL 分数均偏低，不建议继续。
+
+| 癌种 | Fold0 | Fold2 | 状态 |
+|:----:|:-----:|:-----:|:----:|
+| BLCA | 0.6473 @epoch15 | — | ✅ (scheduler exited) |
+| BRCA | ⏳ | ⏳ | 待重跑 |
+| LUAD | ⏳ | ⏳ | ❌ |
+| LUSC | ⏳ | ⏳ | ❌ |
+
+> GPL fold0=0.6410, TCL fold0=0.6473。两变体均低于消融变体（ETAR=0.7024），listwise 全局排序在此规模上效果不佳。
 
 ---
 
@@ -296,9 +306,13 @@
 
 ### LUAD (458 样本) — 🔄 运行中
 
-| Fold | 状态 |
-|:----:|:----:|
-| 0 | 🔄 epoch 1 |
+| Fold | C-Index | Epoch | 状态 |
+|:----:|:------:|:-----:|:----:|
+| 0 | **0.6791** | 7 | ✅ |
+| 1 | 0.6261 | 14 (best so far) | 🔄 epoch 25/50 |
+| 2 | — | — | ⏳ |
+| 3 | — | — | ⏳ |
+| 4 | — | — | ⏳ |
 
 ### 待跑/待重跑
 
@@ -336,9 +350,12 @@
 |:----:|:------:|:-----:|:----:|
 | 0 | **0.7591** | 7 | ✅ |
 | 1 | 0.7343 | 5 | ✅ |
-| 2 | — | 🔄 12/50 | train_cindex=0.8139 |
-| 3 | — | — | ⏳ |
+| 2 | 0.7199 | 5 | ✅ |
+| 3 | **0.7528** | 6 (best so far) | 🔄 epoch 24/50 |
 | 4 | — | — | ⏳ |
+| **Mean(4f)** | **0.7415** | | |
+
+> fold3 epoch 6 即冲到 0.7528，4折均值 0.7415 已超 v3.3 和 v3.7 的 5折均值
 
 ### 待跑
 
@@ -353,19 +370,37 @@
 
 ---
 
-## DCT v4.0 — IST-Surv ⏳ 未开始
+## DCT v4.0 — IST-Surv 🔄 运行中
 
 > survot_method: intervention_stable_survival_transport
 > 参数: UNI2-h, ist_eps=0.05, ist_num_interventions=3, ist_deletion_penalty=8.0
 > 目标: 2 癌种 (blca/brca), 5 折
 
----
+### BLCA (380 样本) — 🔄
 
-## DCT v4.1 — Survival Evidence Ledger ⏳ 未开始
+| Fold | C-Index | Epoch | 状态 |
+|:----:|:------:|:-----:|:----:|
+| 0 | 0.6228 | 2 (best so far) | 🔄 epoch 2/50 |
+
+> fold0 最佳 0.6228 @epoch2。训练极慢 (~53s/epoch)，尚在早期阶段。
+
+---
+ 
+## DCT v4.1 — Survival Evidence Ledger ❌ 已暂停
 
 > survot_method: dct_v41_survival_evidence_ledger
 > 配置: `dct_v41_survival_evidence_ledger_*.yaml`
-> 目标: 4 癌种 (blca/brca/hnsc/stad)
+> 目标: 4 癌种 (blca/brca/hnsc/stad), 仅 folds 0/2/4
+
+### BLCA (380 样本, UNI v1 1024d) — ❌ 分数偏低，已暂停
+
+| Fold | C-Index | Epoch | 状态 |
+|:----:|:------:|:-----:|:----:|
+| 0 | 0.6201 | 20 | ✅ |
+| 2 | **0.6985** | 25 (best so far) | ❌ stopped @epoch 37 |
+| 4 | — | — | ❌ 未跑 |
+
+> fold0=0.6201 偏低，fold2=0.6985 回升但低于 v3.8 BLCA (0.7415)。已终止运行。
 
 ---
 
@@ -418,28 +453,27 @@
 
 ---
 
-## 🔄 当前运行状态 (2026-07-27 18:00)
+## 🔄 当前运行状态 (2026-07-28 01:30)
 
-| 版本 | 癌种 | 当前 | 状态 |
-|:----:|:----:|------|:----:|
-| v3.8 | BLCA fold2 | epoch 12/50 | 🔄 |
-| v3.6 GPL | BLCA fold2 | 运行中 | 🔄 |
-| v3.7 | LUAD fold0 | 运行中 | 🔄 |
-| v3.8 调度器 | 管理 BLCA→BRCA→LUAD→LUSC | — | 🔄 |
-| v3.7 调度器 | 管理 LUAD→LUSC→SKCM→STAD→UCEC | — | 🔄 |
-| v3.6 调度器 | 管理 GPL/TCL × 4癌种 | — | 🔄 |
-| ~~v3.3 BRCA~~ | ~~fold0-4~~ | — | ❌ 已停止+删除 |
+| 版本 | 癌种 | Fold | 进度 | 最佳 C-Index | 状态 |
+|:----:|:----:|:----:|------|:----------:|:----:|
+| v3.8 | BLCA | fold3 | epoch ?/50 | 0.7528 @epoch6 | 🔄 |
+| v3.7 | LUAD | fold1 | epoch ?/50 | 0.6261 @epoch14 | 🔄 |
+| v4.0 | BLCA | fold0 | epoch 2/50 | 0.6228 @epoch2 | 🔄 |
+| v3.8 调度器 | BLCA→BRCA→LUAD→LUSC | — | — | — | 🔄 |
+| v3.7 调度器 | LUAD→LUSC→SKCM→STAD→UCEC | — | — | — | 🔄 |
+| v4.1 | 全部 | — | — | — | ❌ 已暂停 |
 
 ### 待办
 
 | 优先级 | 任务 |
 |:------:|:-----|
 | 🔴 | **BRCA 全部版本重跑** (v3.3/3.6/3.7/3.8) — 需用正确 1045 人 split |
-| � | v3.6 GPL/TCL 全癌种 |
 | 🟡 | v3.6 消融实验 fold1/3/4 |
-| 🟡 | v3.7 剩余癌种 |
-| ⬜ | v4.0 IST-Surv |
-| ⬜ | v4.1 Survival Evidence Ledger |
+| 🟡 | v3.7 剩余癌种 (LUSC/SKCM/STAD/UCEC) |
+| 🟡 | v3.8 剩余癌种 (BRCA/LUAD/LUSC) |
+| ⬜ | v4.0 继续 (BRCA 等) |
+| ⬜ | v4.1 不继续，分数低 |
 
 ---
 
