@@ -46,7 +46,7 @@
 | **v3.3** | Score-First | distributional_counterfactual_transport | UNI v1 (1024d) | NLL + IPCW rank | 🔄 6/10 |
 | **v3.4** | BRCA Recovery | 多种消融实验 | UNI v1 | NLL 等 | ❌ 已删除 |
 | **v3.5** | Smoke Tests | 烟雾测试 | UNI v1 | — | ⚠️ 非正式 |
-| **v3.6** | Listwise | 6变体: NLL/IPCW/ETAR/IPCW+ETAR/GPL/TCL | UNI v1 | NLL + listwise | 🔄 运行中 |
+| **v3.6** | Listwise | 6变体: NLL/IPCW/ETAR/IPCW+ETAR/GPL/TCL | UNI v1 | NLL + listwise | ⚠️ Listwise暂停 |
 | **v3.7** | UNI2-h HighScore | distributional_counterfactual_transport | UNI2-h (1536d) | NLL + IPCW rank | 🔄 5/10 |
 | **v3.8** | Transport Consistency | dct_transport_intervention_consistency | UNI2-h (1536d) | direction+dose+reconfiguration | 🔄 运行中 |
 | **v4.0** | IST-Surv | intervention_stable_survival_transport | UNI2-h (1536d) | 干预稳定性 | 🔄 运行中 |
@@ -219,28 +219,30 @@
 
 ### 类别 B: Listwise Transport 变体 (survot_method=dct_listwise_transport)
 
-#### B1. GPL (Global Plackett-Luce) 🔄
+#### B1. GPL (Global Plackett-Luce) ❌ 已暂停
+
+> GPL fold0=0.6410 @epoch22，低于消融变体（ETAR=0.7024），已终止。
 
 | 癌种 | Fold0 | Fold2 | 状态 |
 |:----:|:-----:|:-----:|:----:|
-| BLCA | 0.6410 @epoch22 | 🔄 运行中 | 🔄 |
+| BLCA | 0.6410 @epoch22 | — | ❌ |
 | BRCA | ⏳ | ⏳ | 待重跑 |
-| LUAD | ⏳ | ⏳ | ⏳ |
-| LUSC | ⏳ | ⏳ | ⏳ |
+| LUAD | ⏳ | ⏳ | ❌ 不跑 |
+| LUSC | ⏳ | ⏳ | ❌ 不跑 |
 
-#### B2. TCL (Transport-Conditioned Listwise)
+#### B2. TCL (Transport-Conditioned Listwise) ❌ 已暂停
 
 > survot_method: dct_listwise_transport, dct_listwise_mode=stage_transport, dct_lambda_listwise=0.10
-> 调度器已退出（仅完成 BLCA fold0）。GPL/TCL 分数均偏低，不建议继续。
+> TCL fold0=0.6473 @epoch15，低于消融变体（ETAR=0.7024），已终止。
 
 | 癌种 | Fold0 | Fold2 | 状态 |
 |:----:|:-----:|:-----:|:----:|
-| BLCA | 0.6473 @epoch15 | — | ✅ (scheduler exited) |
+| BLCA | 0.6473 @epoch15 | — | ❌ |
 | BRCA | ⏳ | ⏳ | 待重跑 |
-| LUAD | ⏳ | ⏳ | ❌ |
-| LUSC | ⏳ | ⏳ | ❌ |
+| LUAD | ⏳ | ⏳ | ❌ 不跑 |
+| LUSC | ⏳ | ⏳ | ❌ 不跑 |
 
-> GPL fold0=0.6410, TCL fold0=0.6473。两变体均低于消融变体（ETAR=0.7024），listwise 全局排序在此规模上效果不佳。
+> **结论**: GPL=0.6410, TCL=0.6473，两变体均低于消融变体（ETAR=0.7024），listwise 全局排序在此规模上效果不佳。**不建议继续。**
 
 ---
 
@@ -457,12 +459,15 @@
 
 | 版本 | 癌种 | Fold | 进度 | 最佳 C-Index | 状态 |
 |:----:|:----:|:----:|------|:----------:|:----:|
-| v3.8 | BLCA | fold3 | epoch ?/50 | 0.7528 @epoch6 | 🔄 |
-| v3.7 | LUAD | fold1 | epoch ?/50 | 0.6261 @epoch14 | 🔄 |
+| v3.8 | BLCA | fold3 | 🔄 运行中 | 0.7528 @epoch6 | 🔄 |
+| v3.7 | LUAD | fold1 | 🔄 运行中 | 0.6261 @epoch14 | 🔄 |
 | v4.0 | BLCA | fold0 | epoch 2/50 | 0.6228 @epoch2 | 🔄 |
 | v3.8 调度器 | BLCA→BRCA→LUAD→LUSC | — | — | — | 🔄 |
 | v3.7 调度器 | LUAD→LUSC→SKCM→STAD→UCEC | — | — | — | 🔄 |
-| v4.1 | 全部 | — | — | — | ❌ 已暂停 |
+| v3.6 GPL/TCL | — | — | — | — | ❌ 已暂停 |
+| v4.1 | — | — | — | — | ❌ 已暂停 |
+
+> 已清理重复进程：v3.8 fold3 从 5→1, v3.7 fold1 从 5→1, v4.0 fold0 从 4→1 |
 
 ### 待办
 
