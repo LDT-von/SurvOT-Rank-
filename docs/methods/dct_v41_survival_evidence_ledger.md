@@ -103,6 +103,17 @@ s_j^m=\operatorname{LN}\left(
 
 这条证据质量守恒关系由结构严格保证，不需要额外 penalty。代码测试会逐患者验证等式。
 
+## 专项检查与维修：Evidence Ledger 审计
+
+v4.1 不把“防塌缩”再做成一个未经验证的附加 loss；每个 forward 会生成只读审计量，并在训练日志中以 `v41_*` 写出。它们不参与反向传播，专门用于定位异常：
+
+- `v41_{wsi,omic}_ledger_mass_error`：写入精度质量与读出 slot 质量的绝对差。正常值应仅为浮点舍入误差；若明显升高，应先检查 token 输入、precision 分支和责任归一化，不应继续解释 OT 结果。
+- `v41_{wsi,omic}_ledger_assignment_error`：每个 token 对所有账本地址的责任和偏离 1 的最大值。它直接检查守恒前提。
+- `v41_{wsi,omic}_active_slot_fraction`：质量不低于患者期望 slot 质量 1% 的账本槽比例。持续偏低表示 ledger 塌缩风险，优先检查 `v41_ledger_temperature`、token 数量和训练数据，而不是盲目增加 loss。
+- `v41_{wsi,omic}_assignment_entropy`：token 到 ledger 地址的归一化责任熵。应结合 active-slot 比例读取：低熵且低 active fraction 是硬塌缩信号，高熵且低性能则更可能是证据缺乏区分度。
+
+在 eval 的 `explain_last_batch()` 中，同一批病人的 `*_ledger_written_mass`、`*_ledger_read_mass`、误差、active fraction 与 entropy 会一并返回，可将异常追到具体病人和模态。先确认两条守恒误差，再查看槽位活跃度，最后才判断补全置信度和 OT 边际是否可信。
+
 ## 模块二：不确定性槽级缺失补全
 
 对缺失的目标模态 \(t\)，使用现存源模态 \(s\) 的对应账本槽预测

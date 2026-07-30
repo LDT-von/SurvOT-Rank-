@@ -70,6 +70,19 @@ class SurvivalEvidenceLedger(nn.Module):
             nn.Linear(self.dim, self.num_slots * self.dim),
         )
         self.slot_norm = nn.LayerNorm(self.dim)
+        self._last_audit: dict[str, torch.Tensor] = {}
+
+    def audit_last_forward(self) -> dict[str, torch.Tensor]:
+        """Return detached per-patient invariants from the latest ledger write.
+
+        These values are diagnostics, not additional optimization targets.  In
+        particular, ``mass_error`` and ``responsibility_error`` should remain
+        at floating-point round-off: a material increase points to a broken
+        ledger write before it can silently contaminate OT.
+        """
+        if not self._last_audit:
+            raise RuntimeError("ledger audit requested before a forward pass")
+        return {name: value.detach() for name, value in self._last_audit.items()}
 
     def forward(
         self, tokens: torch.Tensor
@@ -106,6 +119,28 @@ class SurvivalEvidenceLedger(nn.Module):
         ).clamp_min(1e-6)
         confidence = 1.0 - torch.exp(-slot_mass / expected_mass)
         assignment = responsibilities.transpose(1, 2)
+
+        # Keep the two structural invariants and collapse indicators beside the
+        # ledger output.  They make a bad run diagnosable without changing the
+        # model objective or injecting a hand-tuned anti-collapse penalty.
+        mass_ratio = slot_mass / expected_mass
+        assignment_entropy = -(
+            responsibilities.clamp_min(1e-8)
+            * responsibilities.clamp_min(1e-8).log()
+        ).sum(dim=-1) / math.log(max(2, self.num_slots))
+        self._last_audit = {
+            "written_mass": token_precision.sum(dim=1),
+            "read_mass": slot_mass.sum(dim=1),
+            "mass_error": (
+                slot_mass.sum(dim=1) - token_precision.sum(dim=1)
+            ).abs(),
+            "responsibility_error": (
+                responsibilities.sum(dim=-1) - 1.0
+            ).abs().amax(dim=1),
+            "active_slot_fraction": (mass_ratio >= 0.01).to(tokens.dtype).mean(dim=1),
+            "minimum_slot_mass_ratio": mass_ratio.amin(dim=1),
+            "assignment_entropy": assignment_entropy.mean(dim=1),
+        }
         return slots, assignment, slot_mass, confidence.clamp(0.0, 1.0)
 
 
@@ -535,6 +570,8 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
             "omic_confidence": omic_confidence,
             "wsi_mass": wsi_mass,
             "omic_mass": omic_mass,
+            "wsi_ledger_audit": self.wsi_ledger.audit_last_forward(),
+            "omic_ledger_audit": self.omic_ledger.audit_last_forward(),
             "completion_loss": completion_loss,
             "private_loss": private_loss,
             "ledger_loss": ledger_loss,
@@ -649,6 +686,30 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
             "v41_missing_fraction": dropped.to(factual_logits.dtype).mean(),
             "v41_wsi_confidence": cache["wsi_confidence"].mean(),
             "v41_omic_confidence": cache["omic_confidence"].mean(),
+            "v41_wsi_ledger_mass_error": cache["wsi_ledger_audit"][
+                "mass_error"
+            ].mean(),
+            "v41_omic_ledger_mass_error": cache["omic_ledger_audit"][
+                "mass_error"
+            ].mean(),
+            "v41_wsi_ledger_assignment_error": cache["wsi_ledger_audit"][
+                "responsibility_error"
+            ].mean(),
+            "v41_omic_ledger_assignment_error": cache["omic_ledger_audit"][
+                "responsibility_error"
+            ].mean(),
+            "v41_wsi_active_slot_fraction": cache["wsi_ledger_audit"][
+                "active_slot_fraction"
+            ].mean(),
+            "v41_omic_active_slot_fraction": cache["omic_ledger_audit"][
+                "active_slot_fraction"
+            ].mean(),
+            "v41_wsi_assignment_entropy": cache["wsi_ledger_audit"][
+                "assignment_entropy"
+            ].mean(),
+            "v41_omic_assignment_entropy": cache["omic_ledger_audit"][
+                "assignment_entropy"
+            ].mean(),
             "v41_objective": objective,
         }
         return objective, metrics
@@ -679,6 +740,34 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
                     ].detach(),
                     "wsi_recoverability": cache["wsi_recoverability"].detach(),
                     "omic_recoverability": cache["omic_recoverability"].detach(),
+                    "wsi_ledger_written_mass": cache["wsi_ledger_audit"][
+                        "written_mass"
+                    ],
+                    "omic_ledger_written_mass": cache["omic_ledger_audit"][
+                        "written_mass"
+                    ],
+                    "wsi_ledger_read_mass": cache["wsi_ledger_audit"]["read_mass"],
+                    "omic_ledger_read_mass": cache["omic_ledger_audit"]["read_mass"],
+                    "wsi_ledger_mass_error": cache["wsi_ledger_audit"]["mass_error"],
+                    "omic_ledger_mass_error": cache["omic_ledger_audit"]["mass_error"],
+                    "wsi_ledger_assignment_error": cache["wsi_ledger_audit"][
+                        "responsibility_error"
+                    ],
+                    "omic_ledger_assignment_error": cache["omic_ledger_audit"][
+                        "responsibility_error"
+                    ],
+                    "wsi_ledger_active_slot_fraction": cache["wsi_ledger_audit"][
+                        "active_slot_fraction"
+                    ],
+                    "omic_ledger_active_slot_fraction": cache["omic_ledger_audit"][
+                        "active_slot_fraction"
+                    ],
+                    "wsi_ledger_assignment_entropy": cache["wsi_ledger_audit"][
+                        "assignment_entropy"
+                    ],
+                    "omic_ledger_assignment_entropy": cache["omic_ledger_audit"][
+                        "assignment_entropy"
+                    ],
                 }
             )
         return output

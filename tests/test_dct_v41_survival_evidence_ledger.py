@@ -101,6 +101,13 @@ def test_ledger_conserves_every_tokens_nonnegative_precision_mass():
     assert torch.allclose(assignment.sum(dim=1), torch.ones(3, 7), atol=1e-6)
     assert torch.allclose(slot_mass.sum(dim=1), token_mass.sum(dim=1), atol=1e-5)
     assert torch.all((confidence >= 0.0) & (confidence <= 1.0))
+    audit = ledger.audit_last_forward()
+    assert torch.allclose(audit["written_mass"], token_mass.sum(dim=1))
+    assert torch.allclose(audit["read_mass"], slot_mass.sum(dim=1))
+    assert torch.all(audit["mass_error"] < 1e-5)
+    assert torch.all(audit["responsibility_error"] < 1e-6)
+    assert torch.all((audit["active_slot_fraction"] >= 0.0) & (audit["active_slot_fraction"] <= 1.0))
+    assert torch.all((audit["assignment_entropy"] >= 0.0) & (audit["assignment_entropy"] <= 1.0))
 
 
 def test_v41_replaces_v33_slots_and_factory_aliases_resolve():
@@ -162,6 +169,18 @@ def test_missing_modality_completion_is_finite_and_confidence_tempered():
     assert explanation["omic_recoverable_shared"].shape == (4, 3, 16)
     assert torch.all(explanation["wsi_private_uncertainty"] >= 0)
     assert torch.all(explanation["omic_private_uncertainty"] >= 0)
+    for modality in ("wsi", "omic"):
+        assert torch.allclose(
+            explanation[f"{modality}_ledger_written_mass"],
+            explanation[f"{modality}_ledger_read_mass"],
+            atol=1e-5,
+        )
+        assert torch.all(explanation[f"{modality}_ledger_mass_error"] < 1e-5)
+        assert torch.all(explanation[f"{modality}_ledger_assignment_error"] < 1e-6)
+        assert torch.all(
+            (explanation[f"{modality}_ledger_active_slot_fraction"] >= 0.0)
+            & (explanation[f"{modality}_ledger_active_slot_fraction"] <= 1.0)
+        )
 
 
 def test_ledger_confidence_changes_the_actual_ot_marginals():
@@ -208,10 +227,22 @@ def test_selc_objective_is_active_and_backpropagates_through_new_ledgers():
         "v41_private_uncertainty",
         "v41_ledger",
         "v41_survival_consistency",
+        "v41_wsi_ledger_mass_error",
+        "v41_omic_ledger_mass_error",
+        "v41_wsi_ledger_assignment_error",
+        "v41_omic_ledger_assignment_error",
+        "v41_wsi_active_slot_fraction",
+        "v41_omic_active_slot_fraction",
+        "v41_wsi_assignment_entropy",
+        "v41_omic_assignment_entropy",
         "v41_objective",
     ):
         assert key in losses
         assert torch.isfinite(losses[key])
+    assert losses["v41_wsi_ledger_mass_error"] < 1e-5
+    assert losses["v41_omic_ledger_mass_error"] < 1e-5
+    assert losses["v41_wsi_ledger_assignment_error"] < 1e-6
+    assert losses["v41_omic_ledger_assignment_error"] < 1e-6
     aux_loss.backward()
     assert model.wsi_ledger.token_key.weight.grad is not None
     assert model.omic_ledger.token_key.weight.grad is not None
