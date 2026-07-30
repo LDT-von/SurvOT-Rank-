@@ -4,6 +4,7 @@ import torch
 
 from survot_rank.research.methods.archetypal_risk_composition.model import (
     ArchetypalRiskComposition,
+    CohortArchetypeBank,
 )
 from survot_rank.training.extended_args import process_args_extended
 from survot_rank.training.model_factory import METHOD_ALIASES, METHOD_REGISTRY, get_model
@@ -22,9 +23,11 @@ def make_args(**overrides):
         arc_num_archetypes=4,
         arc_bank_size=12,
         arc_temperature=0.25,
+        arc_beta_init_scale=1.5,
         arc_lambda_recon=0.05,
         arc_lambda_align=0.05,
         arc_lambda_balance=0.01,
+        arc_lambda_volume=0.01,
         arc_lambda_rank=0.10,
         arc_rank_margin=0.0,
         arc_rank_max_pairs=128,
@@ -56,6 +59,8 @@ def test_arcsurv_forward_backward_and_simplex_are_finite():
     )
     assert model.wsi_archetypes.memory_count.item() == 3
     assert model.omic_archetypes.memory_count.item() == 3
+    assert torch.isfinite(model.last_training_losses["arc_simplex_volume"])
+    assert model.last_training_losses["arc_composition_variance"] > 0
     (logits.sum() + aux_loss).backward()
     assert model.archetype_hazard_logits.grad is not None
     assert torch.isfinite(model.archetype_hazard_logits.grad).all()
@@ -134,3 +139,61 @@ def test_arcsurv_is_registered_and_parser_accepts_alias():
     assert parsed.survot_method == "arcsurv"
     model = get_model("arcsurv", make_args(), omic_input_dim=20)
     assert type(model).__name__ == "ArchetypalRiskComposition"
+
+
+def test_arcsurv_priority_reservoir_is_order_robust_and_first_epoch_only():
+    states = torch.arange(96, dtype=torch.float32).view(6, 16)
+    first = CohortArchetypeBank(16, num_archetypes=3, bank_size=4, temperature=0.25)
+    second = CohortArchetypeBank(16, num_archetypes=3, bank_size=4, temperature=0.25)
+    first.train()
+    second.train()
+
+    first.update(states)
+    second.update(states.flip(0))
+    assert first.memory_seen.item() == 6
+    assert second.memory_seen.item() == 6
+    assert torch.equal(first.memory_priority, second.memory_priority)
+    assert torch.equal(first.memory, second.memory)
+
+    frozen = first.memory.clone()
+    first.update(torch.randn(3, 16), allow_update=False)
+    assert torch.equal(first.memory, frozen)
+    assert first.memory_seen.item() == 6
+
+
+def test_arcsurv_simplex_volume_penalizes_collapse_and_backpropagates():
+    collapsed = torch.zeros(4, 8, requires_grad=True)
+    spread = torch.zeros(4, 8)
+    spread[1, 0] = 1.0
+    spread[2, 1] = 1.0
+    spread[3, 2] = 1.0
+
+    collapsed_loss = ArchetypalRiskComposition._simplex_volume_loss(collapsed)
+    spread_loss = ArchetypalRiskComposition._simplex_volume_loss(spread)
+    assert spread_loss < collapsed_loss
+    collapsed_loss.backward()
+    assert collapsed.grad is not None
+    assert torch.isfinite(collapsed.grad).all()
+
+
+def test_arcsurv_beta_initialization_breaks_the_uniform_composition_symmetry():
+    torch.manual_seed(23)
+    bank = CohortArchetypeBank(
+        16,
+        num_archetypes=4,
+        bank_size=12,
+        temperature=0.25,
+        beta_init_scale=1.5,
+    )
+    bank.train()
+    states = torch.randn(12, 16)
+    bank.update(states)
+
+    composition, _, archetypes = bank(states)
+    assert torch.pdist(archetypes).min() > 1e-3
+    assert composition.var(dim=1, unbiased=False).mean() > 1e-5
+    assert not torch.allclose(
+        composition,
+        torch.full_like(composition, 1.0 / bank.num_archetypes),
+        atol=1e-4,
+    )

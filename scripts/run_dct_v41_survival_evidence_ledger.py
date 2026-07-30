@@ -117,7 +117,7 @@ def build_train_command(
         "specific_simple": f"dct_v41_selc_uni_{cancer}",
     }
     if smoke:
-        overrides.update({"max_epochs": 2, "max_smoke_batches": 2})
+        overrides.update({"max_epochs": 1, "max_smoke_batches": 2})
     command = [
         python_bin,
         "-m",

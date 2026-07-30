@@ -14,6 +14,7 @@ from scripts.run_dct_v41_survival_evidence_ledger import (
     parse_folds,
 )
 from survot_rank.research.methods.dct_v41_survival_evidence_ledger.model import (
+    CrossLedgerCompletion,
     DCTV41SurvivalEvidenceLedger,
     SurvivalEvidenceLedger,
 )
@@ -70,6 +71,8 @@ def make_args():
         v41_lambda_completion=0.05,
         v41_lambda_ledger=0.02,
         v41_lambda_survival=0.05,
+        v41_lambda_private=0.02,
+        v41_shared_rank=4,
     )
 
 
@@ -155,6 +158,10 @@ def test_missing_modality_completion_is_finite_and_confidence_tempered():
     assert torch.count_nonzero(
         explanation["omic_ledger_assignment"][[1, 3]]
     ) == 0
+    assert explanation["wsi_recoverable_shared"].shape == (4, 3, 16)
+    assert explanation["omic_recoverable_shared"].shape == (4, 3, 16)
+    assert torch.all(explanation["wsi_private_uncertainty"] >= 0)
+    assert torch.all(explanation["omic_private_uncertainty"] >= 0)
 
 
 def test_ledger_confidence_changes_the_actual_ot_marginals():
@@ -198,19 +205,47 @@ def test_selc_objective_is_active_and_backpropagates_through_new_ledgers():
     assert torch.allclose(aux_loss, expected)
     for key in (
         "v41_completion",
+        "v41_private_uncertainty",
         "v41_ledger",
         "v41_survival_consistency",
         "v41_objective",
     ):
         assert key in losses
         assert torch.isfinite(losses[key])
-
     aux_loss.backward()
     assert model.wsi_ledger.token_key.weight.grad is not None
     assert model.omic_ledger.token_key.weight.grad is not None
-    assert model.wsi_from_omic.posterior[1].weight.grad is not None
-    assert model.omic_from_wsi.posterior[1].weight.grad is not None
+    assert model.wsi_from_omic.source_shared[1].weight.grad is not None
+    assert model.omic_from_wsi.source_shared[1].weight.grad is not None
+    assert model.wsi_from_omic.target_shared[1].weight.grad is not None
+    assert model.omic_from_wsi.target_shared[1].weight.grad is not None
 
+
+def test_cross_ledger_separates_shared_evidence_and_private_uncertainty():
+    torch.manual_seed(11)
+    completion = CrossLedgerCompletion(
+        dim=8,
+        confidence_cap=0.7,
+        shared_rank=3,
+    )
+    source = torch.randn(2, 4, 8)
+    target = torch.randn(2, 4, 8)
+    confidence = torch.full((2, 4), 0.9)
+
+    shared_target, private_target = completion.decompose_target(target)
+    assert torch.allclose(shared_target + private_target, target, atol=1e-6)
+
+    outputs = completion(source, confidence)
+    shared, _, completed_confidence, private_uncertainty, recoverability = outputs
+    assert shared.shape == target.shape
+    assert torch.all(private_uncertainty >= 0)
+    assert torch.all((recoverability >= 0) & (recoverability <= 1))
+    assert torch.all(completed_confidence <= 0.7)
+
+    with torch.no_grad():
+        completion.private_uncertainty.bias.fill_(5.0)
+    high_uncertainty_confidence = completion(source, confidence)[2]
+    assert torch.all(high_uncertainty_confidence < completed_confidence)
 
 def test_v41_configs_and_runner_are_restricted_to_uni_four_cancers_three_folds():
     root = Path(__file__).resolve().parent.parent

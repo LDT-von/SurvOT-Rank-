@@ -19,15 +19,25 @@ from survot_rank.research.components.slot_attention import MultiHeadSlotAttentio
 
 
 class CohortArchetypeBank(nn.Module):
-    """Learn archetypes as convex combinations of a fixed fold-local memory.
+    """Learn archetypes as convex combinations of an order-robust fold memory.
 
-    The memory is filled once from training patients and then kept fixed.
-    Learnable row-stochastic weights select boundary representatives from that
-    memory. This preserves the defining archetypal-analysis constraint
-    ``A = Beta @ Z`` instead of treating archetypes as unconstrained prototypes.
+    During the first training epoch, a deterministic priority reservoir selects
+    a fixed-size subset from every patient state it sees.  Keeping the highest
+    priorities and sorting them canonically makes the selected memory invariant
+    to dataloader order, unlike a first-come buffer.  Later epochs and all
+    evaluation forwards leave the memory fixed.  Learnable row-stochastic
+    weights then preserve the defining archetypal-analysis constraint
+    ``A = Beta @ Z`` instead of becoming unconstrained prototypes.
     """
 
-    def __init__(self, dim: int, num_archetypes: int, bank_size: int, temperature: float):
+    def __init__(
+        self,
+        dim: int,
+        num_archetypes: int,
+        bank_size: int,
+        temperature: float,
+        beta_init_scale: float = 1.5,
+    ):
         super().__init__()
         if num_archetypes < 2:
             raise ValueError("ArcSurv requires at least two archetypes")
@@ -35,33 +45,75 @@ class CohortArchetypeBank(nn.Module):
             raise ValueError("arc_bank_size must be at least arc_num_archetypes")
         if temperature <= 0:
             raise ValueError("arc_temperature must be positive")
+        if beta_init_scale <= 0:
+            raise ValueError("arc_beta_init_scale must be positive")
 
         self.dim = int(dim)
         self.num_archetypes = int(num_archetypes)
         self.bank_size = int(bank_size)
         self.temperature = float(temperature)
 
-        self.beta_logits = nn.Parameter(torch.zeros(num_archetypes, bank_size))
+        # Zero rows make every archetype exactly identical. That symmetry is
+        # fatal here: all patients then receive the same uniform composition,
+        # while the log-volume loss has zero first derivative at the fully
+        # collapsed point. A moderately sparse random convex initialization
+        # gives each row a different fold-local anchor set without relaxing
+        # the row-stochastic archetypal-analysis constraint.
+        self.beta_logits = nn.Parameter(
+            torch.randn(num_archetypes, bank_size) * float(beta_init_scale)
+        )
         self.empty_bank_seed = nn.Parameter(torch.randn(num_archetypes, dim) * 0.02)
         self.register_buffer("memory", torch.zeros(bank_size, dim))
         self.register_buffer("memory_count", torch.zeros((), dtype=torch.long))
+        self.register_buffer("memory_seen", torch.zeros((), dtype=torch.long))
+        self.register_buffer(
+            "memory_priority",
+            torch.full((bank_size,), -torch.inf),
+        )
+        self.register_buffer(
+            "priority_projection",
+            torch.linspace(0.173, 1.913, dim),
+            persistent=True,
+        )
 
     @torch.no_grad()
-    def update(self, states: torch.Tensor) -> None:
-        """Fill previously unused memory rows; never update during evaluation."""
-        if not self.training or states.numel() == 0:
+    def update(self, states: torch.Tensor, *, allow_update: bool = True) -> None:
+        """Update the first-epoch priority reservoir without gradient leakage."""
+        if not self.training or not allow_update or states.numel() == 0:
             return
         states = states.detach()
         states = states[torch.isfinite(states).all(dim=1)]
         if states.numel() == 0:
             return
 
-        start = int(self.memory_count.item())
-        if start >= self.bank_size:
-            return
-        take = min(states.size(0), self.bank_size - start)
-        self.memory[start : start + take].copy_(states[:take])
-        self.memory_count.fill_(start + take)
+        projection = self.priority_projection.to(device=states.device, dtype=states.dtype)
+        phase = (states * projection).sum(dim=1)
+        priorities = torch.frac(
+            torch.sin(phase * 12.9898).abs() * 43758.5453
+        )
+
+        count = int(self.memory_count.item())
+        existing_states = self.memory[:count].to(states.device)
+        existing_priorities = self.memory_priority[:count].to(states.device)
+        candidates = torch.cat([existing_states, states], dim=0)
+        candidate_priorities = torch.cat([existing_priorities, priorities], dim=0)
+        keep = min(self.bank_size, candidates.size(0))
+        selected_priority, selected_index = torch.topk(
+            candidate_priorities,
+            k=keep,
+            largest=True,
+            sorted=True,
+        )
+        selected_states = candidates.index_select(0, selected_index)
+
+        self.memory[:keep].copy_(selected_states.to(self.memory))
+        self.memory_priority[:keep].copy_(
+            selected_priority.to(self.memory_priority)
+        )
+        if keep < self.bank_size:
+            self.memory_priority[keep:].fill_(-torch.inf)
+        self.memory_count.fill_(keep)
+        self.memory_seen.add_(states.size(0))
 
     def archetypes(self) -> tuple[torch.Tensor, torch.Tensor]:
         count = int(self.memory_count.item())
@@ -103,6 +155,7 @@ class ArchetypalRiskComposition(nn.Module):
         self.arc_lambda_recon = float(getattr(args, "arc_lambda_recon", 0.05))
         self.arc_lambda_align = float(getattr(args, "arc_lambda_align", 0.05))
         self.arc_lambda_balance = float(getattr(args, "arc_lambda_balance", 0.01))
+        self.arc_lambda_volume = float(getattr(args, "arc_lambda_volume", 0.01))
         self.arc_lambda_rank = float(getattr(args, "arc_lambda_rank", 0.10))
         self.arc_rank_margin = float(getattr(args, "arc_rank_margin", 0.0))
         self.arc_rank_max_pairs = int(getattr(args, "arc_rank_max_pairs", 4096))
@@ -130,13 +183,22 @@ class ArchetypalRiskComposition(nn.Module):
 
         bank_size = int(getattr(args, "arc_bank_size", 256))
         temperature = float(getattr(args, "arc_temperature", 0.25))
+        beta_init_scale = float(getattr(args, "arc_beta_init_scale", 1.5))
         self.wsi_state_norm = nn.LayerNorm(dim)
         self.omic_state_norm = nn.LayerNorm(dim)
         self.wsi_archetypes = CohortArchetypeBank(
-            dim, self.num_archetypes, bank_size, temperature
+            dim,
+            self.num_archetypes,
+            bank_size,
+            temperature,
+            beta_init_scale,
         )
         self.omic_archetypes = CohortArchetypeBank(
-            dim, self.num_archetypes, bank_size, temperature
+            dim,
+            self.num_archetypes,
+            bank_size,
+            temperature,
+            beta_init_scale,
         )
 
         self.archetype_hazard_logits = nn.Parameter(
@@ -237,6 +299,22 @@ class ArchetypalRiskComposition(nn.Module):
             values = values[keep]
         return values.mean()
 
+    @staticmethod
+    def _simplex_volume_loss(archetypes: torch.Tensor) -> torch.Tensor:
+        """Penalize a collapsed prognostic simplex using its edge Gram volume."""
+        if archetypes.size(0) < 2:
+            return archetypes.sum() * 0.0
+        edges = archetypes[1:] - archetypes[:1]
+        gram = edges @ edges.transpose(0, 1)
+        gram = gram / float(max(1, archetypes.size(1)))
+        identity = torch.eye(
+            gram.size(0),
+            device=gram.device,
+            dtype=gram.dtype,
+        )
+        _, log_volume_squared = torch.linalg.slogdet(gram + 1e-4 * identity)
+        return -0.5 * log_volume_squared / float(gram.size(0))
+
     def archetype_parameters(self):
         """Return current modality archetypes, hull weights, and hazard curves."""
         wsi_archetypes, wsi_beta = self.wsi_archetypes.archetypes()
@@ -275,10 +353,26 @@ class ArchetypalRiskComposition(nn.Module):
         wsi_state = self.wsi_state_norm(self._masked_mean(wsi_slots, wsi_mask))
         omic_state = self.omic_state_norm(self._masked_mean(omic_slots, omic_mask))
 
-        self.wsi_archetypes.update(wsi_state[has_wsi])
-        self.omic_archetypes.update(omic_state[has_omic])
-        wsi_composition, wsi_reconstruction, _ = self.wsi_archetypes(wsi_state)
-        omic_composition, omic_reconstruction, _ = self.omic_archetypes(omic_state)
+        current_epoch = int(kwargs.get("cur_epoch", kwargs.get("epoch", 0)))
+        update_memory = current_epoch == 0
+        self.wsi_archetypes.update(
+            wsi_state[has_wsi],
+            allow_update=update_memory,
+        )
+        self.omic_archetypes.update(
+            omic_state[has_omic],
+            allow_update=update_memory,
+        )
+        (
+            wsi_composition,
+            wsi_reconstruction,
+            wsi_archetypes,
+        ) = self.wsi_archetypes(wsi_state)
+        (
+            omic_composition,
+            omic_reconstruction,
+            omic_archetypes,
+        ) = self.omic_archetypes(omic_state)
 
         wsi_weight = has_wsi.to(wsi_state.dtype).unsqueeze(1)
         omic_weight = has_omic.to(wsi_state.dtype).unsqueeze(1)
@@ -328,6 +422,11 @@ class ArchetypalRiskComposition(nn.Module):
         else:
             balance_loss = zero
 
+        volume_loss = 0.5 * (
+            self._simplex_volume_loss(wsi_archetypes)
+            + self._simplex_volume_loss(omic_archetypes)
+        )
+
         rank_loss = zero
         if kwargs.get("y") is not None and kwargs.get("c") is not None:
             rank_loss = self._ranking_loss(logits, kwargs["y"], kwargs["c"])
@@ -336,15 +435,28 @@ class ArchetypalRiskComposition(nn.Module):
             self.arc_lambda_recon * reconstruction_loss
             + self.arc_lambda_align * alignment_loss
             + self.arc_lambda_balance * balance_loss
+            + self.arc_lambda_volume * volume_loss
             + self.arc_lambda_rank * rank_loss
         )
         self.last_training_losses = {
             "arc_reconstruction": reconstruction_loss.detach(),
             "arc_alignment": alignment_loss.detach(),
             "arc_balance": balance_loss.detach(),
+            "arc_simplex_volume": volume_loss.detach(),
             "arc_rank": rank_loss.detach(),
+            "arc_composition_entropy": (
+                -(composition.clamp_min(1e-8) * composition.clamp_min(1e-8).log())
+                .sum(dim=1)
+                .mean()
+                .detach()
+            ),
+            "arc_composition_variance": (
+                composition.var(dim=0, unbiased=False).mean().detach()
+            ),
             "arc_wsi_bank_count": self.wsi_archetypes.memory_count.detach().float(),
             "arc_omic_bank_count": self.omic_archetypes.memory_count.detach().float(),
+            "arc_wsi_bank_seen": self.wsi_archetypes.memory_seen.detach().float(),
+            "arc_omic_bank_seen": self.omic_archetypes.memory_seen.detach().float(),
         }
         return logits, aux_loss
 

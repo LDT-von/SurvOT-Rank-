@@ -78,3 +78,5 @@ model:
   v41_lambda_completion: 0.05
   v41_lambda_ledger: 0.02
   v41_lambda_survival: 0.05
+  v41_lambda_private: 0.02
+  v41_shared_rank: 64

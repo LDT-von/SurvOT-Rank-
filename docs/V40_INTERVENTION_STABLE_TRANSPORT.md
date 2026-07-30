@@ -4,6 +4,18 @@
 > IPCW、ETAR、anchor、listwise 或 Slot Attention 主线。是否具有论文创新性，
 > 仍需正式文献核验、五折结果和解释忠实性实验共同支持。
 
+## 当前瘦身筛选版（2026-07-30）
+
+- factual 与全部遮挡视图被展平成一个批次，只执行一次向量化
+  Sinkhorn；稳定代价只再求解一次，因此每次 forward 从多次顺序求解
+  收敛为两个 Sinkhorn 批次；
+- 默认只保留 WSI 删除与 pathway 删除两个干预视图，联合删除留作解释
+  实验而不是训练默认项；
+- 默认关闭与 attribution stability 重复的 risk stability 权重，核心辅助
+  目标只保留 plan stability 与 exact attribution stability；
+- 筛选配置统一为 20 epochs、30 次 Sinkhorn 迭代。精确 hazard-logit
+  分解公式和 deletion re-optimization 均保持不变。
+
 ## 1. 科学问题
 
 普通 WSI–omics 融合可能把训练集中的共现关系当成预后证据。IST-Surv

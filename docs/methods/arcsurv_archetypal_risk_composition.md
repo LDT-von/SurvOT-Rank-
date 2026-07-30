@@ -22,6 +22,14 @@ a fold-local training memory:
 A_m = Beta_m Z_m,  Beta_m >= 0,  rows(Beta_m) sum to 1
 ```
 
+The rows of `Beta_m` use a reproducible asymmetric initialization
+(`arc_beta_init_scale=1.5`). Initializing every row at zero makes all
+archetypes coincide, gives every patient the same uniform composition, and
+cannot be repaired by the volume term because its first derivative is zero at
+that fully symmetric point. The asymmetric initialization removes this
+degenerate solution while softmax still enforces the exact convex-combination
+constraint.
+
 The patient composition is also row-stochastic. Its convex combination of
 archetype-specific hazard curves directly produces the final time-bin logits.
 There is no unconstrained residual prediction path that can bypass the
@@ -30,19 +38,28 @@ simplex.
 ## Objectives
 
 The external training loop still supplies the standard censored survival NLL.
-The model returns four compact auxiliary terms:
+The model returns five compact auxiliary terms:
 
 1. archetypal reconstruction of modality states;
 2. Jensen-Shannon agreement between WSI and omics compositions;
 3. a weak cohort balance regularizer to prevent immediate simplex collapse;
-4. censor-aware pairwise ranking.
+4. an edge-Gram log-volume term that prevents the prognostic simplex from
+   collapsing without relaxing the cohort-convex-hull constraint;
+5. censor-aware pairwise ranking.
 
 ## Fold and leakage rule
 
-The archetype memory belongs to one model instance and is filled only while the
-model is in training mode. Validation and test forwards never update it. Since
-the framework creates a fresh model per fold, no test patient can enter the
-archetype hull.
+The archetype memory belongs to one model instance. During epoch zero, a
+deterministic priority reservoir considers every training patient it sees,
+retains a canonical fixed-size subset, and is invariant to dataloader order.
+Later training epochs, validation, and test forwards never update it. Since the
+framework creates a fresh model per fold, no validation or test patient can
+enter the archetype hull.
+
+The paper-facing configuration keeps `alpha_surv=0.15`, so censored patients
+remain in the likelihood. An event-only `alpha_surv=1.0` run was useful as a
+local idea screen but is not a valid replacement for the formal censored
+survival protocol.
 
 ## Missing modalities
 
@@ -66,6 +83,8 @@ Public method names:
 ## Required ablations
 
 - unconstrained learnable prototypes instead of `Beta @ memory`;
+- first-arrival memory instead of the order-robust priority reservoir;
+- no simplex-volume term;
 - no cross-modal composition agreement;
 - one-modality compositions;
 - different numbers of archetypes;

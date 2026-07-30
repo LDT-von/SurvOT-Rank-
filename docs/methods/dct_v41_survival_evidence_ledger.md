@@ -2,7 +2,7 @@
 
 ## 一句话定义
 
-DCT v4.1 用一个从零实现的 **Survival-Evidence Ledger（SEL，生存证据账本）** 替换 v3.3 的 Slot Attention 与跨患者 prototype：每个 WSI patch 或 pathway token 把非负“证据精度质量”守恒地写入若干患者条件化账本槽；当某个模态缺失时，另一模态在槽空间预测缺失账本的均值与异方差不确定性，并用该不确定性直接降低后续 Sinkhorn OT 边际质量。
+DCT v4.1 用一个从零实现的 **Survival-Evidence Ledger（SEL，生存证据账本）** 替换 v3.3 的 Slot Attention 与跨患者 prototype：每个 WSI patch 或 pathway token 把非负“证据精度质量”守恒地写入若干患者条件化账本槽；当某个模态缺失时，另一模态只恢复低秩、可跨模态预测的共享证据，同时显式保留不可恢复的模态私有残差及其不确定性；该不确定性直接降低后续 Sinkhorn OT 边际质量。
 
 实现入口：
 
@@ -10,6 +10,34 @@ DCT v4.1 用一个从零实现的 **Survival-Evidence Ledger（SEL，生存证�
 - 类 `SurvivalEvidenceLedger`
 - 类 `CrossLedgerCompletion`
 - 类 `DCTV41SurvivalEvidenceLedger`
+
+## 2026-07-30 核心机制升级：共享证据与私有不确定性
+
+对目标模态账本 \(S^t\)，v4.1 不再预测一个看似完整的伪账本，而是作
+以下精确分解：
+
+\[
+S^t = S_{\mathrm{shared}}^t + S_{\mathrm{private}}^t.
+\]
+
+其中 \(S_{\mathrm{shared}}^t\) 经过低秩瓶颈，可以由源模态账本预测；
+\(S_{\mathrm{private}}^t\) 是目标模态独有、不能从源模态可靠恢复的残差。
+缺失模态推理只把预测的共享证据送入运输，不伪造私有残差。模型同时
+预测私有不确定性 \(u_j^{t\leftarrow s}\)，完成置信度为
+
+\[
+q_j^{t\leftarrow s}
+=\min\left(
+q_j^s\,
+\rho_j^{t\leftarrow s}\,
+\exp(-u_j^{t\leftarrow s}),
+q_{\max}
+\right),
+\]
+
+其中 \(\rho\) 是共享证据可恢复度。训练增加私有不确定性校准项，使
+\(u\) 逼近真实配对模态中私有残差的槽级能量。论文主张因此是
+“只运输可恢复证据并保留不可恢复不确定性”，而不是一般的特征生成。
 
 ## 为什么不继续改 Slot Attention
 

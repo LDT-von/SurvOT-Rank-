@@ -37,13 +37,13 @@ def make_args(**overrides):
         "rna_format": "Pathways",
         "ist_eps": 0.08,
         "ist_sinkhorn_iters": 30,
-        "ist_num_interventions": 3,
+        "ist_num_interventions": 2,
         "ist_keep_ratio": 0.70,
         "ist_stability_beta": 1.0,
         "ist_stability_strength": 0.10,
         "ist_lambda_plan": 0.05,
         "ist_lambda_attribution": 0.05,
-        "ist_lambda_risk": 0.02,
+        "ist_lambda_risk": 0.0,
         "ist_edge_value_scale": 4.0,
         "ist_eval_seed": 17,
         "ist_deletion_penalty": 8.0,
@@ -131,6 +131,23 @@ def test_v40_forward_is_exactly_additive_and_has_finite_gradients():
     assert model.wsi_stage_value[-1].weight.grad is not None
     assert model.omic_stage_value[-1].weight.grad is not None
     assert model.edge_pair_scale.grad is not None
+    assert model.last_training_losses["ist_sinkhorn_batches"].item() == 2.0
+
+
+def test_v40_vectorized_mask_views_match_sequential_sinkhorn():
+    torch.manual_seed(7)
+    model = InterventionStableSurvivalTransport(make_args()).eval()
+    cost = torch.rand(2, 5, 3)
+    row_valid = torch.ones(2, 5, dtype=torch.bool)
+    col_valid = torch.ones(2, 3, dtype=torch.bool)
+    masks = model._intervention_masks(row_valid, col_valid)
+
+    batched_plans, batched_rows, batched_cols = model._solve_mask_views(cost, masks)
+    for index, (row_mask, col_mask) in enumerate(masks):
+        plan, rows, cols = model._solve(cost, row_mask, col_mask)
+        assert torch.allclose(batched_plans[:, index], plan, atol=1e-7)
+        assert torch.equal(batched_rows[:, index], rows)
+        assert torch.equal(batched_cols[:, index], cols)
 
 
 def test_v40_eval_is_deterministic_and_deletion_reoptimises_transport():

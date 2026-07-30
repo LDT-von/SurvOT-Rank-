@@ -167,9 +167,9 @@ class InterventionStableSurvivalTransport(nn.Module):
         self.pathway_names = list(pathway_names or [])
 
         self.ist_eps = float(getattr(args, "ist_eps", 0.05))
-        self.ist_sinkhorn_iters = int(getattr(args, "ist_sinkhorn_iters", 40))
+        self.ist_sinkhorn_iters = int(getattr(args, "ist_sinkhorn_iters", 30))
         self.ist_num_interventions = int(
-            getattr(args, "ist_num_interventions", 3)
+            getattr(args, "ist_num_interventions", 2)
         )
         self.ist_keep_ratio = float(getattr(args, "ist_keep_ratio", 0.75))
         self.ist_stability_beta = float(
@@ -182,7 +182,7 @@ class InterventionStableSurvivalTransport(nn.Module):
         self.ist_lambda_attribution = float(
             getattr(args, "ist_lambda_attribution", 0.05)
         )
-        self.ist_lambda_risk = float(getattr(args, "ist_lambda_risk", 0.02))
+        self.ist_lambda_risk = float(getattr(args, "ist_lambda_risk", 0.0))
         self.ist_edge_value_scale = float(
             getattr(args, "ist_edge_value_scale", 4.0)
         )
@@ -368,6 +368,34 @@ class InterventionStableSurvivalTransport(nn.Module):
             max_iter=self.ist_sinkhorn_iters,
         )
 
+    def _solve_mask_views(
+        self,
+        cost: torch.Tensor,
+        masks: list[tuple[torch.Tensor, torch.Tensor]],
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Solve factual/intervention masks in one vectorized Sinkhorn batch."""
+        if not masks:
+            raise ValueError("at least one transport mask view is required")
+        batch, rows, cols = cost.shape
+        view_count = len(masks)
+        row_masks = torch.stack([item[0] for item in masks], dim=1)
+        col_masks = torch.stack([item[1] for item in masks], dim=1)
+        expanded_cost = (
+            cost[:, None]
+            .expand(batch, view_count, rows, cols)
+            .reshape(batch * view_count, rows, cols)
+        )
+        flat_plan, flat_rows, flat_cols = self._solve(
+            expanded_cost,
+            row_masks.reshape(batch * view_count, rows),
+            col_masks.reshape(batch * view_count, cols),
+        )
+        return (
+            flat_plan.reshape(batch, view_count, rows, cols),
+            flat_rows.reshape(batch, view_count, rows),
+            flat_cols.reshape(batch, view_count, cols),
+        )
+
     def _stable_edge_score(
         self,
         factual_plan: torch.Tensor,
@@ -501,14 +529,16 @@ class InterventionStableSurvivalTransport(nn.Module):
         col_valid = self._valid_omic_mask(x_omics)
 
         factual_cost = self._cosine_cost(x_wsi, x_omics)
-        factual_plan, rows, cols = self._solve(
-            factual_cost, row_valid, col_valid
-        )
         intervention_masks = self._intervention_masks(row_valid, col_valid)
-        intervention_plans = [
-            self._solve(factual_cost, row_mask, col_mask)[0]
-            for row_mask, col_mask in intervention_masks
-        ]
+        all_plans, all_rows, all_cols = self._solve_mask_views(
+            factual_cost,
+            [(row_valid, col_valid), *intervention_masks],
+        )
+        factual_plan = all_plans[:, 0]
+        rows = all_rows[:, 0]
+        cols = all_cols[:, 0]
+        intervention_plan_tensor = all_plans[:, 1:]
+        intervention_plans = list(intervention_plan_tensor.unbind(dim=1))
         stability_score, reliability, stability_variance = (
             self._stable_edge_score(
                 factual_plan,
@@ -561,6 +591,7 @@ class InterventionStableSurvivalTransport(nn.Module):
             "ist_completeness_error": completeness_error.mean().detach(),
             "ist_marginal_error": marginal_error.mean().detach(),
             "ist_reliability": reliability.mean().detach(),
+            "ist_sinkhorn_batches": logits.new_tensor(2.0).detach(),
             "ist_finite": torch.stack(
                 [
                     torch.isfinite(logits).all(),
@@ -570,7 +601,6 @@ class InterventionStableSurvivalTransport(nn.Module):
             ).to(dtype=logits.dtype).mean().detach(),
         }
 
-        intervention_plan_tensor = torch.stack(intervention_plans, dim=1)
         row_mask_tensor = torch.stack(
             [item[0] for item in intervention_masks], dim=1
         )

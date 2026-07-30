@@ -20,8 +20,14 @@ train:
   survot_method: archetypal_risk_composition
   specific_simple: archetypal_risk_composition_blca
   results_dir: results/archetypal_risk_composition
-  max_epochs: 30
+  max_epochs: 20
   batch_size: 4
+  grad_clip_norm: 1.0
+  early_stop_patience: 0
+  fit_bins_on_train: true
+  binning_mode: global_qcut
+  event_stratified_batches: true
+  seed: 3
   lr: 0.0005
   opt: adam
   scheduler: cosine
@@ -29,7 +35,10 @@ train:
   gpu: 0
   num_workers: 4
   bag_loss: nll_surv
-  alpha_surv: 1.0
+  # Paper-facing default: retain censored likelihood. The local idea screen
+  # also tested alpha_surv=1.0, but that event-only setting is not formal.
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
 
 slot:
   slot_num_wsi: 8
@@ -43,9 +52,11 @@ model:
   arc_num_archetypes: 6
   arc_bank_size: 256
   arc_temperature: 0.25
+  arc_beta_init_scale: 1.5
   arc_lambda_recon: 0.05
   arc_lambda_align: 0.05
   arc_lambda_balance: 0.01
+  arc_lambda_volume: 0.01
   arc_lambda_rank: 0.10
   arc_rank_margin: 0.0
   arc_rank_max_pairs: 4096

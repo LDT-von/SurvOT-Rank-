@@ -110,34 +110,69 @@ class SurvivalEvidenceLedger(nn.Module):
 
 
 class CrossLedgerCompletion(nn.Module):
-    """Predict a missing ledger with explicit heteroscedastic uncertainty."""
+    """Recover shared evidence while retaining modality-private uncertainty."""
 
-    def __init__(self, dim: int, confidence_cap: float):
+    def __init__(self, dim: int, confidence_cap: float, shared_rank: int):
         super().__init__()
         if not 0.0 < confidence_cap <= 1.0:
             raise ValueError("v41_missing_confidence_cap must be in (0, 1]")
+        if shared_rank < 1:
+            raise ValueError("v41_shared_rank must be positive")
         self.confidence_cap = float(confidence_cap)
-        self.posterior = nn.Sequential(
+        self.shared_rank = min(int(shared_rank), max(1, dim // 2))
+        self.source_shared = nn.Sequential(
             nn.LayerNorm(dim),
-            nn.Linear(dim, dim * 2),
+            nn.Linear(dim, self.shared_rank),
             nn.SiLU(),
-            nn.Linear(dim * 2, dim * 2),
         )
-        self.confidence = nn.Sequential(
+        self.target_shared = nn.Sequential(
             nn.LayerNorm(dim),
-            nn.Linear(dim, 1),
+            nn.Linear(dim, self.shared_rank),
+            nn.SiLU(),
         )
+        self.shared_decoder = nn.Linear(self.shared_rank, dim)
+        self.shared_log_variance = nn.Linear(self.shared_rank, dim)
+        self.recoverability = nn.Linear(self.shared_rank, 1)
+        self.private_uncertainty = nn.Linear(self.shared_rank, 1)
+
+    def decompose_target(
+        self, target_slots: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return a low-rank shared target and its exact private residual."""
+        shared = self.shared_decoder(self.target_shared(target_slots))
+        private = target_slots - shared
+        return shared, private
 
     def forward(
         self, source_slots: torch.Tensor, source_confidence: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        mean, raw_log_variance = self.posterior(source_slots).chunk(2, dim=-1)
-        log_variance = raw_log_variance.clamp(-5.0, 3.0)
-        transfer = torch.sigmoid(self.confidence(source_slots).squeeze(-1))
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+    ]:
+        shared_latent = self.source_shared(source_slots)
+        shared_evidence = self.shared_decoder(shared_latent)
+        log_variance = self.shared_log_variance(shared_latent).clamp(-5.0, 3.0)
+        recoverability = torch.sigmoid(
+            self.recoverability(shared_latent).squeeze(-1)
+        )
+        private_uncertainty = F.softplus(
+            self.private_uncertainty(shared_latent).squeeze(-1)
+        )
         confidence = (
-            source_confidence * transfer
+            source_confidence
+            * recoverability
+            * torch.exp(-private_uncertainty)
         ).clamp(0.0, self.confidence_cap)
-        return mean, log_variance, confidence
+        return (
+            shared_evidence,
+            log_variance,
+            confidence,
+            private_uncertainty,
+            recoverability,
+        )
 
 
 class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
@@ -174,6 +209,9 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
         self.v41_lambda_survival = float(
             getattr(args, "v41_lambda_survival", 0.05)
         )
+        self.v41_lambda_private = float(
+            getattr(args, "v41_lambda_private", 0.02)
+        )
         self.v41_confidence_floor = float(
             getattr(args, "v41_confidence_floor", 0.05)
         )
@@ -188,6 +226,7 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
             ("v41_lambda_completion", self.v41_lambda_completion),
             ("v41_lambda_ledger", self.v41_lambda_ledger),
             ("v41_lambda_survival", self.v41_lambda_survival),
+            ("v41_lambda_private", self.v41_lambda_private),
         ):
             if value < 0.0:
                 raise ValueError(f"{name} must be non-negative")
@@ -212,10 +251,14 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
                 "v4.1 requires equal WSI and omics ledger sizes for counterpart completion"
             )
         self.wsi_from_omic = CrossLedgerCompletion(
-            dim, self.v41_missing_confidence_cap
+            dim,
+            self.v41_missing_confidence_cap,
+            int(getattr(args, "v41_shared_rank", 64)),
         )
         self.omic_from_wsi = CrossLedgerCompletion(
-            dim, self.v41_missing_confidence_cap
+            dim,
+            self.v41_missing_confidence_cap,
+            int(getattr(args, "v41_shared_rank", 64)),
         )
         self.null_wsi_ledger = nn.Parameter(
             torch.zeros(1, int(args.slot_num_wsi), dim)
@@ -292,6 +335,23 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
         return (js * valid.to(js.dtype)).sum() / valid.to(js.dtype).sum().clamp_min(1.0)
 
     @staticmethod
+    def _private_uncertainty_loss(
+        predicted_uncertainty: torch.Tensor,
+        private_residual: torch.Tensor,
+        target_confidence: torch.Tensor,
+        valid: torch.Tensor,
+    ) -> torch.Tensor:
+        """Calibrate irrecoverable uncertainty to private residual energy."""
+        target = private_residual.detach().square().mean(dim=-1).sqrt()
+        loss = F.smooth_l1_loss(
+            predicted_uncertainty,
+            target,
+            reduction="none",
+        )
+        weights = target_confidence.detach() * valid[:, None].to(loss.dtype)
+        return (loss * weights).sum() / weights.sum().clamp_min(1.0)
+
+    @staticmethod
     def _global_missing_flag(value: Any, name: str) -> bool:
         if value is None:
             return False
@@ -337,15 +397,25 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
         ) = self.omic_ledger(x_omics)
 
         (
-            completed_wsi,
+            shared_wsi,
             wsi_log_variance,
             completed_wsi_confidence,
+            wsi_private_uncertainty,
+            wsi_recoverability,
         ) = self.wsi_from_omic(full_omic, full_omic_confidence)
         (
-            completed_omic,
+            shared_omic,
             omic_log_variance,
             completed_omic_confidence,
+            omic_private_uncertainty,
+            omic_recoverability,
         ) = self.omic_from_wsi(full_wsi, full_wsi_confidence)
+        target_wsi_shared, target_wsi_private = self.wsi_from_omic.decompose_target(
+            full_wsi
+        )
+        target_omic_shared, target_omic_private = self.omic_from_wsi.decompose_target(
+            full_omic
+        )
 
         batch = x_wsi_proj.size(0)
         externally_available_wsi = self._availability(
@@ -373,12 +443,12 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
         slots_wsi = torch.where(
             wsi_observed,
             full_wsi,
-            torch.where(wsi_can_complete, completed_wsi, null_wsi),
+            torch.where(wsi_can_complete, shared_wsi, null_wsi),
         )
         slots_omic = torch.where(
             omic_observed,
             full_omic,
-            torch.where(omic_can_complete, completed_omic, null_omic),
+            torch.where(omic_can_complete, shared_omic, null_omic),
         )
 
         floor_wsi = torch.full_like(full_wsi_confidence, self.v41_confidence_floor)
@@ -406,15 +476,43 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
             (externally_available_wsi > 0) & (externally_available_omic > 0)
         )
         completion_loss = self._gaussian_completion_loss(
-            completed_wsi,
+            shared_wsi,
             wsi_log_variance,
-            full_wsi,
+            target_wsi_shared,
             full_wsi_confidence,
             complete_pair,
         ) + self._gaussian_completion_loss(
-            completed_omic,
+            shared_omic,
             omic_log_variance,
-            full_omic,
+            target_omic_shared,
+            full_omic_confidence,
+            complete_pair,
+        )
+        shared_autoencoding_loss = 0.5 * (
+            self._gaussian_completion_loss(
+                target_wsi_shared,
+                torch.zeros_like(target_wsi_shared),
+                full_wsi,
+                full_wsi_confidence,
+                complete_pair,
+            )
+            + self._gaussian_completion_loss(
+                target_omic_shared,
+                torch.zeros_like(target_omic_shared),
+                full_omic,
+                full_omic_confidence,
+                complete_pair,
+            )
+        )
+        completion_loss = completion_loss + 0.25 * shared_autoencoding_loss
+        private_loss = self._private_uncertainty_loss(
+            wsi_private_uncertainty,
+            target_wsi_private,
+            full_wsi_confidence,
+            complete_pair,
+        ) + self._private_uncertainty_loss(
+            omic_private_uncertainty,
+            target_omic_private,
             full_omic_confidence,
             complete_pair,
         )
@@ -438,7 +536,14 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
             "wsi_mass": wsi_mass,
             "omic_mass": omic_mass,
             "completion_loss": completion_loss,
+            "private_loss": private_loss,
             "ledger_loss": ledger_loss,
+            "shared_wsi": shared_wsi,
+            "shared_omic": shared_omic,
+            "wsi_private_uncertainty": wsi_private_uncertainty,
+            "omic_private_uncertainty": omic_private_uncertainty,
+            "wsi_recoverability": wsi_recoverability,
+            "omic_recoverability": omic_recoverability,
             "artificially_dropped": artificially_dropped,
             "used_wsi": used_wsi,
             "used_omic": used_omic,
@@ -490,6 +595,7 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
     ):
         cache = self._v41_cache
         completion_loss = cache["completion_loss"]
+        private_loss = cache["private_loss"]
         ledger_loss = cache["ledger_loss"]
         dropped = cache["artificially_dropped"]
 
@@ -533,9 +639,11 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
             self.v41_lambda_completion * completion_loss
             + self.v41_lambda_ledger * ledger_loss
             + self.v41_lambda_survival * survival_consistency
+            + self.v41_lambda_private * private_loss
         )
         metrics = {
             "v41_completion": completion_loss,
+            "v41_private_uncertainty": private_loss,
             "v41_ledger": ledger_loss,
             "v41_survival_consistency": survival_consistency,
             "v41_missing_fraction": dropped.to(factual_logits.dtype).mean(),
@@ -561,6 +669,16 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
                     "omic_ledger_confidence": cache["omic_confidence"].detach(),
                     "wsi_available": cache["used_wsi"].detach(),
                     "omic_available": cache["used_omic"].detach(),
+                    "wsi_recoverable_shared": cache["shared_wsi"].detach(),
+                    "omic_recoverable_shared": cache["shared_omic"].detach(),
+                    "wsi_private_uncertainty": cache[
+                        "wsi_private_uncertainty"
+                    ].detach(),
+                    "omic_private_uncertainty": cache[
+                        "omic_private_uncertainty"
+                    ].detach(),
+                    "wsi_recoverability": cache["wsi_recoverability"].detach(),
+                    "omic_recoverability": cache["omic_recoverability"].detach(),
                 }
             )
         return output

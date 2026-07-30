@@ -21,7 +21,7 @@ train:
   survot_method: intervention_stable_survival_transport
   specific_simple: ist_surv_v40_blca
   results_dir: results/ist_surv_v4.0/clean/full/blca
-  max_epochs: 50
+  max_epochs: 20
   batch_size: 8
   grad_accum_steps: 1
   warmup_epochs: 5
@@ -46,14 +46,14 @@ train:
 model:
   wsi_projection_dim: 256
   ist_eps: 0.05
-  ist_sinkhorn_iters: 40
-  ist_num_interventions: 3
+  ist_sinkhorn_iters: 30
+  ist_num_interventions: 2
   ist_keep_ratio: 0.75
   ist_stability_beta: 1.0
   ist_stability_strength: 0.10
   ist_lambda_plan: 0.05
   ist_lambda_attribution: 0.05
-  ist_lambda_risk: 0.02
+  ist_lambda_risk: 0.0
   ist_edge_value_scale: 4.0
   ist_eval_seed: 20260725
   ist_deletion_penalty: 8.0

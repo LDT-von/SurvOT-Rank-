@@ -9,9 +9,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-if __package__:
-    from .task_lock import ActiveRunError, acquire_run_lock, release_run_lock
-else:
+try:
+    from scripts.task_lock import (
+        ActiveRunError,
+        acquire_run_lock,
+        release_run_lock,
+    )
+except ModuleNotFoundError:
     from task_lock import ActiveRunError, acquire_run_lock, release_run_lock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -42,6 +46,11 @@ COMMON_OVERRIDES = {
     "dct_ipcw_rank_memory_size": 0,
     "dct_lambda_etar": 0.0,
     "dct_lambda_listwise": 0.0,
+    "dct_lambda_ot": 0.0,
+    "dct_lambda_rank": 0.0,
+    "dct_lambda_anchor": 0.0,
+    "dct_lambda_stage_risk": 0.0,
+    "dct_lambda_coordinate": 0.0,
     "dct_v38_direction_margin": 0.02,
     "dct_v38_dose_margin": 0.005,
     "dct_v38_reconfiguration_margin": 0.02,
@@ -60,15 +69,15 @@ PROTOCOLS = {
         "binning_mode": "global_qcut",
         "dct_slot_init_mode": "gaussian",
     },
-    "clean": {
-        "label": "train-fold binning and deterministic-slot audit protocol",
-        "fit_bins_on_train": True,
-        "binning_mode": "global_qcut",
-        "dct_slot_init_mode": "deterministic",
-    },
     "stable": {
         "label": "global-binning protocol with deterministic evaluation slots",
         "fit_bins_on_train": False,
+        "binning_mode": "global_qcut",
+        "dct_slot_init_mode": "deterministic",
+    },
+    "clean": {
+        "label": "train-fold binning and deterministic-slot audit protocol",
+        "fit_bins_on_train": True,
         "binning_mode": "global_qcut",
         "dct_slot_init_mode": "deterministic",
     },
@@ -243,22 +252,25 @@ def build_train_command(
     num_workers: str,
     data_root: str,
     *,
+    max_epochs: int | None = None,
     smoke: bool = False,
-    max_epochs: int = 50,
 ) -> tuple[list[str], Path]:
     config = Path("configs") / f"distributional_counterfactual_transport_{cancer}.yaml"
+    effective_epochs = int(
+        max_epochs if max_epochs is not None else COMMON_OVERRIDES["max_epochs"]
+    )
     if smoke:
         result_root = "dct_v3.8_transport_consistency_smoke"
-    elif max_epochs != 50:
-        result_root = f"dct_v3.8_transport_consistency_{max_epochs}ep"
-    else:
+    elif effective_epochs == int(COMMON_OVERRIDES["max_epochs"]):
         result_root = "dct_v3.8_transport_consistency"
+    else:
+        result_root = f"dct_v3.8_transport_consistency_{effective_epochs}ep"
     result_dir = Path("results") / result_root / protocol / variant / cancer
     overrides = dict(COMMON_OVERRIDES)
     overrides.update(PROTOCOLS[protocol])
     overrides.update(VARIANTS[variant])
     overrides.pop("label", None)
-    overrides["max_epochs"] = max_epochs
+    overrides["max_epochs"] = effective_epochs
     overrides.update(
         {
             "data_root_dir": data_root,
@@ -267,7 +279,9 @@ def build_train_command(
             "gpu": gpu,
             "num_workers": num_workers,
             "results_dir": result_dir.as_posix(),
-            "specific_simple": f"dct_v38_{protocol}_{variant}_{cancer}",
+            "specific_simple": (
+                f"dct_v38_{protocol}_{variant}_{cancer}_{effective_epochs}ep"
+            ),
         }
     )
     if smoke:
@@ -290,7 +304,9 @@ def scheduler_lock_path(smoke: bool, gpu: str) -> Path:
         if smoke
         else "dct_v3.8_transport_consistency"
     )
-    safe_gpu = "".join(character if character.isalnum() else "_" for character in gpu)
+    safe_gpu = "".join(
+        character if character.isalnum() else "_" for character in gpu
+    )
     return Path("results") / result_root / f".scheduler_gpu_{safe_gpu}.lock"
 
 
@@ -356,19 +372,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--cancers", type=parse_cancers, default=list(DEFAULT_CANCERS))
     parser.add_argument("--folds", type=parse_folds, default=parse_folds("0,2"))
-    parser.add_argument("--protocols", type=parse_protocols, default=["highscore"])
+    parser.add_argument("--protocols", type=parse_protocols, default=["robust"])
     parser.add_argument("--variants", type=parse_variants, default=["full"])
     parser.add_argument("--data-root", default=os.environ.get("UNI2H_ROOT", DEFAULT_DATA_ROOT))
     parser.add_argument("--gpu", default=os.environ.get("GPU", "0"))
     parser.add_argument("--num-workers", default=os.environ.get("NUM_WORKERS", "4"))
     parser.add_argument(
+        "--max-epochs",
+        type=parse_positive_int,
+        default=None,
+        help=(
+            "Override the 50-epoch formal horizon. Non-default horizons use "
+            "a separate result directory, for example *_20ep."
+        ),
+    )
+    parser.add_argument(
         "--python", dest="python_bin", default=os.environ.get("PYTHON_BIN", sys.executable)
     )
     parser.add_argument("--force", action="store_true")
-    parser.add_argument(
-        "--max-epochs", type=parse_positive_int, default=50,
-        help="max training epochs (default 50; use 20 for fast screening)"
-    )
     return parser
 
 
@@ -447,8 +468,8 @@ def main() -> int:
                             args.gpu,
                             args.num_workers,
                             args.data_root,
-                            smoke=args.mode == "smoke",
                             max_epochs=args.max_epochs,
+                            smoke=args.mode == "smoke",
                         )
                         completed = list(
                             result_dir.rglob(f"split_{fold}_results_final.pkl")
@@ -482,22 +503,36 @@ def main() -> int:
                             continue
 
                         try:
+                            # Recheck after locking to close the race between
+                            # the initial completion scan and task acquisition.
                             completed = list(
-                                result_dir.rglob(f"split_{fold}_results_final.pkl")
+                                result_dir.rglob(
+                                    f"split_{fold}_results_final.pkl"
+                                )
                             )
-                            if completed and not args.force and args.mode == "run":
+                            if (
+                                completed
+                                and not args.force
+                                and args.mode == "run"
+                            ):
                                 print(
                                     f"[skip] {protocol}/{variant} "
-                                    f"{cancer.upper()} fold{fold}: {completed[0]}"
+                                    f"{cancer.upper()} fold{fold}: "
+                                    f"{completed[0]}"
                                 )
                                 continue
+
                             env = os.environ.copy()
                             env["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
                             env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
                             env.setdefault("PYTHONUNBUFFERED", "1")
                             if not verify_child_cuda(args.python_bin, env):
                                 return 1
-                            completed_process = subprocess.run(command, check=False, env=env)
+                            completed_process = subprocess.run(
+                                command,
+                                check=False,
+                                env=env,
+                            )
                             if completed_process.returncode != 0:
                                 return completed_process.returncode
                         finally:
