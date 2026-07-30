@@ -9,7 +9,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+if __package__:
+    from .task_lock import ActiveRunError, acquire_run_lock, release_run_lock
+else:
+    from task_lock import ActiveRunError, acquire_run_lock, release_run_lock
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
+DATASET_CSV_ROOT = (
+    REPO_ROOT
+    / "survot_rank"
+    / "research"
+    / "legacy"
+    / "slotspe_runtime"
+    / "dataset_csv"
+)
 DEFAULT_DATA_ROOT = "/data1/TCGA-UNI2-h-features"
 UNI2H_DIM = 1536
 CANCERS = ("blca", "brca", "luad", "lusc")
@@ -29,11 +42,6 @@ COMMON_OVERRIDES = {
     "dct_ipcw_rank_memory_size": 0,
     "dct_lambda_etar": 0.0,
     "dct_lambda_listwise": 0.0,
-    "dct_lambda_ot": 0.0,
-    "dct_lambda_rank": 0.0,
-    "dct_lambda_anchor": 0.0,
-    "dct_lambda_stage_risk": 0.0,
-    "dct_lambda_coordinate": 0.0,
     "dct_v38_direction_margin": 0.02,
     "dct_v38_dose_margin": 0.005,
     "dct_v38_reconfiguration_margin": 0.02,
@@ -57,6 +65,26 @@ PROTOCOLS = {
         "fit_bins_on_train": True,
         "binning_mode": "global_qcut",
         "dct_slot_init_mode": "deterministic",
+    },
+    "stable": {
+        "label": "global-binning protocol with deterministic evaluation slots",
+        "fit_bins_on_train": False,
+        "binning_mode": "global_qcut",
+        "dct_slot_init_mode": "deterministic",
+    },
+    "robust": {
+        "label": (
+            "cancer-agnostic sparse-event protocol with patient-complete "
+            "event-spread batches and within-epoch ranking memory"
+        ),
+        "fit_bins_on_train": True,
+        "binning_mode": "global_qcut",
+        "dct_slot_init_mode": "deterministic",
+        "event_sampling_fraction": 0.0,
+        "event_stratified_batches": True,
+        "dct_ipcw_rank_memory_size": 64,
+        "dct_v38_warmup_epochs": 5,
+        "dct_v38_ramp_epochs": 10,
     },
 }
 
@@ -134,6 +162,20 @@ def inspect_feature_directory(data_root: str | Path, cancer: str) -> dict[str, o
     except Exception as error:  # doctor should report every cancer
         report["error"] = str(error)
     return report
+
+
+def inspect_split_directory(cancer: str) -> dict[str, object]:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.gen_splits_5fold import audit_existing_splits
+
+    return audit_existing_splits(
+        study=cancer,
+        data_path=str(DATASET_CSV_ROOT),
+        label_col="survival_months_dss",
+        censor_col="censorship_dss",
+        n_folds=5,
+    )
 
 
 def _selection(value: str, allowed, name: str) -> list[str]:
@@ -242,6 +284,20 @@ def build_train_command(
     return command, result_dir
 
 
+def scheduler_lock_path(smoke: bool, gpu: str) -> Path:
+    result_root = (
+        "dct_v3.8_transport_consistency_smoke"
+        if smoke
+        else "dct_v3.8_transport_consistency"
+    )
+    safe_gpu = "".join(character if character.isalnum() else "_" for character in gpu)
+    return Path("results") / result_root / f".scheduler_gpu_{safe_gpu}.lock"
+
+
+def task_lock_path(result_dir: Path, fold: int) -> Path:
+    return result_dir / f".split_{fold}.run.lock"
+
+
 def verify_child_cuda(python_bin: str, env: dict[str, str]) -> bool:
     """Prove that the exact training interpreter can initialize the selected GPU.
 
@@ -332,59 +388,123 @@ def main() -> int:
             if report["error"]:
                 print(f"         {report['error']}")
             failed = failed or not report["ok"]
+            split_report = inspect_split_directory(cancer)
+            split_status = "OK" if split_report["ok"] else "INVALID"
+            print(
+                f"{split_status:8s} {cancer.upper():8s} "
+                f"eligible={split_report['eligible_cases']:<5} "
+                f"events={split_report['observed_events']:<4} "
+                f"val_events={split_report['validation_event_counts']}"
+            )
+            for error in split_report["errors"]:
+                print(f"         {error}")
+            failed = failed or not split_report["ok"]
         return int(failed)
 
-    for protocol in args.protocols:
-        for variant in args.variants:
-            for cancer in args.cancers:
-                config = (
-                    Path("configs")
-                    / f"distributional_counterfactual_transport_{cancer}.yaml"
+    if args.mode in ("smoke", "run") and "robust" in args.protocols:
+        for cancer in args.cancers:
+            split_report = inspect_split_directory(cancer)
+            if not split_report["ok"]:
+                print(
+                    f"[ERROR] {cancer.upper()} split audit failed; "
+                    "regenerate it with tools/gen_splits_5fold.py before "
+                    "running the robust protocol."
                 )
-                if not config.exists():
-                    print(f"[ERROR] missing config: {config}")
-                    return 2
-                for fold in args.folds:
-                    command, result_dir = build_train_command(
-                        args.python_bin,
-                        cancer,
-                        protocol,
-                        variant,
-                        fold,
-                        args.gpu,
-                        args.num_workers,
-                        args.data_root,
-                        smoke=args.mode == "smoke",
-                        max_epochs=args.max_epochs,
+                for error in split_report["errors"]:
+                    print(f"        {error}")
+                return 2
+
+    scheduler_lock = None
+    if args.mode in ("smoke", "run"):
+        lock_path = scheduler_lock_path(args.mode == "smoke", args.gpu)
+        try:
+            scheduler_lock = acquire_run_lock(
+                lock_path,
+                label=f"DCT v3.8 scheduler on GPU {args.gpu}",
+            )
+        except ActiveRunError as error:
+            print(f"[already-running] {error}")
+            return 3
+
+    try:
+        for protocol in args.protocols:
+            for variant in args.variants:
+                for cancer in args.cancers:
+                    config = (
+                        Path("configs")
+                        / f"distributional_counterfactual_transport_{cancer}.yaml"
                     )
-                    completed = list(
-                        result_dir.rglob(f"split_{fold}_results_final.pkl")
-                    )
-                    if completed and not args.force and args.mode == "run":
-                        print(
-                            f"[skip] {protocol}/{variant} "
-                            f"{cancer.upper()} fold{fold}: {completed[0]}"
+                    if not config.exists():
+                        print(f"[ERROR] missing config: {config}")
+                        return 2
+                    for fold in args.folds:
+                        command, result_dir = build_train_command(
+                            args.python_bin,
+                            cancer,
+                            protocol,
+                            variant,
+                            fold,
+                            args.gpu,
+                            args.num_workers,
+                            args.data_root,
+                            smoke=args.mode == "smoke",
+                            max_epochs=args.max_epochs,
                         )
-                        continue
-                    print("\n" + "=" * 76)
-                    print(
-                        f"[DCT v3.8/{protocol}/{variant}] "
-                        f"{cancer.upper()} fold{fold}"
-                    )
-                    print(" ".join(command))
-                    if args.mode in ("smoke", "run"):
-                        env = os.environ.copy()
-                        env["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
-                        # Also visible in case CUDA_VISIBLE_DEVICES is internally
-                        # re-evaluated after import by a library.
-                        env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-                        env.setdefault("PYTHONUNBUFFERED", "1")
-                        if not verify_child_cuda(args.python_bin, env):
-                            return 1
-                        completed_process = subprocess.run(command, check=False, env=env)
-                        if completed_process.returncode != 0:
-                            return completed_process.returncode
-    return 0
+                        completed = list(
+                            result_dir.rglob(f"split_{fold}_results_final.pkl")
+                        )
+                        if completed and not args.force and args.mode == "run":
+                            print(
+                                f"[skip] {protocol}/{variant} "
+                                f"{cancer.upper()} fold{fold}: {completed[0]}"
+                            )
+                            continue
+                        print("\n" + "=" * 76)
+                        print(
+                            f"[DCT v3.8/{protocol}/{variant}] "
+                            f"{cancer.upper()} fold{fold}"
+                        )
+                        print(" ".join(command))
+                        if args.mode not in ("smoke", "run"):
+                            continue
+
+                        task_lock = None
+                        try:
+                            task_lock = acquire_run_lock(
+                                task_lock_path(result_dir, fold),
+                                label=(
+                                    f"DCT v3.8 {protocol}/{variant} "
+                                    f"{cancer.upper()} fold{fold}"
+                                ),
+                            )
+                        except ActiveRunError as error:
+                            print(f"[skip-running] {error}")
+                            continue
+
+                        try:
+                            completed = list(
+                                result_dir.rglob(f"split_{fold}_results_final.pkl")
+                            )
+                            if completed and not args.force and args.mode == "run":
+                                print(
+                                    f"[skip] {protocol}/{variant} "
+                                    f"{cancer.upper()} fold{fold}: {completed[0]}"
+                                )
+                                continue
+                            env = os.environ.copy()
+                            env["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+                            env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+                            env.setdefault("PYTHONUNBUFFERED", "1")
+                            if not verify_child_cuda(args.python_bin, env):
+                                return 1
+                            completed_process = subprocess.run(command, check=False, env=env)
+                            if completed_process.returncode != 0:
+                                return completed_process.returncode
+                        finally:
+                            release_run_lock(task_lock)
+        return 0
+    finally:
+        release_run_lock(scheduler_lock)
 
 
 if __name__ == "__main__":
