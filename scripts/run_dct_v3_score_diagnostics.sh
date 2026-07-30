@@ -12,20 +12,12 @@ RESULTS_ROOT="results/dct_v3_score_first_diagnostics"
 cd "$(dirname "$0")/.."
 
 variants_for() {
-  if [[ "$1" == "all" ]]; then printf '%s\n' full nll_only unweighted_rank legacy_six_loss; else printf '%s\n' "$1"; fi
+  if [[ "$1" == "all" ]]; then printf '%s\n' full nll_only; else printf '%s\n' "$1"; fi
 }
 override_for() {
   case "$1" in
     full) ;;
     nll_only) printf '%s\n' 'dct_lambda_ipcw_rank=0.0' ;;
-    unweighted_rank) printf '%s\n' 'dct_lambda_ipcw_rank=0.0' 'dct_lambda_rank=0.05' ;;
-    legacy_six_loss) printf '%s\n' \
-      'dct_lambda_ipcw_rank=0.0' \
-      'dct_lambda_ot=0.06' \
-      'dct_lambda_rank=0.05' \
-      'dct_lambda_anchor=0.03' \
-      'dct_lambda_stage_risk=0.05' \
-      'dct_lambda_coordinate=0.01' ;;
     *) echo "Unknown variant: $1" >&2; exit 2 ;;
   esac
 }
@@ -50,6 +42,6 @@ case "$MODE" in
   smoke) run_variant full "${FOLDS%%,*}" true ;;
   run) while IFS= read -r variant; do run_variant "$variant" "$FOLDS"; done < <(variants_for "$VARIANT") ;;
   summarize) ;;
-  *) echo "Usage: $0 [doctor|smoke|run|summarize] [full|nll_only|unweighted_rank|legacy_six_loss|all]" >&2; exit 2 ;;
+  *) echo "Usage: $0 [doctor|smoke|run|summarize] [full|nll_only|all]" >&2; exit 2 ;;
 esac
 exec "$PYTHON_BIN" scripts/summarize_dct_v3_score_diagnostics.py --root "$RESULTS_ROOT" --expected-folds "$FOLDS"

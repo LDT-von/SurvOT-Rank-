@@ -47,6 +47,12 @@ def main() -> int:
     os.chdir(repo_root)
 
     for cancer in args.cancers:
+        # The legacy trainer writes experiment settings before creating its
+        # nested run directory.  Keep every ETAR run isolated while making a
+        # fresh result root executable without manual setup.
+        (repo_root / "results" / f"dct_etar_20260723_{cancer}").mkdir(
+            parents=True, exist_ok=True
+        )
         for fold_start, fold_end in ((0, 1), (2, 3)):
             command = [
                 args.python,
@@ -61,6 +67,10 @@ def main() -> int:
                 f"num_workers={args.num_workers}",
                 "--set",
                 f"results_dir=results/dct_etar_20260723_{cancer}",
+                # Keep the legacy per-run path below Windows' MAX_PATH while
+                # retaining the documented ETAR result root above.
+                "--set",
+                "specific_simple=etar",
                 # Isolate ETAR from the v3.3 IPCW ranking baseline.
                 "--set",
                 "dct_lambda_ipcw_rank=0.0",

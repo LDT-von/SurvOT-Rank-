@@ -93,6 +93,15 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "v60_ot_event_rank"),
         "V60OTEventRank",
     ),
+    "archetypal_risk_composition": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "archetypal_risk_composition",
+        ),
+        "ArchetypalRiskComposition",
+    ),
     "cohort_anchored_adaptive_prognostic_slot_attention": (
         os.path.join(
             "survot_rank",
@@ -121,6 +130,8 @@ METHOD_ALIASES = {
     "45v2": "otehv2_rankevent_v2",
     "50": "otehv2_timelocal_competing",
     "60": "v60_ot_event_rank",
+    "arcsurv": "archetypal_risk_composition",
+    "arc_surv": "archetypal_risk_composition",
     "dct_v38": "dct_transport_intervention_consistency",
     "dct_v41": "dct_v41_survival_evidence_ledger",
     "dct_v4_1": "dct_v41_survival_evidence_ledger",

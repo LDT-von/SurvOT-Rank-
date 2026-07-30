@@ -42,6 +42,9 @@ python -m survot_rank.cli train --config configs/cohort_anchored_adaptive_progno
 # Experimental V70 / PSPC-Surv: no slots, patient-specific sparse circuits
 python -m survot_rank.cli train --config configs/v70_patient_specific_prognostic_circuits_blca.yaml
 
+# Experimental ArcSurv: fold-local prognostic extremes + patient risk composition
+python -m survot_rank.cli train --config configs/archetypal_risk_composition_blca.yaml
+
 # DCT v3.4 formal BRCA + LUAD + LUSC protocols (Linux)
 bash scripts/run_dct_multicancer_formal.sh run
 # Smoke-test only the BRCA and LUSC launch paths
@@ -99,6 +102,8 @@ docs/                         framework and migration notes
 survot_rank/training/         training runner, args, paths, and model factory
 survot_rank/research/methods/v60_ot_event_rank/
                               compact V60 paper-facing method
+survot_rank/research/methods/archetypal_risk_composition/
+                              experimental cohort prognostic simplex
 survot_rank/research/methods/cohort_anchored_adaptive_prognostic_slot_attention/
                               experimental cohort-anchored adaptive slots
 survot_rank/research/methods/dct_v41_survival_evidence_ledger/
@@ -164,7 +169,8 @@ treated as available for backward compatibility.
 
 The V60 implementation is covered by focused forward, backward, registration,
 masked-OT, missing-modality, and censoring edge-case tests. The current full
-test suite passes with 189 tests. This is code-level verification; real-data
+test suite passes with 263 tests, including ArcSurv's simplex, pathway-input,
+missing-modality, and fold-local memory checks. This is code-level verification; real-data
 five-fold performance for V60 still needs to be run before making a paper
 performance claim.
 

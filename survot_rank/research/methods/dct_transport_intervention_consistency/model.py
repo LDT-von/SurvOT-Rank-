@@ -53,6 +53,9 @@ class DCTTransportInterventionConsistency(DistributionalCounterfactualTransport)
         self.dct_v38_warmup_epochs = int(
             getattr(args, "dct_v38_warmup_epochs", 1)
         )
+        self.dct_v38_ramp_epochs = int(
+            getattr(args, "dct_v38_ramp_epochs", 0)
+        )
         self.dct_v38_dose_every = int(getattr(args, "dct_v38_dose_every", 1))
 
         nonnegative = {
@@ -75,6 +78,8 @@ class DCTTransportInterventionConsistency(DistributionalCounterfactualTransport)
             )
         if self.dct_v38_warmup_epochs < 0:
             raise ValueError("dct_v38_warmup_epochs must be non-negative")
+        if self.dct_v38_ramp_epochs < 0:
+            raise ValueError("dct_v38_ramp_epochs must be non-negative")
         if self.dct_v38_dose_every <= 0:
             raise ValueError("dct_v38_dose_every must be positive")
 
@@ -108,6 +113,16 @@ class DCTTransportInterventionConsistency(DistributionalCounterfactualTransport)
             torch.lerp(factual_costs, low_anchor, alpha),
             torch.lerp(factual_costs, high_anchor, alpha),
         )
+
+    def _structural_loss_scale(self, epoch):
+        """Return a cancer-agnostic curriculum weight for v3.8 constraints."""
+        epoch = int(epoch)
+        if epoch < self.dct_v38_warmup_epochs:
+            return 0.0
+        if self.dct_v38_ramp_epochs <= 0:
+            return 1.0
+        post_warmup_epoch = epoch - self.dct_v38_warmup_epochs + 1
+        return min(1.0, post_warmup_epoch / self.dct_v38_ramp_epochs)
 
     @staticmethod
     def _stack_plans(plans):
@@ -233,6 +248,7 @@ class DCTTransportInterventionConsistency(DistributionalCounterfactualTransport)
             "v38_dose": zero,
             "v38_reconfiguration": zero,
             "v38_total": zero,
+            "v38_loss_scale": zero,
             "v38_active_stage_fraction": active_stage_fraction,
             "v38_high_risk_gain": zero,
             "v38_low_risk_gain": zero,
@@ -313,7 +329,8 @@ class DCTTransportInterventionConsistency(DistributionalCounterfactualTransport)
                 full_high_risk,
             )
 
-        total = (
+        loss_scale = self._structural_loss_scale(epoch)
+        total = loss_scale * (
             self.dct_v38_lambda_direction * direction
             + self.dct_v38_lambda_dose * dose
             + self.dct_v38_lambda_reconfiguration * reconfiguration
@@ -326,6 +343,7 @@ class DCTTransportInterventionConsistency(DistributionalCounterfactualTransport)
             "v38_dose": dose,
             "v38_reconfiguration": reconfiguration,
             "v38_total": total,
+            "v38_loss_scale": factual_costs.new_tensor(loss_scale),
             "v38_active_stage_fraction": active_stage_fraction,
             "v38_high_risk_gain": high_gain.mean(),
             "v38_low_risk_gain": low_gain.mean(),

@@ -19,16 +19,16 @@ DCT 的创新性可以从当前约 `6.5/10` 提高，但不能靠继续堆叠 pr
 在包含 factual logits 与当前 IPCW rank auxiliary loss 的完整反向传播中，下列参数没有梯度：
 
 - `prognostic_pair_cost`：来自 Rank-Guided 父类；DCT 自己改用 `stage_pair_cost`。
-- `stage_head`：只服务父类 `_stage_order_loss`；DCT 使用自己的 stage-risk 路径。
+- `stage_head`：只服务父类 `_stage_order_loss`；DCT v3.3 不使用该头或阶段顺序损失。
 - `stage_score`：来自 Stagewise 父类；DCT 最终风险由 `event_hazard + event_gate` 解码。
 
-16 维单元配置的实测为：总参数 `91,664`，无梯度参数 `1,270`。正式配置默认 `wsi_projection_dim=256` 时，上述死参数约 `265k`，只占约 `30.37M` 的不足 `1%`。结论是：**应从最终 paper model 删除以清理叙事，但它们不是过拟合和低分的主因。** 为保持旧 checkpoint 可加载，历史 DCT 类应保留；最终配方确认后再建立干净的 paper-only 类。
+16 维单元配置的实测为：总参数 `91,664`，无梯度参数 `1,270`。正式配置默认 `wsi_projection_dim=256` 时，上述死参数约 `265k`，只占约 `30.37M` 的不足 `1%`。结论是：**应从最终 paper model 删除以清理叙事，但它们不是过拟合和低分的主因。**
 
-### 2.2 不能直接删除的内容
+### 2.2 清理边界
 
-- `dct_lambda_ot/rank/anchor/stage_risk/coordinate=0` 的代码是已做/待做消融入口，不应在论文实验结束前删除。
+- v3.3 冻结后，`dct_lambda_ot/rank/anchor/stage_risk/coordinate` 及对应损失实现已从当前代码删除；历史结果由 Git 历史和复现归档保留。
 - `fet_lambda_sparse/faith=0` 是继承历史，最终 paper-only 类可移除，当前类保留用于旧结果复现。
-- 历史 config、runner 和结果摘要不是模型冗余，而是复现证据；应移动到 `configs/archive/`、`scripts/archive/`，不能直接删除。
+- 历史结果摘要和复现归档不是模型冗余，继续保留；当前运行配置和 runner 不再暴露已删除的损失开关。
 - `risk_anchor_costs` 虽不参与当前训练目标，却是 post-hoc intervention 的必要参考，不能删。
 
 ### 2.3 真正需要实验决定的“大头”

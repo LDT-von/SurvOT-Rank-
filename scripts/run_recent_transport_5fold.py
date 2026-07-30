@@ -11,7 +11,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VERSIONS = ("v36", "v37", "v38", "v40")
-PROTOCOLS = ("highscore", "clean")
+PROTOCOLS = ("highscore", "stable", "clean")
+DEFAULT_PROTOCOLS = ("highscore", "clean")
 FOLDS = "0,1,2,3,4"
 CANCERS = "blca,brca"
 
@@ -140,8 +141,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--protocols",
         type=parse_protocols,
-        default=list(PROTOCOLS),
-        help="highscore and clean outputs stay strictly separated",
+        default=list(DEFAULT_PROTOCOLS),
+        help="highscore, stable, and clean outputs stay strictly separated",
     )
     parser.add_argument(
         "--data-root", default="/data1/TCGA-UNI2-h-features"

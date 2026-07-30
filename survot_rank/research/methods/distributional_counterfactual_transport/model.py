@@ -410,12 +410,11 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         censoring = censorship.float().view(-1)
         observed = censoring < 0.5
 
-        # BRCA has few observed events.  A batch of eight therefore often has
-        # too little comparable-pair signal for the IPCW objective.  The
-        # optional within-epoch memory supplies detached reference risks from
-        # previous batches; current risks remain attached, so gradients still
-        # update only the current batch.  This is deliberately opt-in to keep
-        # older BLCA score-first runs exactly reproducible.
+        # Sparse-event survival cohorts often provide too few comparable pairs
+        # in a small batch.  The optional within-epoch memory supplies detached
+        # reference risks from previous batches; current risks remain attached,
+        # so gradients still update only the current batch.  It stays opt-in so
+        # historical score-first runs remain exactly reproducible.
         memory_count = 0
         if self.dct_ipcw_rank_memory_size > 0 and self._rank_memory_risk is not None:
             memory_count = int(self._rank_memory_risk.numel())

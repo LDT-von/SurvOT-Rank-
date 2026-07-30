@@ -1,5 +1,10 @@
+import argparse
+import json
+import os
+import socket
 from types import SimpleNamespace
 
+import pytest
 import torch
 
 from scripts.run_dct_v38_transport_consistency import (
@@ -9,8 +14,12 @@ from scripts.run_dct_v38_transport_consistency import (
     build_parser,
     build_train_command,
     parse_folds,
+    parse_positive_int,
     parse_variants,
+    scheduler_lock_path,
+    task_lock_path,
 )
+from scripts.task_lock import ActiveRunError, acquire_run_lock, release_run_lock
 from survot_rank.research.methods.dct_transport_intervention_consistency.model import (
     DCTTransportInterventionConsistency,
 )
@@ -57,6 +66,7 @@ def make_args(**overrides):
         dct_v38_alpha_mid=0.50,
         dct_v38_alpha_full=1.0,
         dct_v38_warmup_epochs=1,
+        dct_v38_ramp_epochs=0,
         dct_v38_dose_every=1,
         fet_lambda_sparse=0.0,
         fet_lambda_faith=0.0,
@@ -184,6 +194,18 @@ def test_v38_all_censored_batch_skips_structural_loss_without_nan():
     assert model.last_training_losses["v38_active_stage_fraction"] == 0
 
 
+def test_v38_structural_loss_curriculum_is_gradual_and_cancer_agnostic():
+    model = DCTTransportInterventionConsistency(
+        make_args(dct_v38_warmup_epochs=5, dct_v38_ramp_epochs=10),
+        omic_input_dim=20,
+    )
+    assert model._structural_loss_scale(4) == 0.0
+    assert model._structural_loss_scale(5) == pytest.approx(0.1)
+    assert model._structural_loss_scale(9) == pytest.approx(0.5)
+    assert model._structural_loss_scale(14) == 1.0
+    assert model._structural_loss_scale(30) == 1.0
+
+
 def test_v38_registry_and_screen_are_isolated_and_auditable():
     assert "dct_transport_intervention_consistency" in list_methods()
     factory_model = get_model("dct_v38", make_args(), omic_input_dim=20)
@@ -195,13 +217,16 @@ def test_v38_registry_and_screen_are_isolated_and_auditable():
         "reconfiguration",
         "full",
     }
-    assert set(PROTOCOLS) == {"highscore", "clean"}
+    assert set(PROTOCOLS) == {"highscore", "stable", "clean", "robust"}
     defaults = build_parser().parse_args([])
     assert defaults.mode == "plan"
-    assert defaults.protocols == ["highscore"]
+    assert defaults.protocols == ["robust"]
     assert defaults.variants == ["full"]
     assert parse_variants("direction,dose") == ["direction", "dose"]
     assert parse_folds("0,2") == [0, 2]
+    assert parse_positive_int("20") == 20
+    with pytest.raises(argparse.ArgumentTypeError):
+        parse_positive_int("0")
 
     command, result_dir = build_train_command(
         "python3",
@@ -224,3 +249,108 @@ def test_v38_registry_and_screen_are_isolated_and_auditable():
         "results/dct_v3.8_transport_consistency/highscore/full/blca"
     )
     assert COMMON_OVERRIDES["dct_lambda_ipcw_rank"] == 0.10
+
+
+def test_v38_twenty_epoch_screen_is_isolated_from_formal_results():
+    command, result_dir = build_train_command(
+        "python3",
+        "brca",
+        "robust",
+        "full",
+        4,
+        "0",
+        "4",
+        "/data1/TCGA-UNI2-h-features",
+        max_epochs=20,
+    )
+    rendered = " ".join(command)
+    assert "max_epochs=20" in rendered
+    assert "dct_v38_robust_full_brca_20ep" in rendered
+    assert result_dir.as_posix() == (
+        "results/dct_v3.8_transport_consistency_20ep/robust/full/brca"
+    )
+
+
+def test_v38_stable_protocol_isolates_deterministic_evaluation_slots():
+    command, result_dir = build_train_command(
+        "python3",
+        "lusc",
+        "stable",
+        "full",
+        0,
+        "0",
+        "4",
+        "/data1/TCGA-UNI2-h-features",
+    )
+    rendered = " ".join(command)
+    assert "fit_bins_on_train=false" in rendered
+    assert "dct_slot_init_mode=deterministic" in rendered
+    assert result_dir.as_posix() == (
+        "results/dct_v3.8_transport_consistency/stable/full/lusc"
+    )
+
+
+def test_v38_robust_protocol_is_cancer_agnostic_and_preserves_cohort_mass():
+    for cancer in ("blca", "brca", "luad", "lusc"):
+        command, result_dir = build_train_command(
+            "python3",
+            cancer,
+            "robust",
+            "full",
+            4,
+            "0",
+            "4",
+            "/data1/TCGA-UNI2-h-features",
+        )
+        rendered = " ".join(command)
+        assert "fit_bins_on_train=true" in rendered
+        assert "dct_slot_init_mode=deterministic" in rendered
+        assert "event_sampling_fraction=0.0" in rendered
+        assert "event_stratified_batches=true" in rendered
+        assert "dct_ipcw_rank_memory_size=64" in rendered
+        assert "dct_v38_warmup_epochs=5" in rendered
+        assert "dct_v38_ramp_epochs=10" in rendered
+        assert f"/robust/full/{cancer}" in result_dir.as_posix()
+
+
+def test_v38_run_locks_prevent_duplicate_scheduler_and_fold_writers(tmp_path):
+    scheduler_path = tmp_path / scheduler_lock_path(False, "0")
+    scheduler = acquire_run_lock(scheduler_path, label="scheduler")
+    try:
+        with pytest.raises(ActiveRunError):
+            acquire_run_lock(scheduler_path, label="scheduler")
+    finally:
+        release_run_lock(scheduler)
+
+    result_dir = tmp_path / "results" / "study"
+    fold_path = task_lock_path(result_dir, 2)
+    fold = acquire_run_lock(fold_path, label="fold2")
+    try:
+        with pytest.raises(ActiveRunError):
+            acquire_run_lock(fold_path, label="fold2")
+    finally:
+        release_run_lock(fold)
+    assert not fold_path.exists()
+
+
+def test_run_lock_reclaims_dead_same_host_owner(tmp_path):
+    lock_path = tmp_path / "stale.lock"
+    lock_path.write_text(
+        json.dumps(
+            {
+                "token": "stale",
+                "pid": 2**30,
+                "hostname": socket.gethostname(),
+                "created_at": 0,
+                "label": "dead",
+            }
+        ),
+        encoding="utf-8",
+    )
+    lock = acquire_run_lock(lock_path, label="replacement")
+    try:
+        payload = json.loads(lock_path.read_text(encoding="utf-8"))
+        assert payload["pid"] == os.getpid()
+        assert payload["token"] == lock.token
+    finally:
+        release_run_lock(lock)

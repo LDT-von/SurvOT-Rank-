@@ -47,4 +47,14 @@ Thumbs.db
 logs/
 _best_main.log
 logs_v45_blca.log
-survot_rank/research/legacy/slotspe_runtime/dataset_csv/
+survot_rank/research/legacy/slotspe_runtime/dataset_csv/*
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/
+survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/*
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold/
+survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold/*
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold/*/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold/*/fold_*.csv
+
+# Local open-access papers and upstream code snapshots used for method study.
+references/*/papers/*.pdf
+references/*/upstream/

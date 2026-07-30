@@ -38,7 +38,11 @@ def test_v37_uni2h_highscore_changes_only_the_wsi_input_protocol():
     rendered = " ".join(command)
     assert len(CANCERS) == 10
     assert parse_cancers("all") == list(CANCERS)
-    assert parse_variants("highscore,clean") == ["highscore", "clean"]
+    assert parse_variants("highscore,stable,clean") == [
+        "highscore",
+        "stable",
+        "clean",
+    ]
     assert parse_folds("0,2") == [0, 2]
     assert "wsi_encoder=uni2-h" in rendered
     assert "encoding_dim=1536" in rendered
@@ -61,10 +65,26 @@ def test_v37_uni2h_clean_is_an_explicit_separate_control():
         "/data1/TCGA-UNI2-h-features",
     )
     rendered = " ".join(command)
-    assert set(VARIANTS) == {"highscore", "clean"}
+    assert set(VARIANTS) == {"highscore", "stable", "clean"}
     assert "fit_bins_on_train=true" in rendered
     assert "dct_slot_init_mode=deterministic" in rendered
     assert result_dir.as_posix() == "results/dct_v3.7_uni2h/clean/blca"
+
+
+def test_v37_uni2h_stable_changes_only_evaluation_slot_randomness():
+    command, result_dir = build_train_command(
+        "python3",
+        "lusc",
+        "stable",
+        0,
+        "0",
+        "4",
+        "/data1/TCGA-UNI2-h-features",
+    )
+    rendered = " ".join(command)
+    assert "fit_bins_on_train=false" in rendered
+    assert "dct_slot_init_mode=deterministic" in rendered
+    assert result_dir.as_posix() == "results/dct_v3.7_uni2h/stable/lusc"
 
 
 def test_uni2h_hdf5_loader_accepts_leading_batch_dimension(tmp_path):

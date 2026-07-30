@@ -41,11 +41,6 @@ COMMON_OVERRIDES = {
     "dct_ipcw_rank_memory_size": 0,
     "dct_lambda_etar": 0.0,
     "dct_lambda_listwise": 0.0,
-    "dct_lambda_ot": 0.0,
-    "dct_lambda_rank": 0.0,
-    "dct_lambda_anchor": 0.0,
-    "dct_lambda_stage_risk": 0.0,
-    "dct_lambda_coordinate": 0.0,
 }
 
 VARIANTS = {
@@ -53,6 +48,11 @@ VARIANTS = {
         "label": "v3.3 high-score protocol with UNI2-h as the only intended change",
         "fit_bins_on_train": False,
         "dct_slot_init_mode": "gaussian",
+    },
+    "stable": {
+        "label": "global-binning protocol with deterministic evaluation slots",
+        "fit_bins_on_train": False,
+        "dct_slot_init_mode": "deterministic",
     },
     "clean": {
         "label": "train-fold-only binning and deterministic slots",
