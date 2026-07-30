@@ -522,11 +522,18 @@ class InterventionStableSurvivalTransport(nn.Module):
         )
 
     def forward(self, **kwargs):
-        raw_wsi = torch.nan_to_num(kwargs["x_wsi"].float())
+        raw_wsi = kwargs["x_wsi"].float()
+        # Determine transport support before sanitising numerical values.  If a
+        # patch embedding contains even one NaN/Inf, replacing only that value
+        # with zero must not let the otherwise non-zero patch receive mass.
         row_valid = self._valid_wsi_mask(raw_wsi)
+        raw_wsi = torch.nan_to_num(raw_wsi)
         x_wsi = self.wsi_mlp(raw_wsi)
-        x_omics = torch.nan_to_num(self._encode_omics(kwargs).float())
-        col_valid = self._valid_omic_mask(x_omics)
+        raw_omics = self._encode_omics(kwargs).float()
+        # The pathway encoder propagates non-finite source values.  Preserve
+        # that signal for the mask, then use a finite tensor for arithmetic.
+        col_valid = self._valid_omic_mask(raw_omics)
+        x_omics = torch.nan_to_num(raw_omics)
 
         factual_cost = self._cosine_cost(x_wsi, x_omics)
         intervention_masks = self._intervention_masks(row_valid, col_valid)

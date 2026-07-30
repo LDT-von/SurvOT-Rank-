@@ -134,6 +134,29 @@ def test_v40_forward_is_exactly_additive_and_has_finite_gradients():
     assert model.last_training_losses["ist_sinkhorn_batches"].item() == 2.0
 
 
+def test_v40_excludes_partially_nonfinite_patch_and_pathway_from_transport():
+    model = InterventionStableSurvivalTransport(make_args()).eval()
+    values = make_batch(batch_size=1)
+    values["x_wsi"][0, 2, 0] = float("nan")
+    values["x_omic2"][0, 0] = float("inf")
+
+    with torch.no_grad():
+        logits, _ = model(**values)
+    explanations = model.explain_last_batch()
+
+    assert torch.isfinite(logits).all()
+    assert not explanations["wsi_valid_mask"][0, 2]
+    assert not explanations["omic_valid_mask"][0, 1]
+    assert torch.equal(
+        explanations["stable_plan"][0, 2],
+        torch.zeros_like(explanations["stable_plan"][0, 2]),
+    )
+    assert torch.equal(
+        explanations["stable_plan"][0, :, 1],
+        torch.zeros_like(explanations["stable_plan"][0, :, 1]),
+    )
+
+
 def test_v40_vectorized_mask_views_match_sequential_sinkhorn():
     torch.manual_seed(7)
     model = InterventionStableSurvivalTransport(make_args()).eval()
