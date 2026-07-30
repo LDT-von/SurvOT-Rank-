@@ -242,6 +242,57 @@ def build_train_command(
     return command, result_dir
 
 
+def verify_child_cuda(python_bin: str, env: dict[str, str]) -> bool:
+    """Prove that the exact training interpreter can initialize the selected GPU.
+
+    ``CUDA_VISIBLE_DEVICES`` is process-local.  Checking CUDA in the scheduler
+    process is therefore not enough: the check must run in a fresh child with
+    the same interpreter and environment that will launch the fold training.
+    """
+    probe = """
+import json
+import os
+import sys
+import torch
+
+report = {
+    "python": sys.executable,
+    "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+    "torch": torch.__version__,
+    "torch_cuda": torch.version.cuda,
+    "cuda_available": torch.cuda.is_available(),
+    "device_count": torch.cuda.device_count(),
+}
+if report["cuda_available"]:
+    device = torch.device("cuda:0")
+    allocation = torch.empty(1, device=device)
+    torch.cuda.synchronize(device)
+    report["device_name"] = torch.cuda.get_device_name(device)
+    report["allocated_bytes"] = allocation.element_size() * allocation.nelement()
+print(json.dumps(report, sort_keys=True))
+raise SystemExit(0 if report["cuda_available"] else 1)
+"""
+    completed = subprocess.run(
+        [python_bin, "-c", probe],
+        check=False,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    output = completed.stdout.strip()
+    if output:
+        print(f"[cuda-preflight] {output}")
+    if completed.stderr.strip():
+        print(f"[cuda-preflight stderr] {completed.stderr.strip()}", file=sys.stderr)
+    if completed.returncode != 0:
+        print(
+            "[ERROR] training child cannot initialize CUDA; refusing CPU fallback.",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -327,6 +378,9 @@ def main() -> int:
                         # Also visible in case CUDA_VISIBLE_DEVICES is internally
                         # re-evaluated after import by a library.
                         env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+                        env.setdefault("PYTHONUNBUFFERED", "1")
+                        if not verify_child_cuda(args.python_bin, env):
+                            return 1
                         completed_process = subprocess.run(command, check=False, env=env)
                         if completed_process.returncode != 0:
                             return completed_process.returncode
