@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pytest
 import torch
 
 from survot_rank.research.methods.archetypal_risk_composition.model import (
@@ -110,6 +111,32 @@ def test_arcsurv_missing_modalities_and_eval_do_not_update_memory():
     )
 
 
+def test_arcsurv_memory_is_frozen_after_epoch_zero():
+    torch.manual_seed(7)
+    model = ArchetypalRiskComposition(make_args(), omic_input_dim=20)
+    model.train()
+    model(**make_inputs(), cur_epoch=0)
+    before = (
+        model.wsi_archetypes.memory.clone(),
+        model.wsi_archetypes.memory_priority.clone(),
+        model.wsi_archetypes.memory_seen.clone(),
+        model.omic_archetypes.memory.clone(),
+        model.omic_archetypes.memory_priority.clone(),
+        model.omic_archetypes.memory_seen.clone(),
+    )
+
+    model(**make_inputs(), cur_epoch=1)
+    after = (
+        model.wsi_archetypes.memory,
+        model.wsi_archetypes.memory_priority,
+        model.wsi_archetypes.memory_seen,
+        model.omic_archetypes.memory,
+        model.omic_archetypes.memory_priority,
+        model.omic_archetypes.memory_seen,
+    )
+    assert all(torch.equal(left, right) for left, right in zip(before, after))
+
+
 def test_arcsurv_pathway_inputs_match_blca_configuration():
     torch.manual_seed(3)
     args = make_args(
@@ -197,3 +224,17 @@ def test_arcsurv_beta_initialization_breaks_the_uniform_composition_symmetry():
         torch.full_like(composition, 1.0 / bank.num_archetypes),
         atol=1e-4,
     )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"arc_temperature": float("nan")}, "arc_temperature"),
+        ({"arc_beta_init_scale": float("inf")}, "arc_beta_init_scale"),
+        ({"arc_lambda_rank": float("nan")}, "arc_lambda_rank"),
+        ({"arc_rank_max_pairs": 0}, "arc_rank_max_pairs"),
+    ],
+)
+def test_arcsurv_rejects_invalid_objective_hyperparameters(overrides, message):
+    with pytest.raises(ValueError, match=message):
+        ArchetypalRiskComposition(make_args(**overrides), omic_input_dim=20)

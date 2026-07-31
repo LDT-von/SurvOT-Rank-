@@ -9,6 +9,8 @@ archetype-specific hazard curves.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -39,13 +41,15 @@ class CohortArchetypeBank(nn.Module):
         beta_init_scale: float = 1.5,
     ):
         super().__init__()
+        if dim < 1:
+            raise ValueError("ArcSurv archetype dimension must be positive")
         if num_archetypes < 2:
             raise ValueError("ArcSurv requires at least two archetypes")
         if bank_size < num_archetypes:
             raise ValueError("arc_bank_size must be at least arc_num_archetypes")
-        if temperature <= 0:
+        if not math.isfinite(temperature) or temperature <= 0:
             raise ValueError("arc_temperature must be positive")
-        if beta_init_scale <= 0:
+        if not math.isfinite(beta_init_scale) or beta_init_scale <= 0:
             raise ValueError("arc_beta_init_scale must be positive")
 
         self.dim = int(dim)
@@ -159,6 +163,7 @@ class ArchetypalRiskComposition(nn.Module):
         self.arc_lambda_rank = float(getattr(args, "arc_lambda_rank", 0.10))
         self.arc_rank_margin = float(getattr(args, "arc_rank_margin", 0.0))
         self.arc_rank_max_pairs = int(getattr(args, "arc_rank_max_pairs", 4096))
+        self._validate_hyperparameters()
 
         self._init_omics_encoder(self.omic_sizes, args.rna_format)
         self.wsi_mlp = WSI_Mlp(dim_in=self.wsi_embedding_dim, feat_dim=dim)
@@ -214,6 +219,23 @@ class ArchetypalRiskComposition(nn.Module):
                 self.all_gene_names = list(np.unique(np.concatenate(omic_names)))
             except Exception:
                 pass
+
+    def _validate_hyperparameters(self) -> None:
+        """Reject ArcSurv settings that would silently poison the objective."""
+        weights = {
+            "arc_lambda_recon": self.arc_lambda_recon,
+            "arc_lambda_align": self.arc_lambda_align,
+            "arc_lambda_balance": self.arc_lambda_balance,
+            "arc_lambda_volume": self.arc_lambda_volume,
+            "arc_lambda_rank": self.arc_lambda_rank,
+        }
+        for name, value in weights.items():
+            if not math.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        if not math.isfinite(self.arc_rank_margin):
+            raise ValueError("arc_rank_margin must be finite")
+        if self.arc_rank_max_pairs < 1:
+            raise ValueError("arc_rank_max_pairs must be at least 1")
 
     def _init_omics_encoder(self, omic_sizes, omics_format):
         dim = self.wsi_projection_dim
