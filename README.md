@@ -58,6 +58,10 @@ python scripts/run_dct_v37_uni2h_screen.py plan --variants highscore --cancers b
 # (plan is read-only; real cancer training remains server-side)
 python scripts/run_dct_v38_transport_consistency.py plan
 
+# DCT v3.8.2: MGPTR plus constrained adaptive IPCW/TID/TDM/TCR/MGPTR weights
+# Defaults to the BLCA/BRCA adaptive-full fold0 20-epoch robust screening plan
+python scripts/run_dct_v382_mgptr.py plan
+
 # DCT v4.1: original survival-evidence ledger slots + the v3.3 DCT backbone.
 # Fixed protocol: UNI; BLCA/BRCA/STAD/HNSC; folds 0,2,4 only.
 python scripts/run_dct_v41_survival_evidence_ledger.py plan

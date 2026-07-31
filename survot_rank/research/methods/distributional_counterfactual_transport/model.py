@@ -594,6 +594,28 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
 
         return factual_costs.new_zeros(()), {}
 
+    def _combine_auxiliary_objectives(
+        self,
+        *,
+        ipcw_rank_loss,
+        etar_loss,
+        transport_objective,
+        transport_metrics,
+        epoch,
+    ):
+        """Combine differentiable auxiliary objectives.
+
+        The base implementation preserves the frozen v3.3 recipe exactly.
+        Registered descendants may override this hook to balance the raw
+        objectives while leaving the primary survival NLL in the trainer as a
+        fixed anchor.
+        """
+
+        del transport_metrics, epoch
+        total = self.dct_lambda_ipcw_rank * ipcw_rank_loss
+        total = total + self.dct_lambda_etar * etar_loss
+        return total + transport_objective
+
     def forward(self, **kwargs):
         x_wsi_proj = self.wsi_mlp(kwargs["x_wsi"])
         x_omics = self._encode_omics(kwargs)
@@ -658,6 +680,13 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                 cols=cols,
                 epoch=epoch,
             )
+            aux_loss = self._combine_auxiliary_objectives(
+                ipcw_rank_loss=ipcw_rank_loss,
+                etar_loss=etar_loss,
+                transport_objective=transport_objective,
+                transport_metrics=transport_metrics,
+                epoch=epoch,
+            )
             # The base v3.3 hook is an exact zero, so its counterfactual branches
             # remain post-hoc queries. Registered extensions such as v3.8 can
             # explicitly opt into a re-solved transport objective through the
@@ -706,9 +735,6 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                 }
             )
 
-            aux_loss = self.dct_lambda_ipcw_rank * ipcw_rank_loss
-            aux_loss = aux_loss + self.dct_lambda_etar * etar_loss
-            aux_loss = aux_loss + transport_objective
             return factual_logits, aux_loss
 
         low_costs, high_costs = self._counterfactual_costs(factual_costs)

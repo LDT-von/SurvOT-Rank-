@@ -76,6 +76,15 @@ METHOD_REGISTRY = {
         ),
         "DCTTransportInterventionConsistency",
     ),
+    "dct_v382_prognostic_transport_reconstruction": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "dct_v382_prognostic_transport_reconstruction",
+        ),
+        "DCTV382PrognosticTransportReconstruction",
+    ),
     "intervention_stable_survival_transport": (
         os.path.join(
             "survot_rank",
@@ -133,6 +142,8 @@ METHOD_ALIASES = {
     "arcsurv": "archetypal_risk_composition",
     "arc_surv": "archetypal_risk_composition",
     "dct_v38": "dct_transport_intervention_consistency",
+    "dct_v382": "dct_v382_prognostic_transport_reconstruction",
+    "dct_v3_8_2": "dct_v382_prognostic_transport_reconstruction",
     "dct_v41": "dct_v41_survival_evidence_ledger",
     "dct_v4_1": "dct_v41_survival_evidence_ledger",
     "v40": "intervention_stable_survival_transport",

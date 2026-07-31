@@ -24,6 +24,9 @@ METHOD_CHOICES = [
     "dct_listwise_transport",
     "dct_transport_intervention_consistency",
     "dct_v38",
+    "dct_v382_prognostic_transport_reconstruction",
+    "dct_v382",
+    "dct_v3_8_2",
     "intervention_stable_survival_transport",
     "v40",
     "ist_surv",
@@ -335,6 +338,25 @@ def build_base_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="Evaluate the extra midpoint Sinkhorn branches every N post-warmup epochs.",
+    )
+    # DCT v3.8.2 Multi-Geometry Prognostic Transport Reconstruction. The loss
+    # reuses factual couplings and the shared decoder, so it adds no parameters
+    # and no additional Sinkhorn solves.
+    parser.add_argument("--dct_v382_lambda_mgptr", type=float, default=0.05)
+    parser.add_argument("--dct_v382_distill_weight", type=float, default=0.50)
+    parser.add_argument("--dct_v382_warmup_epochs", type=int, default=1)
+    parser.add_argument("--dct_v382_ramp_epochs", type=int, default=4)
+    parser.add_argument(
+        "--dct_v382_adaptive_aux_weights", action="store_true", default=False
+    )
+    parser.add_argument(
+        "--dct_v382_adaptive_prior_fraction", type=float, default=0.25
+    )
+    parser.add_argument(
+        "--dct_v382_adaptive_temperature", type=float, default=1.0
+    )
+    parser.add_argument(
+        "--dct_v382_adaptive_kl_strength", type=float, default=0.01
     )
 
     # DCT v4.1 Survival-Evidence Ledger (SELC). This method replaces the
