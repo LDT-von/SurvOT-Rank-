@@ -8,11 +8,13 @@ import pytest
 import torch
 
 from scripts.run_dct_v38_transport_consistency import (
+    CANCERS,
     COMMON_OVERRIDES,
     PROTOCOLS,
     VARIANTS,
     build_parser,
     build_train_command,
+    parse_cancers,
     parse_folds,
     parse_positive_int,
     parse_variants,
@@ -215,14 +217,19 @@ def test_v38_registry_and_screen_are_isolated_and_auditable():
         "direction",
         "dose",
         "reconfiguration",
+        "direction_dose",
+        "direction_reconfiguration",
+        "dose_reconfiguration",
         "full",
     }
     assert set(PROTOCOLS) == {"highscore", "stable", "clean", "robust"}
+    assert set(CANCERS) == {"blca", "brca", "luad", "lusc", "stad"}
     defaults = build_parser().parse_args([])
     assert defaults.mode == "plan"
     assert defaults.protocols == ["robust"]
     assert defaults.variants == ["full"]
     assert parse_variants("direction,dose") == ["direction", "dose"]
+    assert parse_cancers("stad,blca") == ["stad", "blca"]
     assert parse_folds("0,2") == [0, 2]
     assert parse_positive_int("20") == 20
     with pytest.raises(argparse.ArgumentTypeError):
@@ -249,6 +256,54 @@ def test_v38_registry_and_screen_are_isolated_and_auditable():
         "results/dct_v3.8_transport_consistency/highscore/full/blca"
     )
     assert COMMON_OVERRIDES["dct_lambda_ipcw_rank"] == 0.10
+
+
+def test_v38_stad_blca_fold0_twenty_epoch_factorial_plan_is_supported():
+    tasks = []
+    for cancer in ("stad", "blca"):
+        for variant in VARIANTS:
+            command, result_dir = build_train_command(
+                "python3",
+                cancer,
+                "robust",
+                variant,
+                0,
+                "0",
+                "4",
+                "/data1/TCGA-UNI2-h-features",
+                max_epochs=20,
+            )
+            rendered = " ".join(command)
+            assert "max_epochs=20" in rendered
+            assert f"/robust/{variant}/{cancer}" in result_dir.as_posix()
+            tasks.append((cancer, variant))
+    assert len(tasks) == 16
+    assert len(set(tasks)) == 16
+
+
+@pytest.mark.parametrize(
+    ("variant", "direction", "dose", "reconfiguration"),
+    [
+        ("base", 0.0, 0.0, 0.0),
+        ("direction", 0.05, 0.0, 0.0),
+        ("dose", 0.0, 0.03, 0.0),
+        ("reconfiguration", 0.0, 0.0, 0.02),
+        ("direction_dose", 0.05, 0.03, 0.0),
+        ("direction_reconfiguration", 0.05, 0.0, 0.02),
+        ("dose_reconfiguration", 0.0, 0.03, 0.02),
+        ("full", 0.05, 0.03, 0.02),
+    ],
+)
+def test_v38_factorial_variants_toggle_only_the_three_structural_losses(
+    variant,
+    direction,
+    dose,
+    reconfiguration,
+):
+    values = VARIANTS[variant]
+    assert values["dct_v38_lambda_direction"] == direction
+    assert values["dct_v38_lambda_dose"] == dose
+    assert values["dct_v38_lambda_reconfiguration"] == reconfiguration
 
 
 def test_v38_twenty_epoch_screen_is_isolated_from_formal_results():

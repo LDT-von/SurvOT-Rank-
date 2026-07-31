@@ -18,7 +18,9 @@ v3.3 最有辨识度的 high/low anchor cost intervention 与 re-Sinkhorn 只在
 
 v3.8 相对 v3.3 **增加 0 个可训练参数**。它的占比不能用参数比例衡量：
 新增目标的每个有效值都依赖干预后的 cost、重新求解的 coupling 和最终
-risk decoder。关闭三个 v3.8 权重时，训练目标退化回 v3.3。
+risk decoder。关闭三个 v3.8 权重时，训练目标退化回 v3.3；但实际实验
+仍使用 v3.7 的 UNI2-h 输入和 highscore/robust 协议，因此结果表中的
+`base` 必须称为 **v3.7-matched base**，不能简称为“v3.3”。
 
 ## 三个可独立消融的损失
 
@@ -95,7 +97,7 @@ high/low anchor 都已由训练折观察到的阶段计算。
 
 ## 受控筛选
 
-默认使用用户要求的 v3.3 high-score + UNI2-h 协议：
+默认实验对照使用 v3.7 UNI2-h highscore 骨架；其生存目标继承 v3.3：
 
 - full-cohort `global_qcut`
 - `fit_bins_on_train=false`
@@ -118,8 +120,27 @@ python scripts/run_dct_v38_transport_consistency.py smoke
 # 默认只跑 full
 python scripts/run_dct_v38_transport_consistency.py run
 
-# 完整损失消融
+# 第一阶段：基线和三个单损失，判断每项独立贡献
+python scripts/run_dct_v38_transport_consistency.py run \
+  --variants base,direction,dose,reconfiguration
+
+# 第二阶段：三个两两组合，判断协同或冲突
+python scripts/run_dct_v38_transport_consistency.py run \
+  --variants direction_dose,direction_reconfiguration,dose_reconfiguration
+
+# 第三阶段：只有前两阶段支持时才运行三项全开
+python scripts/run_dct_v38_transport_consistency.py run --variants full
+
+# 也可以一次生成完整 2^3 因子消融
 python scripts/run_dct_v38_transport_consistency.py run --variants all
+
+# 最快的跨癌种初筛：STAD + BLCA，fold0，20 epoch，共 2×1×8=16 次
+python scripts/run_dct_v38_transport_consistency.py run \
+  --protocols robust \
+  --variants all \
+  --cancers stad,blca \
+  --folds 0 \
+  --max-epochs 20
 
 # 严格分箱审计
 python scripts/run_dct_v38_transport_consistency.py run --protocols clean
@@ -137,7 +158,18 @@ v3.7、ETAR 或 Recovery 结果。
 
 ## 晋级规则
 
-fold0/fold2 只能筛选。`full` 至少需要满足：
+fold0/fold2 只能筛选。完整 \(2^3\) 因子消融包括：
+
+| 类别 | 变体 |
+|---|---|
+| 基线 | `base` |
+| 单项 | `direction`、`dose`、`reconfiguration` |
+| 两项 | `direction_dose`、`direction_reconfiguration`、`dose_reconfiguration` |
+| 三项 | `full` |
+
+不能只用 `base` 对比 `full` 就判定三个损失都无效。应先看单项主效应，
+再看两项交互；例如单项有效而 `full` 下降，说明更可能是损失冲突或权重
+不合适，而不是三个机制全部无效。`full` 至少需要满足：
 
 1. 无 NaN，`v38_finite=1`，anchor stage coverage 可审计；
 2. 相对同协议 base，四折总体 Last5 提高，或 Best–Last gap 明显缩小；

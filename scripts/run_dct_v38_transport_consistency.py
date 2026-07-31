@@ -29,7 +29,7 @@ DATASET_CSV_ROOT = (
 )
 DEFAULT_DATA_ROOT = "/data1/TCGA-UNI2-h-features"
 UNI2H_DIM = 1536
-CANCERS = ("blca", "brca", "luad", "lusc")
+CANCERS = ("blca", "brca", "luad", "lusc", "stad")
 DEFAULT_CANCERS = ("blca", "brca")
 
 COMMON_OVERRIDES = {
@@ -99,7 +99,10 @@ PROTOCOLS = {
 
 VARIANTS = {
     "base": {
-        "label": "v3.3 objective control through the v3.8 class",
+        "label": (
+            "v3.7-matched UNI2-h control through the v3.8 class "
+            "(v3.3 NLL + IPCW objective)"
+        ),
         "dct_v38_lambda_direction": 0.0,
         "dct_v38_lambda_dose": 0.0,
         "dct_v38_lambda_reconfiguration": 0.0,
@@ -120,6 +123,24 @@ VARIANTS = {
         "label": "minimum Sinkhorn coupling reconfiguration only",
         "dct_v38_lambda_direction": 0.0,
         "dct_v38_lambda_dose": 0.0,
+        "dct_v38_lambda_reconfiguration": 0.02,
+    },
+    "direction_dose": {
+        "label": "risk-direction consistency + dose-monotonic response",
+        "dct_v38_lambda_direction": 0.05,
+        "dct_v38_lambda_dose": 0.03,
+        "dct_v38_lambda_reconfiguration": 0.0,
+    },
+    "direction_reconfiguration": {
+        "label": "risk-direction consistency + coupling reconfiguration",
+        "dct_v38_lambda_direction": 0.05,
+        "dct_v38_lambda_dose": 0.0,
+        "dct_v38_lambda_reconfiguration": 0.02,
+    },
+    "dose_reconfiguration": {
+        "label": "dose-monotonic response + coupling reconfiguration",
+        "dct_v38_lambda_direction": 0.0,
+        "dct_v38_lambda_dose": 0.03,
         "dct_v38_lambda_reconfiguration": 0.02,
     },
     "full": {
