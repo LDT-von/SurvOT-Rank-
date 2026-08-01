@@ -223,7 +223,7 @@ def init_scheduler(args, optimizer):
 def get_split(args, dataset_factory, fold):
     split_path = os.path.join(
         dataset_factory.data_path,
-        "splits", "5fold", dataset_factory.study,
+        "splits", dataset_factory.which_splits, dataset_factory.study,
         f"fold_{fold}.csv",
     )
     split_df = pd.read_csv(split_path)
@@ -714,6 +714,7 @@ def run(args):
         num_patches=args.num_patches,
         clinical_feature_cols=clinical_feature_cols,
         binning_mode=getattr(args, "binning_mode", "global_qcut"),
+        which_splits=getattr(args, "which_splits", "5fold"),
     )
 
     # 传递临床模态开关给模型

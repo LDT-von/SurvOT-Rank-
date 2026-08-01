@@ -275,7 +275,7 @@ def test_v38_stad_blca_fold0_twenty_epoch_factorial_plan_is_supported():
             )
             rendered = " ".join(command)
             assert "max_epochs=20" in rendered
-            assert f"/robust/{variant}/{cancer}" in result_dir.as_posix()
+            assert f"/robust_uni2h/{variant}/{cancer}" in result_dir.as_posix()
             tasks.append((cancer, variant))
     assert len(tasks) == 16
     assert len(set(tasks)) == 16
@@ -321,8 +321,9 @@ def test_v38_twenty_epoch_screen_is_isolated_from_formal_results():
     rendered = " ".join(command)
     assert "max_epochs=20" in rendered
     assert "dct_v38_robust_full_brca_20ep" in rendered
+    assert "which_splits=5fold_uni2h" in rendered
     assert result_dir.as_posix() == (
-        "results/dct_v3.8_transport_consistency_20ep/robust/full/brca"
+        "results/dct_v3.8_transport_consistency_20ep/robust_uni2h/full/brca"
     )
 
 
@@ -365,7 +366,8 @@ def test_v38_robust_protocol_is_cancer_agnostic_and_preserves_cohort_mass():
         assert "dct_ipcw_rank_memory_size=64" in rendered
         assert "dct_v38_warmup_epochs=5" in rendered
         assert "dct_v38_ramp_epochs=10" in rendered
-        assert f"/robust/full/{cancer}" in result_dir.as_posix()
+        assert "which_splits=5fold_uni2h" in rendered
+        assert f"/robust_uni2h/full/{cancer}" in result_dir.as_posix()
 
 
 def test_v38_run_locks_prevent_duplicate_scheduler_and_fold_writers(tmp_path):

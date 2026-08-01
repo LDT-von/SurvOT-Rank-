@@ -83,9 +83,11 @@ PROTOCOLS = {
     },
     "robust": {
         "label": (
-            "cancer-agnostic sparse-event protocol with patient-complete "
+            "UNI2-h feature-complete sparse-event protocol with patient-complete "
             "event-spread batches and within-epoch ranking memory"
         ),
+        "which_splits": "5fold_uni2h",
+        "result_tag": "robust_uni2h",
         "fit_bins_on_train": True,
         "binning_mode": "global_qcut",
         "dct_slot_init_mode": "deterministic",
@@ -194,10 +196,32 @@ def inspect_feature_directory(data_root: str | Path, cancer: str) -> dict[str, o
     return report
 
 
-def inspect_split_directory(cancer: str) -> dict[str, object]:
+def inspect_split_directory(
+    cancer: str,
+    *,
+    data_root: str | Path | None = None,
+    which_splits: str = "5fold",
+) -> dict[str, object]:
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
-    from tools.gen_splits_5fold import audit_existing_splits
+    from tools.gen_splits_5fold import (
+        audit_existing_splits,
+        collect_matching_feature_case_ids,
+    )
+
+    eligible_case_ids = None
+    if which_splits == "5fold_uni2h":
+        feature_dir = (
+            Path(data_root or DEFAULT_DATA_ROOT)
+            / cancer
+            / "uni2-h"
+            / "pt_files"
+        )
+        clinical_csv = DATASET_CSV_ROOT / "clinical" / "all" / f"{cancer}.csv"
+        eligible_case_ids = collect_matching_feature_case_ids(
+            clinical_csv,
+            feature_dir,
+        )
 
     return audit_existing_splits(
         study=cancer,
@@ -205,6 +229,8 @@ def inspect_split_directory(cancer: str) -> dict[str, object]:
         label_col="survival_months_dss",
         censor_col="censorship_dss",
         n_folds=5,
+        split_root=str(DATASET_CSV_ROOT / "splits" / which_splits),
+        eligible_case_ids=eligible_case_ids,
     )
 
 
@@ -286,11 +312,13 @@ def build_train_command(
         result_root = "dct_v3.8_transport_consistency"
     else:
         result_root = f"dct_v3.8_transport_consistency_{effective_epochs}ep"
-    result_dir = Path("results") / result_root / protocol / variant / cancer
+    protocol_result_tag = str(PROTOCOLS[protocol].get("result_tag", protocol))
+    result_dir = Path("results") / result_root / protocol_result_tag / variant / cancer
     overrides = dict(COMMON_OVERRIDES)
     overrides.update(PROTOCOLS[protocol])
     overrides.update(VARIANTS[variant])
     overrides.pop("label", None)
+    overrides.pop("result_tag", None)
     overrides["max_epochs"] = effective_epochs
     overrides.update(
         {
@@ -430,26 +458,40 @@ def main() -> int:
             if report["error"]:
                 print(f"         {report['error']}")
             failed = failed or not report["ok"]
-            split_report = inspect_split_directory(cancer)
-            split_status = "OK" if split_report["ok"] else "INVALID"
-            print(
-                f"{split_status:8s} {cancer.upper():8s} "
-                f"eligible={split_report['eligible_cases']:<5} "
-                f"events={split_report['observed_events']:<4} "
-                f"val_events={split_report['validation_event_counts']}"
-            )
-            for error in split_report["errors"]:
-                print(f"         {error}")
-            failed = failed or not split_report["ok"]
+            for protocol in args.protocols:
+                which_splits = str(
+                    PROTOCOLS[protocol].get("which_splits", "5fold")
+                )
+                split_report = inspect_split_directory(
+                    cancer,
+                    data_root=args.data_root,
+                    which_splits=which_splits,
+                )
+                split_status = "OK" if split_report["ok"] else "INVALID"
+                print(
+                    f"{split_status:8s} {cancer.upper():8s} "
+                    f"protocol={protocol} split={which_splits} "
+                    f"eligible={split_report['eligible_cases']:<5} "
+                    f"events={split_report['observed_events']:<4} "
+                    f"val_events={split_report['validation_event_counts']}"
+                )
+                for error in split_report["errors"]:
+                    print(f"         {error}")
+                failed = failed or not split_report["ok"]
         return int(failed)
 
     if args.mode in ("smoke", "run") and "robust" in args.protocols:
+        which_splits = str(PROTOCOLS["robust"]["which_splits"])
         for cancer in args.cancers:
-            split_report = inspect_split_directory(cancer)
+            split_report = inspect_split_directory(
+                cancer,
+                data_root=args.data_root,
+                which_splits=which_splits,
+            )
             if not split_report["ok"]:
                 print(
                     f"[ERROR] {cancer.upper()} split audit failed; "
-                    "regenerate it with tools/gen_splits_5fold.py before "
+                    f"regenerate {which_splits} with tools/gen_splits_5fold.py before "
                     "running the robust protocol."
                 )
                 for error in split_report["errors"]:

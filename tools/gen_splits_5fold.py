@@ -21,6 +21,7 @@ prevents sparse cohorts from placing most events in only one or two folds.
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -28,6 +29,57 @@ from sklearn.model_selection import StratifiedKFold
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_PATH = PROJECT_ROOT / "survot_rank" / "research" / "legacy" / "slotspe_runtime" / "dataset_csv"
+TCGA_CASE_PATTERN = re.compile(r"(TCGA-[A-Z0-9]{2}-[A-Z0-9]{4})", re.IGNORECASE)
+
+
+def collect_feature_stems(feature_dir: str | Path) -> set[str]:
+    """Return filename stems for every supported extracted WSI feature."""
+    root = Path(feature_dir)
+    if not root.is_dir():
+        raise FileNotFoundError(f"missing WSI feature directory: {root}")
+
+    stems: set[str] = set()
+    for pattern in ("*.pt", "*.h5", "*.hdf5"):
+        stems.update(feature_path.stem for feature_path in root.rglob(pattern))
+    if not stems:
+        raise RuntimeError(f"no WSI feature files found under: {root}")
+    return stems
+
+
+def collect_feature_case_ids(feature_dir: str | Path) -> set[str]:
+    """Return TCGA case IDs represented by supported WSI feature files."""
+    case_ids: set[str] = set()
+    for stem in collect_feature_stems(feature_dir):
+        match = TCGA_CASE_PATTERN.search(stem)
+        if match:
+            case_ids.add(match.group(1).upper())
+    if not case_ids:
+        raise RuntimeError(f"no TCGA case IDs found under: {feature_dir}")
+    return case_ids
+
+
+def collect_matching_feature_case_ids(
+    clinical_csv: str | Path,
+    feature_dir: str | Path,
+) -> set[str]:
+    """Return cases with at least one clinical slide that resolves to a feature."""
+    clinical = pd.read_csv(clinical_csv)
+    required = {"case id", "wsi"}
+    missing = required - set(clinical.columns)
+    if missing:
+        raise ValueError(f"clinical CSV is missing columns: {sorted(missing)}")
+    stems = collect_feature_stems(feature_dir)
+    matched: set[str] = set()
+    for row in clinical.loc[:, ["case id", "wsi"]].dropna().itertuples(index=False):
+        case_id, slides = str(row[0]).upper(), str(row[1])
+        slide_stems = {
+            slide.strip().removesuffix(".svs")
+            for slide in slides.split(",")
+            if slide.strip()
+        }
+        if slide_stems & stems:
+            matched.add(case_id)
+    return matched
 
 
 def make_strat_key(
@@ -91,13 +143,22 @@ def audit_existing_splits(
         label_col: str,
         censor_col: str,
         n_folds: int,
-        split_root: str | None = None):
+        split_root: str | None = None,
+        eligible_case_ids: set[str] | None = None):
     """Audit patient coverage and joint event/time balance of existing splits."""
     csv = os.path.join(data_path, "clinical", "all", f"{study}.csv")
     if not os.path.isfile(csv):
         raise FileNotFoundError(f"missing clinical csv: {csv}")
 
     df = pd.read_csv(csv, index_col=0)
+    clinical_valid = set(
+        df.loc[df[label_col].notna() & df[censor_col].notna(), "case id"]
+        .astype(str)
+        .str.upper()
+    )
+    if eligible_case_ids is not None:
+        eligible_case_ids = {str(case_id).upper() for case_id in eligible_case_ids}
+        df = df[df["case id"].astype(str).str.upper().isin(eligible_case_ids)].copy()
     _, cohort = make_strat_key(
         df,
         label_col,
@@ -181,6 +242,13 @@ def audit_existing_splits(
     return {
         "study": study,
         "eligible_cases": len(expected_cases),
+        "clinical_valid_cases": len(clinical_valid),
+        "feature_cases": None if eligible_case_ids is None else len(eligible_case_ids),
+        "clinical_without_features": (
+            None
+            if eligible_case_ids is None
+            else len(clinical_valid - eligible_case_ids)
+        ),
         "observed_events": int(cohort['event'].sum()),
         "fold_sizes": fold_sizes,
         "validation_event_counts": event_counts,
@@ -195,7 +263,8 @@ def gen(study: str,
         censor_col: str,
         n_folds: int,
         seed: int,
-        out_dir: str):
+        out_dir: str,
+        eligible_case_ids: set[str] | None = None):
     csv = os.path.join(data_path, "clinical", "all", f"{study}.csv")
     assert os.path.isfile(csv), f"missing clinical csv: {csv}"
 
@@ -205,6 +274,17 @@ def gen(study: str,
     # Survival training requires both the endpoint and censoring indicator.
     valid_mask = df[label_col].notna() & df[censor_col].notna()
     sub = df.loc[valid_mask].copy()
+    if eligible_case_ids is not None:
+        eligible_case_ids = {str(case_id).upper() for case_id in eligible_case_ids}
+        before = sub["case id"].astype(str).str.upper().nunique()
+        sub = sub[
+            sub["case id"].astype(str).str.upper().isin(eligible_case_ids)
+        ].copy()
+        after = sub["case id"].astype(str).str.upper().nunique()
+        print(
+            f"[{study}] feature-complete cohort: {after}/{before} clinical cases "
+            f"({before - after} removed without extracted WSI features)"
+        )
     strat_key, sub2 = make_strat_key(
         sub,
         label_col,
@@ -268,6 +348,7 @@ def gen(study: str,
         censor_col=censor_col,
         n_folds=n_folds,
         split_root=out_dir,
+        eligible_case_ids=eligible_case_ids,
     )
     if not audit['ok']:
         raise RuntimeError(
@@ -287,13 +368,34 @@ def main():
     ap.add_argument("--censor_col", default="censorship_dss")
     ap.add_argument("--n_folds", type=int, default=5)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--out_dir", default=str(DEFAULT_DATA_PATH / "splits" / "5fold"))
+    ap.add_argument("--out_dir")
+    ap.add_argument(
+        "--feature_dir",
+        help=(
+            "Optional pt_files directory. When set, splits are generated from "
+            "the clinical/feature patient intersection."
+        ),
+    )
     ap.add_argument(
         "--audit_only",
         action="store_true",
         help="Audit existing split files without rewriting them.",
     )
     args = ap.parse_args()
+    eligible_case_ids = None
+    if args.feature_dir:
+        clinical_csv = (
+            Path(args.data_path) / "clinical" / "all" / f"{args.study}.csv"
+        )
+        eligible_case_ids = collect_matching_feature_case_ids(
+            clinical_csv,
+            args.feature_dir,
+        )
+    out_dir = args.out_dir or str(
+        Path(args.data_path)
+        / "splits"
+        / ("5fold_uni2h" if args.feature_dir else "5fold")
+    )
     if args.audit_only:
         report = audit_existing_splits(
             study=args.study,
@@ -301,12 +403,21 @@ def main():
             label_col=args.label_col,
             censor_col=args.censor_col,
             n_folds=args.n_folds,
-            split_root=args.out_dir,
+            split_root=out_dir,
+            eligible_case_ids=eligible_case_ids,
         )
         print(json.dumps(report, indent=2, ensure_ascii=False))
         raise SystemExit(0 if report['ok'] else 2)
-    gen(args.study, args.data_path, args.label_col, args.censor_col,
-        args.n_folds, args.seed, args.out_dir)
+    gen(
+        args.study,
+        args.data_path,
+        args.label_col,
+        args.censor_col,
+        args.n_folds,
+        args.seed,
+        out_dir,
+        eligible_case_ids=eligible_case_ids,
+    )
 
 
 if __name__ == "__main__":

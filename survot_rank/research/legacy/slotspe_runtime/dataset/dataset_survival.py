@@ -59,7 +59,8 @@ class SurvivalDatasetFactory:
                  num_patches=4096,
                  num_genes=None,
                  clinical_feature_cols=None,
-                 binning_mode="global_qcut"):
+                 binning_mode="global_qcut",
+                 which_splits="5fold"):
         self.study = study
         self.data_path = data_path
         self.signature = signature
@@ -76,6 +77,7 @@ class SurvivalDatasetFactory:
         self.clinical_feature_cols = clinical_feature_cols
         self.use_clinical_modality = clinical_feature_cols is not None and len(clinical_feature_cols) > 0
         self.binning_mode = binning_mode  # "global_qcut" (default) or "legacy_equal_width"
+        self.which_splits = str(which_splits)
 
         if self.label_col == "survival_months_os":
             self.survival_endpoint = "OS"
@@ -310,7 +312,7 @@ class SurvivalDataset(Dataset):
             raise ValueError(f"Invalid split key: {split_key}")
 
     def _load_split(self):
-        split_path = os.path.join(self.dataset_factory.data_path, "splits", "5fold", f"{self.dataset_factory.study}",
+        split_path = os.path.join(self.dataset_factory.data_path, "splits", self.dataset_factory.which_splits, f"{self.dataset_factory.study}",
                                   f"fold_{self.fold}.csv")
         all_splits = pd.read_csv(split_path)
         split = self._get_split_from_df(all_splits, self.split_key)
@@ -395,13 +397,33 @@ class SurvivalDataset(Dataset):
         else:
             slide_ids = slides.split(", ")
             wsi = []
+            missing_slide_ids = []
             for slide_id in slide_ids:
                 feature_path = self._resolve_wsi_feature_path(slide_id)
                 if feature_path is not None:
                     wsi.append(self._load_wsi_feature(feature_path))
                 else:
-                    wsi.append(torch.zeros((self.dataset_factory.num_patches, self.encoding_dim)))
-                    print("missing file: ", slide_id)
+                    missing_slide_ids.append(slide_id)
+
+            if not wsi:
+                raise FileNotFoundError(
+                    "No extracted WSI feature file was found for any slide in "
+                    f"patient sample: {slide_ids}. Searched under: {self.wsi_path}"
+                )
+
+            # A patient may have several diagnostic slides even when only a
+            # subset was successfully encoded. Use the available real slides;
+            # appending a full zero bag for every missing slide silently changes
+            # the patch distribution and can contaminate survival training.
+            warned = getattr(self, "_missing_wsi_warning_ids", set())
+            unseen = [slide_id for slide_id in missing_slide_ids if slide_id not in warned]
+            if unseen:
+                print(
+                    "[WSI feature warning] skipped missing slide feature(s): "
+                    + ", ".join(unseen)
+                )
+                warned.update(unseen)
+                self._missing_wsi_warning_ids = warned
             wsi = torch.cat(wsi, dim=0).type(torch.float32)  # TODO: check the torch.float32
             return wsi
 

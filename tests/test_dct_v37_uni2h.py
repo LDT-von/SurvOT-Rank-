@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import h5py
 import numpy as np
+import pytest
 import torch
 
 from scripts.run_dct_v37_uni2h_screen import (
@@ -103,6 +104,40 @@ def test_uni2h_hdf5_loader_accepts_leading_batch_dimension(tmp_path):
     assert loaded.shape == (5, UNI2H_DIM)
     assert loaded.dtype == torch.float32
     assert torch.equal(loaded, torch.from_numpy(values).squeeze(0))
+
+
+def test_uni2h_loader_skips_missing_secondary_slide_instead_of_zero_filling(
+    tmp_path, capsys
+):
+    feature_path = tmp_path / "TCGA-TEST-01Z-00-DX1.h5"
+    values = np.ones((3, UNI2H_DIM), dtype=np.float32)
+    with h5py.File(feature_path, "w") as handle:
+        handle.create_dataset("features", data=values)
+
+    dataset = object.__new__(SurvivalDataset)
+    dataset.wsi_path = str(tmp_path)
+    dataset.encoding_dim = UNI2H_DIM
+    dataset.dataset_factory = SimpleNamespace(num_patches=4)
+    dataset._wsi_feature_index = None
+
+    loaded = dataset.load_wsi(
+        "TCGA-TEST-01Z-00-DX1.svs, TCGA-TEST-01Z-00-DX2.svs"
+    )
+
+    assert loaded.shape == (3, UNI2H_DIM)
+    assert torch.equal(loaded, torch.from_numpy(values))
+    assert "skipped missing slide feature" in capsys.readouterr().out
+
+
+def test_uni2h_loader_rejects_patient_with_no_extracted_wsi_feature(tmp_path):
+    dataset = object.__new__(SurvivalDataset)
+    dataset.wsi_path = str(tmp_path)
+    dataset.encoding_dim = UNI2H_DIM
+    dataset.dataset_factory = SimpleNamespace(num_patches=4)
+    dataset._wsi_feature_index = None
+
+    with pytest.raises(FileNotFoundError, match="No extracted WSI feature"):
+        dataset.load_wsi("TCGA-NONE-01Z-00-DX1.svs")
 
 
 def test_uni2h_doctor_checks_real_shape(tmp_path):
