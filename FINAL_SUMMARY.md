@@ -586,7 +586,7 @@
 
 | 日期 | 问题 | 详情 | 状态 |
 |:----:|------|------|:----:|
-| 08-01 | UNI2-h feature cohort mismatch | BRCA robust used a 1045-case clinical split while the UNI2-h directory contains features for only 786 case IDs before exact intersection. Missing slides were silently replaced by zero bags. Robust now uses feature-complete `5fold_uni2h` splits, fails on patients with no extracted WSI feature, and writes new results under `robust_uni2h`. Existing affected BRCA robust runs are diagnostic only. | ✅ Code fixed; regenerate splits and rerun |
+| 08-01 | UNI2-h feature cohort mismatch | BRCA robust used a 1045-case clinical split while the UNI2-h directory contains features for only 786 case IDs before exact intersection. Missing slides were silently replaced by zero bags. Robust now requires 100% exact clinical-slide feature coverage, blocks incomplete cancers, fails on patients with no extracted WSI feature, and writes new results under `robust_uni2h`. BRCA/LUAD/COADREAD/STAD remain blocked until features are completed. | ✅ Guard active; run only complete cancers |
 | 07-30 | v3.8 三损失效果不一致 | 20ep highscore: BRCA full<base (-0.033), BLCA full>base (+0.016)。split非独立于损失设计，ULIT建议robust协议重跑后再判 | 🟡 待robust验证 |
 | 07-30 | 10癌种 split 事件不均衡 | 旧文件虽覆盖患者，但不是当前分层生成器产物；BRCA fold4 仅10个事件。已统一重建50个split，并新增覆盖、重复、有效标签及联合分层审计 | ✅ 数据与代码已修复，待统一重跑 |
 | 07-30 | 稀疏事件训练信号不足 | v3.8 原协议用batch=8普通随机批次，BRCA约半数训练批次无事件；三个结构损失还在epoch1后直接全权重开启。新增癌种无关`robust`协议：患者完整事件分散批次、64例折内排序记忆、训练折分箱、确定性验证槽、5轮结构预热与10轮线性增权 | 🟡 待5-fold实测 |

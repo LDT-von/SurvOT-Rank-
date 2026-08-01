@@ -144,7 +144,8 @@ def audit_existing_splits(
         censor_col: str,
         n_folds: int,
         split_root: str | None = None,
-        eligible_case_ids: set[str] | None = None):
+        eligible_case_ids: set[str] | None = None,
+        require_complete_feature_coverage: bool = False):
     """Audit patient coverage and joint event/time balance of existing splits."""
     csv = os.path.join(data_path, "clinical", "all", f"{study}.csv")
     if not os.path.isfile(csv):
@@ -174,6 +175,17 @@ def audit_existing_splits(
     )
 
     errors = []
+    clinical_without_features = (
+        None
+        if eligible_case_ids is None
+        else len(clinical_valid - eligible_case_ids)
+    )
+    if require_complete_feature_coverage and clinical_without_features:
+        errors.append(
+            f"{clinical_without_features} clinically eligible cases have no "
+            "matching extracted WSI feature; this cancer is blocked until "
+            "feature coverage reaches 100%"
+        )
     validation_counts = {case_id: 0 for case_id in expected_cases}
     event_counts = []
     stratum_counts = []
@@ -245,9 +257,7 @@ def audit_existing_splits(
         "clinical_valid_cases": len(clinical_valid),
         "feature_cases": None if eligible_case_ids is None else len(eligible_case_ids),
         "clinical_without_features": (
-            None
-            if eligible_case_ids is None
-            else len(clinical_valid - eligible_case_ids)
+            clinical_without_features
         ),
         "observed_events": int(cohort['event'].sum()),
         "fold_sizes": fold_sizes,

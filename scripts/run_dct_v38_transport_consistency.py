@@ -231,6 +231,7 @@ def inspect_split_directory(
         n_folds=5,
         split_root=str(DATASET_CSV_ROOT / "splits" / which_splits),
         eligible_case_ids=eligible_case_ids,
+        require_complete_feature_coverage=(which_splits == "5fold_uni2h"),
     )
 
 

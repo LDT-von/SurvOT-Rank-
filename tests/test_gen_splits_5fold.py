@@ -62,6 +62,21 @@ def test_feature_complete_split_uses_clinical_feature_intersection(tmp_path: Pat
     assert report["clinical_valid_cases"] == 40
     assert report["clinical_without_features"] == 10
 
+    strict_report = audit_existing_splits(
+        study=study,
+        data_path=str(data_path),
+        label_col="survival_months_dss",
+        censor_col="censorship_dss",
+        n_folds=5,
+        split_root=str(output_dir),
+        eligible_case_ids=feature_cases,
+        require_complete_feature_coverage=True,
+    )
+    assert strict_report["ok"] is False
+    assert "blocked until feature coverage reaches 100%" in " ".join(
+        strict_report["errors"]
+    )
+
 
 def test_gen_preserves_full_unique_cohort_without_train_val_overlap(tmp_path: Path):
     study = "test"
