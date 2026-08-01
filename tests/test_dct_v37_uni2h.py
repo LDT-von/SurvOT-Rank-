@@ -140,6 +140,20 @@ def test_uni2h_loader_rejects_patient_with_no_extracted_wsi_feature(tmp_path):
         dataset.load_wsi("TCGA-NONE-01Z-00-DX1.svs")
 
 
+def test_uni2h_loader_legacy_zero_policy_is_explicit(tmp_path):
+    dataset = object.__new__(SurvivalDataset)
+    dataset.wsi_path = str(tmp_path)
+    dataset.encoding_dim = UNI2H_DIM
+    dataset.dataset_factory = SimpleNamespace(num_patches=4)
+    dataset._wsi_feature_index = None
+    dataset.on_missing_wsi = "zero"
+
+    loaded = dataset.load_wsi("TCGA-NONE-01Z-00-DX1.svs")
+
+    assert loaded.shape == (4, UNI2H_DIM)
+    assert torch.count_nonzero(loaded).item() == 0
+
+
 def test_uni2h_doctor_checks_real_shape(tmp_path):
     directory = tmp_path / "blca" / "uni2-h" / "pt_files"
     directory.mkdir(parents=True)

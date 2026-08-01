@@ -339,14 +339,16 @@ class SurvivalDataset(Dataset):
             slides = row.get('wsi')
             if slides is None or str(slides) == "nan":
                 continue
-            patient_missing = False
-            for slide_id in str(slides).split(", "):
-                if self._resolve_wsi_feature_path(slide_id) is None:
-                    patient_missing = True
+            slide_ids = str(slides).split(", ")
+            has_feature = any(
+                self._resolve_wsi_feature_path(slide_id) is not None
+                for slide_id in slide_ids
+            )
+            if not has_feature:
+                missing_patients.append(row.get('case id', '<unknown>'))
+                for slide_id in slide_ids:
                     if len(missing_examples) < 5:
                         missing_examples.append(slide_id)
-            if patient_missing:
-                missing_patients.append(row.get('case id', '<unknown>'))
 
         if missing_patients:
             total = len(self.label_df)
@@ -448,39 +450,51 @@ class SurvivalDataset(Dataset):
             slide_ids = slides.split(", ")
             wsi = []
             missing_slide_ids = []
+            missing_policy = getattr(self, "on_missing_wsi", "error")
             for slide_id in slide_ids:
                 feature_path = self._resolve_wsi_feature_path(slide_id)
                 if feature_path is not None:
                     wsi.append(self._load_wsi_feature(feature_path))
-                elif self.on_missing_wsi == "error":
-                    # 兜底：即便预检被绕过（如自定义 split），加载期也不静默零填充。
-                    raise FileNotFoundError(
-                        f"WSI feature missing for slide {slide_id!r} under "
-                        f"{self.wsi_path} (on_missing_wsi=error). "
-                        f"补齐特征或改用覆盖完整的 wsi_encoder。"
-                    )
                 else:
                     missing_slide_ids.append(slide_id)
 
-            if not wsi:
-                raise FileNotFoundError(
-                    "No extracted WSI feature file was found for any slide in "
-                    f"patient sample: {slide_ids}. Searched under: {self.wsi_path}"
-                )
+            had_real_features = bool(wsi)
+            if not had_real_features:
+                if missing_policy == "error":
+                    raise FileNotFoundError(
+                        "No extracted WSI feature file was found for any slide in "
+                        f"patient sample: {slide_ids}. Searched under: {self.wsi_path}"
+                    )
+                wsi = [
+                    torch.zeros((self.dataset_factory.num_patches, self.encoding_dim))
+                    for _ in missing_slide_ids
+                ]
 
             # A patient may have several diagnostic slides even when only a
             # subset was successfully encoded. Use the available real slides;
             # appending a full zero bag for every missing slide silently changes
             # the patch distribution and can contaminate survival training.
-            warned = getattr(self, "_missing_wsi_warning_ids", set())
-            unseen = [slide_id for slide_id in missing_slide_ids if slide_id not in warned]
-            if unseen:
-                print(
-                    "[WSI feature warning] skipped missing slide feature(s): "
-                    + ", ".join(unseen)
+            if missing_slide_ids and missing_policy == "zero" and had_real_features:
+                wsi.extend(
+                    torch.zeros(
+                        (self.dataset_factory.num_patches, self.encoding_dim)
+                    )
+                    for _ in missing_slide_ids
                 )
-                warned.update(unseen)
-                self._missing_wsi_warning_ids = warned
+            elif missing_slide_ids:
+                warned = getattr(self, "_missing_wsi_warning_ids", set())
+                unseen = [
+                    slide_id
+                    for slide_id in missing_slide_ids
+                    if slide_id not in warned
+                ]
+                if unseen:
+                    print(
+                        "[WSI feature warning] skipped missing slide feature(s): "
+                        + ", ".join(unseen)
+                    )
+                    warned.update(unseen)
+                    self._missing_wsi_warning_ids = warned
             wsi = torch.cat(wsi, dim=0).type(torch.float32)  # TODO: check the torch.float32
             return wsi
 

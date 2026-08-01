@@ -44,8 +44,11 @@ def _get_split(args, dataset_factory, cur):
     base_path = os.path.join(data_root, args.study)
     wsi_path = f'{base_path}/{args.wsi_encoder}/pt_files'
     
-    train_data = SurvivalDataset(dataset_factory, wsi_path, 'train', cur, args.encoding_dim)
-    test_data = SurvivalDataset(dataset_factory, wsi_path, 'val', cur, args.encoding_dim)
+    on_missing_wsi = getattr(args, "on_missing_wsi", "error")
+    train_data = SurvivalDataset(dataset_factory, wsi_path, 'train', cur, args.encoding_dim,
+                                 on_missing_wsi=on_missing_wsi)
+    test_data = SurvivalDataset(dataset_factory, wsi_path, 'val', cur, args.encoding_dim,
+                                on_missing_wsi=on_missing_wsi)
     if args.rna_format == "Pathways" or args.rna_format == "RankedGenes":
         train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True, num_workers=0, drop_last=True, collate_fn=_collate_pathways, pin_memory=False)
         test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=False, num_workers=0, collate_fn=_collate_pathways, pin_memory=False)
