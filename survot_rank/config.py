@@ -13,6 +13,11 @@ from .project import resolve_project_path
 
 PATH_KEYS = {"data_path", "results_dir"}
 ABS_OR_EXTERNAL_PATH_KEYS = {"data_root_dir"}
+BOOLEAN_VALUE_KEYS = {
+    "dct_v383_center_slots",
+    "dct_v39_center_slots",
+    "dct_v39_tau_autoscale",
+}
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -66,14 +71,16 @@ def config_to_argv(config: dict[str, Any]) -> list[str]:
     flat = flatten_config(config)
     argv: list[str] = []
     for key, value in flat.items():
-        if value is None or value is False:
+        if value is None or (value is False and key not in BOOLEAN_VALUE_KEYS):
             continue
         if key in PATH_KEYS:
             value = resolve_project_path(value)
         elif key in ABS_OR_EXTERNAL_PATH_KEYS and str(value).startswith("."):
             value = resolve_project_path(value)
         flag = f"--{key}"
-        if value is True:
+        if isinstance(value, bool) and key in BOOLEAN_VALUE_KEYS:
+            argv.extend([flag, str(value).lower()])
+        elif value is True:
             argv.append(flag)
         elif isinstance(value, (list, tuple)):
             # Special case: clinical_feature_cols is passed as comma-separated string

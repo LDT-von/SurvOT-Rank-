@@ -1,0 +1,575 @@
+#!/usr/bin/env python3
+"""按论文优先级串行运行精简实验队列，并支持断点续跑。"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shlex
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+try:
+    from scripts.run_dct_v38_transport_consistency import (
+        VARIANTS as V38_VARIANTS,
+        _override_args,
+        build_train_command as build_v38_command,
+        inspect_feature_directory,
+        inspect_split_directory,
+        verify_child_cuda,
+    )
+    from scripts.run_dct_v382_mgptr import build_train_command as build_v382_command
+    from scripts.run_dct_v41_survival_evidence_ledger import inspect_uni_directory
+    from scripts.run_v40_intervention_stable_transport import (
+        COMMON_OVERRIDES as V40_COMMON,
+        PROTOCOLS as V40_PROTOCOLS,
+        VARIANTS as V40_VARIANTS,
+    )
+    from scripts.task_lock import ActiveRunError, acquire_run_lock, release_run_lock
+except ModuleNotFoundError:
+    from run_dct_v38_transport_consistency import (
+        VARIANTS as V38_VARIANTS,
+        _override_args,
+        build_train_command as build_v38_command,
+        inspect_feature_directory,
+        inspect_split_directory,
+        verify_child_cuda,
+    )
+    from run_dct_v382_mgptr import build_train_command as build_v382_command
+    from run_dct_v41_survival_evidence_ledger import inspect_uni_directory
+    from run_v40_intervention_stable_transport import (
+        COMMON_OVERRIDES as V40_COMMON,
+        PROTOCOLS as V40_PROTOCOLS,
+        VARIANTS as V40_VARIANTS,
+    )
+    from task_lock import ActiveRunError, acquire_run_lock, release_run_lock
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+STAGES = (
+    "v33_blca_uni5",
+    "v38_lusc_screen",
+    "v382_blca_fold124",
+    "v383_blca_fold124",
+    "v39_blca_fold124",
+    "v40_blca_fold124",
+    "v41_blca_fold124",
+    "arcsurv_blca_fold124",
+)
+FOLDS_124 = (1, 2, 4)
+
+
+@dataclass(frozen=True)
+class Job:
+    stage: str
+    label: str
+    fold: int
+    command: tuple[str, ...]
+    result_dir: Path
+    config: Path
+    encoder: str
+    cancer: str
+    which_splits: str
+
+
+def _generic_command(
+    args: argparse.Namespace,
+    *,
+    stage: str,
+    label: str,
+    config: str,
+    fold: int,
+    result_dir: Path,
+    encoder: str,
+    cancer: str = "blca",
+    which_splits: str = "5fold",
+    overrides: dict[str, object] | None = None,
+    smoke: bool = False,
+) -> Job:
+    values: dict[str, object] = {
+        "k_start": fold,
+        "k_end": fold + 1,
+        "gpu": args.gpu,
+        "num_workers": args.num_workers,
+        "data_root_dir": args.uni_root if encoder == "uni" else args.uni2h_root,
+        "wsi_encoder": encoder,
+        "encoding_dim": 1024 if encoder == "uni" else 1536,
+        "which_splits": which_splits,
+        "on_missing_wsi": "error",
+        "results_dir": result_dir.as_posix(),
+    }
+    if overrides:
+        values.update(overrides)
+    if smoke:
+        values.update({"max_epochs": 1, "max_smoke_batches": 2})
+    command = (
+        args.python_bin,
+        "-m",
+        "survot_rank.cli",
+        "train",
+        "--config",
+        config,
+        *_override_args(values),
+    )
+    return Job(
+        stage=stage,
+        label=label,
+        fold=fold,
+        command=tuple(command),
+        result_dir=result_dir,
+        config=Path(config),
+        encoder=encoder,
+        cancer=cancer,
+        which_splits=which_splits,
+    )
+
+
+def _replace_override(command: list[str], key: str, value: object) -> None:
+    prefix = f"{key}="
+    for index, item in enumerate(command):
+        if item == "--set" and index + 1 < len(command):
+            if command[index + 1].startswith(prefix):
+                command[index + 1] = f"{key}={value}"
+                return
+    command.extend(("--set", f"{key}={value}"))
+
+
+def _selected_stages(args: argparse.Namespace) -> list[str]:
+    selected = list(args.stages or STAGES)
+    if args.from_stage:
+        selected = [name for name in selected if STAGES.index(name) >= STAGES.index(args.from_stage)]
+    return [name for name in STAGES if name in selected]
+
+
+def _smoke_dir(stage: str, suffix: str = "") -> Path:
+    path = Path("results") / "priority_experiment_queue_smoke" / stage
+    return path / suffix if suffix else path
+
+
+def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
+    """构造固定顺序队列；正式队列共 31 个 fold/variant 任务。"""
+    selected = set(_selected_stages(args))
+    jobs: list[Job] = []
+
+    if "v33_blca_uni5" in selected:
+        result_dir = _smoke_dir("v33_blca_uni5") if smoke else Path(
+            "results/dct_v3_score_first_diagnostics/full"
+        )
+        for fold in (range(1) if smoke else range(5)):
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage="v33_blca_uni5",
+                    label="DCT v3.3 Score-First/full BLCA UNI",
+                    config="configs/diagnostics/dct_v3_score_blca.yaml",
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder="uni",
+                    overrides={
+                        "survot_method": "distributional_counterfactual_transport",
+                        "max_epochs": 50,
+                        "specific_simple": "dct_v3_score_first_full",
+                    },
+                    smoke=smoke,
+                )
+            )
+
+    if "v38_lusc_screen" in selected:
+        for variant in V38_VARIANTS:
+            command, result_dir = build_v38_command(
+                args.python_bin,
+                "lusc",
+                "robust",
+                variant,
+                0,
+                args.gpu,
+                args.num_workers,
+                args.uni2h_root,
+                max_epochs=50,
+                smoke=smoke,
+            )
+            _replace_override(command, "on_missing_wsi", "error")
+            if smoke:
+                _replace_override(command, "max_epochs", 1)
+            jobs.append(
+                Job(
+                    stage="v38_lusc_screen",
+                    label=f"DCT v3.8 robust/{variant} LUSC UNI2-h",
+                    fold=0,
+                    command=tuple(command),
+                    result_dir=result_dir,
+                    config=Path("configs/distributional_counterfactual_transport_lusc.yaml"),
+                    encoder="uni2-h",
+                    cancer="lusc",
+                    which_splits="5fold_uni2h",
+                )
+            )
+
+    if "v382_blca_fold124" in selected:
+        folds = FOLDS_124[:1] if smoke else FOLDS_124
+        for fold in folds:
+            command, result_dir = build_v382_command(
+                args.python_bin,
+                "blca",
+                "robust",
+                "adaptive_full",
+                fold,
+                args.gpu,
+                args.num_workers,
+                args.uni2h_root,
+                max_epochs=30,
+                smoke=smoke,
+            )
+            _replace_override(command, "on_missing_wsi", "error")
+            if smoke:
+                _replace_override(command, "max_epochs", 1)
+            jobs.append(
+                Job(
+                    stage="v382_blca_fold124",
+                    label="DCT v3.8.2 robust/adaptive_full BLCA UNI2-h",
+                    fold=fold,
+                    command=tuple(command),
+                    result_dir=result_dir,
+                    config=Path("configs/distributional_counterfactual_transport_blca.yaml"),
+                    encoder="uni2-h",
+                    cancer="blca",
+                    which_splits="5fold_uni2h",
+                )
+            )
+
+    generic_specs = [
+        (
+            "v383_blca_fold124",
+            "DCT v3.8.3 centered/full BLCA UNI2-h",
+            "configs/dct_v383_intervention_consistency_centered_blca.yaml",
+            "dct_v3.8.3_intervention_consistency_centered_30ep",
+            "dct_v383_intervention_consistency_centered",
+            "dct_v383_centered_full_blca_30ep",
+            "uni2-h",
+            "5fold_uni2h",
+        ),
+        (
+            "v39_blca_fold124",
+            "DCT v3.9 Risk-Simplex BLCA UNI2-h",
+            "configs/dct_v39_risk_simplex_transport_blca.yaml",
+            "dct_v3.9_risk_simplex_transport_30ep",
+            "dct_v39_risk_simplex_transport",
+            "dct_v39_risk_simplex_blca_30ep",
+            "uni2-h",
+            "5fold_uni2h",
+        ),
+    ]
+    for stage, label, config, root, method, identity, encoder, split in generic_specs:
+        if stage not in selected:
+            continue
+        result_dir = _smoke_dir(stage) if smoke else Path("results") / root / "blca"
+        folds = FOLDS_124[:1] if smoke else FOLDS_124
+        for fold in folds:
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage=stage,
+                    label=label,
+                    config=config,
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder=encoder,
+                    which_splits=split,
+                    overrides={
+                        "survot_method": method,
+                        "max_epochs": 30,
+                        "specific_simple": identity,
+                    },
+                    smoke=smoke,
+                )
+            )
+
+    if "v40_blca_fold124" in selected:
+        v40 = dict(V40_COMMON)
+        v40.update(V40_PROTOCOLS["clean"])
+        v40.update(V40_VARIANTS["full"])
+        v40.pop("label", None)
+        v40.pop("data_root_dir", None)
+        v40.update(
+            {
+                "survot_method": "intervention_stable_survival_transport",
+                "max_epochs": 30,
+                "specific_simple": "ist_v40_clean_full_blca_30ep",
+            }
+        )
+        result_dir = _smoke_dir("v40_blca_fold124") if smoke else Path(
+            "results/ist_surv_v4.0_30ep/clean/full/blca"
+        )
+        folds = FOLDS_124[:1] if smoke else FOLDS_124
+        for fold in folds:
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage="v40_blca_fold124",
+                    label="IST-Surv v4.0 clean/full BLCA UNI2-h",
+                    config="configs/intervention_stable_survival_transport_blca.yaml",
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder="uni2-h",
+                    which_splits="5fold_uni2h",
+                    overrides=v40,
+                    smoke=smoke,
+                )
+            )
+
+    final_specs = [
+        (
+            "v41_blca_fold124",
+            "DCT v4.1 Evidence Ledger BLCA UNI",
+            "configs/dct_v41_survival_evidence_ledger_blca.yaml",
+            "dct_v4.1_survival_evidence_ledger_30ep",
+            "dct_v41_survival_evidence_ledger",
+            "dct_v41_selc_uni_blca_30ep",
+        ),
+        (
+            "arcsurv_blca_fold124",
+            "ArcSurv BLCA UNI",
+            "configs/archetypal_risk_composition_blca.yaml",
+            "archetypal_risk_composition_30ep",
+            "archetypal_risk_composition",
+            "arcsurv_blca_uni_30ep",
+        ),
+    ]
+    for stage, label, config, root, method, identity in final_specs:
+        if stage not in selected:
+            continue
+        result_dir = _smoke_dir(stage) if smoke else Path("results") / root / "blca"
+        folds = FOLDS_124[:1] if smoke else FOLDS_124
+        for fold in folds:
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage=stage,
+                    label=label,
+                    config=config,
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder="uni",
+                    overrides={
+                        "survot_method": method,
+                        "max_epochs": 30,
+                        "specific_simple": identity,
+                    },
+                    smoke=smoke,
+                )
+            )
+    return jobs
+
+
+def _completion(job: Job) -> Path | None:
+    matches = sorted(job.result_dir.rglob(f"split_{job.fold}_results_final.pkl"))
+    return matches[0] if matches else None
+
+
+def _safe_gpu_name(gpu: str) -> str:
+    return "".join(char if char.isalnum() else "_" for char in gpu)
+
+
+def _task_lock_path(job: Job) -> Path:
+    return job.result_dir / f".split_{job.fold}.priority_queue.lock"
+
+
+def _scheduler_lock_path(gpu: str, smoke: bool) -> Path:
+    kind = "smoke" if smoke else "run"
+    return Path("results/priority_experiment_queue") / f".{kind}_gpu_{_safe_gpu_name(gpu)}.lock"
+
+
+def _override_value(job: Job, key: str) -> str | None:
+    prefix = f"{key}="
+    for index, item in enumerate(job.command[:-1]):
+        if item == "--set" and job.command[index + 1].startswith(prefix):
+            return job.command[index + 1][len(prefix) :]
+    return None
+
+
+def doctor(args: argparse.Namespace, jobs: list[Job]) -> int:
+    """在启动 GPU 任务前检查配置、注册、特征维度和 split。"""
+    failed = False
+    configs = sorted({job.config for job in jobs})
+    for config in configs:
+        exists = (REPO_ROOT / config).is_file()
+        print(f"{'OK' if exists else 'MISSING':8s} config {config}")
+        failed = failed or not exists
+
+    factory_path = REPO_ROOT / "survot_rank/training/model_factory.py"
+    factory_text = factory_path.read_text(encoding="utf-8") if factory_path.is_file() else ""
+    methods = sorted(filter(None, {_override_value(job, "survot_method") for job in jobs}))
+    for method in methods:
+        registered = f'"{method}"' in factory_text
+        print(f"{'OK' if registered else 'MISSING':8s} method {method}")
+        failed = failed or not registered
+
+    feature_specs = sorted({(job.encoder, job.cancer) for job in jobs})
+    for encoder, cancer in feature_specs:
+        if encoder == "uni":
+            report = inspect_uni_directory(args.uni_root, cancer)
+        else:
+            report = inspect_feature_directory(args.uni2h_root, cancer)
+        status = "OK" if report["ok"] else "MISSING"
+        print(
+            f"{status:8s} feature {cancer.upper()} {encoder} "
+            f"files={report['count']} shape={report['shape']} path={report['directory']}"
+        )
+        if report["error"]:
+            print(f"         {report['error']}")
+        failed = failed or not bool(report["ok"])
+
+    split_specs = sorted({(job.cancer, job.which_splits, job.encoder) for job in jobs})
+    for cancer, which_splits, encoder in split_specs:
+        root = args.uni_root if encoder == "uni" else args.uni2h_root
+        try:
+            report = inspect_split_directory(
+                cancer,
+                data_root=root,
+                which_splits=which_splits,
+            )
+            ok = bool(report["ok"])
+            print(
+                f"{'OK' if ok else 'INVALID':8s} split {cancer.upper()} "
+                f"{which_splits} eligible={report['eligible_cases']} "
+                f"val_events={report['validation_event_counts']}"
+            )
+            for error in report["errors"]:
+                print(f"         {error}")
+            failed = failed or not ok
+        except Exception as error:  # doctor 要一次报告全部问题
+            print(f"INVALID  split {cancer.upper()} {which_splits}: {error}")
+            failed = True
+    return int(failed)
+
+
+def print_plan(jobs: list[Job], *, force: bool = False, run_mode: bool = False) -> None:
+    print(f"队列共 {len(jobs)} 个任务，严格串行执行：")
+    current_stage = None
+    for index, job in enumerate(jobs, start=1):
+        if job.stage != current_stage:
+            current_stage = job.stage
+            print(f"\n[{STAGES.index(job.stage) + 1}. {job.stage}]")
+        completion = _completion(job) if run_mode and not force else None
+        state = "SKIP" if completion else "RUN "
+        print(f"{index:02d}. {state} fold{job.fold} | {job.label}")
+        print("    " + shlex.join(job.command))
+        if completion:
+            print(f"    已完成：{completion}")
+
+
+def run_queue(args: argparse.Namespace, jobs: list[Job], *, smoke: bool) -> int:
+    if doctor(args, jobs):
+        print("[ERROR] doctor 检查未通过，拒绝启动训练。")
+        return 2
+
+    environment = os.environ.copy()
+    environment["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+    environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    environment.setdefault("PYTHONUNBUFFERED", "1")
+    if not verify_child_cuda(args.python_bin, environment):
+        return 1
+
+    scheduler_lock = None
+    try:
+        scheduler_lock = acquire_run_lock(
+            _scheduler_lock_path(args.gpu, smoke),
+            label=f"priority experiment queue on GPU {args.gpu}",
+        )
+    except ActiveRunError as error:
+        print(f"[already-running] {error}")
+        return 3
+
+    try:
+        for index, job in enumerate(jobs, start=1):
+            completion = _completion(job)
+            if completion and not args.force and not smoke:
+                print(f"[{index:02d}/{len(jobs):02d}] [skip] {job.label} fold{job.fold}: {completion}")
+                continue
+            print(f"\n[{index:02d}/{len(jobs):02d}] {job.label} fold{job.fold}")
+            print(shlex.join(job.command))
+            task_lock = None
+            try:
+                task_lock = acquire_run_lock(
+                    _task_lock_path(job),
+                    label=f"{job.stage} fold{job.fold}",
+                )
+            except ActiveRunError as error:
+                print(f"[skip-running] {error}")
+                continue
+            try:
+                completion = _completion(job)
+                if completion and not args.force and not smoke:
+                    print(f"[skip] 锁内复检已完成：{completion}")
+                    continue
+                completed = subprocess.run(job.command, check=False, env=environment)
+                if completed.returncode != 0:
+                    print(f"[ERROR] 任务失败，返回码 {completed.returncode}；队列停止。")
+                    return completed.returncode
+            finally:
+                release_run_lock(task_lock)
+        return 0
+    finally:
+        release_run_lock(scheduler_lock)
+
+
+def parse_stages(value: str) -> list[str]:
+    if value.strip().lower() == "all":
+        return list(STAGES)
+    selected = [item.strip() for item in value.split(",") if item.strip()]
+    unknown = sorted(set(selected) - set(STAGES))
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"未知阶段：{', '.join(unknown)}；可选：{', '.join(STAGES)}"
+        )
+    if not selected:
+        raise argparse.ArgumentTypeError("至少选择一个阶段")
+    return selected
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "mode",
+        choices=("plan", "doctor", "smoke", "run"),
+        nargs="?",
+        default="plan",
+    )
+    parser.add_argument("--stages", type=parse_stages, default=None)
+    parser.add_argument("--from-stage", choices=STAGES, default=None)
+    parser.add_argument(
+        "--uni-root",
+        default=os.environ.get("UNI_ROOT", "/data/CPathPatchFeature"),
+    )
+    parser.add_argument(
+        "--uni2h-root",
+        default=os.environ.get("UNI2H_ROOT", "/data1/TCGA-UNI2-h-features"),
+    )
+    parser.add_argument("--gpu", default=os.environ.get("GPU", "0"))
+    parser.add_argument("--num-workers", default=os.environ.get("NUM_WORKERS", "4"))
+    parser.add_argument(
+        "--python",
+        dest="python_bin",
+        default=os.environ.get("PYTHON_BIN", sys.executable),
+    )
+    parser.add_argument("--force", action="store_true")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    os.chdir(REPO_ROOT)
+    smoke = args.mode == "smoke"
+    jobs = build_jobs(args, smoke=smoke)
+    if args.mode == "plan":
+        print_plan(jobs)
+        return 0
+    if args.mode == "doctor":
+        return doctor(args, jobs)
+    print_plan(jobs, force=args.force, run_mode=args.mode == "run")
+    return run_queue(args, jobs, smoke=smoke)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
