@@ -444,6 +444,26 @@
 
 ---
 
+## DCT v3.8 Robust 消融 — BLCA fold0 (2026-07-31)
+
+> 使用 `robust` 协议（事件分层批次、确定性槽、结构损失预热/ramp）
+> 在 BLCA fold0 上跑 6 种中间变体，逐一检测 direction/dose/reconfiguration 的单体/组合效果。
+> 参考：highscore base=0.6534, highscore full=0.7349
+
+| 变体 | C-Index | Epoch | vs base | vs full |
+|------|:------:|:-----:|:-------:|:-------:|
+| **direction** | **0.6763** | 15 | **+0.023** | -0.059 |
+| dose | 0.6661 | 5 | +0.013 | -0.069 |
+| reconfiguration | 0.6415 | 5 | -0.012 | -0.093 |
+| direction_dose | 0.6262 | 5 | -0.027 | -0.109 |
+| direction_reconfiguration | 0.6415 | 5 | -0.012 | -0.093 |
+| dose_reconfiguration | 0.6398 | 7 | -0.014 | -0.095 |
+
+> **结论**：仅 direction 单独有效（+0.023），dose 微正（+0.013），reconfiguration 负效。
+> 任意两两组合均比单独使用更差。建议保留 direction，去掉 dose/reconfiguration。
+
+---
+
 ## DCT v4.0 — IST-Surv 🔄 运行中
 
 > survot_method: intervention_stable_survival_transport
