@@ -246,8 +246,15 @@ def get_split(args, dataset_factory, fold):
         getattr(args, "wsi_encoder", "uni"),
         "pt_files",
     )
-    train_data = SurvivalDataset(dataset_factory, wsi_path, 'train', fold, args.encoding_dim)
-    test_data = SurvivalDataset(dataset_factory, wsi_path, 'val', fold, args.encoding_dim)
+    on_missing_wsi = getattr(args, "on_missing_wsi", "error")
+    train_data = SurvivalDataset(
+        dataset_factory, wsi_path, 'train', fold, args.encoding_dim,
+        on_missing_wsi=on_missing_wsi,
+    )
+    test_data = SurvivalDataset(
+        dataset_factory, wsi_path, 'val', fold, args.encoding_dim,
+        on_missing_wsi=on_missing_wsi,
+    )
 
     # 鍚敤澶氳繘绋嬫暟鎹姞杞藉拰椤甸攣瀹氬唴瀛樹互鍔犻€?GPU 璁粌
     num_workers = getattr(args, 'num_workers', 4)
