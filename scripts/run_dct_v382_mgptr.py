@@ -11,7 +11,6 @@ from pathlib import Path
 
 try:
     from scripts.run_dct_v38_transport_consistency import (
-        CANCERS,
         COMMON_OVERRIDES as V38_COMMON_OVERRIDES,
         DEFAULT_DATA_ROOT,
         PROTOCOLS,
@@ -32,7 +31,6 @@ try:
     )
 except ModuleNotFoundError:
     from run_dct_v38_transport_consistency import (
-        CANCERS,
         COMMON_OVERRIDES as V38_COMMON_OVERRIDES,
         DEFAULT_DATA_ROOT,
         PROTOCOLS,
@@ -199,6 +197,7 @@ def build_train_command(
     overrides.update(PROTOCOLS[protocol])
     overrides.update(settings)
     overrides.pop("label", None)
+    overrides.pop("result_tag", None)
     overrides.update(
         {
             "data_root_dir": data_root,
