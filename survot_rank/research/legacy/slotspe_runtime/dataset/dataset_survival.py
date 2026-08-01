@@ -290,7 +290,8 @@ class SurvivalDatasetFactory:
 
 
 class SurvivalDataset(Dataset):
-    def __init__(self, dataset_factory, wsi_path, split_key: str = 'train', fold=None, encoding_dim=768):
+    def __init__(self, dataset_factory, wsi_path, split_key: str = 'train', fold=None,
+                 encoding_dim=768, on_missing_wsi: str = "error"):
         self.dataset_factory = dataset_factory
         # Auto-detect path format: if wsi_path is like /data/CPathPatchFeature/{study}
         # add the missing {uni}/pt_files/ level
@@ -304,12 +305,61 @@ class SurvivalDataset(Dataset):
         self.split_key = split_key
         self.fold = fold  # which fold to use
         self.encoding_dim = encoding_dim
+        # 缺失 WSI 特征的处理策略：
+        #   error（默认）—— 拒绝运行，防止把零填充的脏数据当结果（例如某编码器
+        #                    对某癌种覆盖不全，BRCA 在 UNI2-h 下仅 74% 覆盖）。
+        #   zero        —— 旧行为，缺失时用零向量填充（会静默污染结果，不推荐）。
+        self.on_missing_wsi = str(on_missing_wsi).lower()
+        if self.on_missing_wsi not in {"error", "zero"}:
+            raise ValueError(
+                f"on_missing_wsi must be 'error' or 'zero', got {on_missing_wsi!r}"
+            )
         self._wsi_feature_index = None
 
         if split_key in ['train', 'val']:
             self.label_df = self._load_split()
         else:
             raise ValueError(f"Invalid split key: {split_key}")
+
+        if self.on_missing_wsi == "error":
+            self._preflight_wsi_features()
+
+    def _preflight_wsi_features(self):
+        """启动期扫描该 split 所有患者的 WSI 特征，缺失即拒绝运行。
+
+        只检查在临床表里声称拥有 slide（``wsi`` 列非 nan）的患者；``wsi`` 为
+        nan 表示该患者本就没有 WSI 模态，属合法情况，不算缺失。
+
+        比起在第一个 batch 才崩，这里在数据集初始化阶段就明确报出癌种、编码器
+        目录和缺失患者数，便于判断"该癌种是否该换编码器 / 补齐特征"。
+        """
+        missing_patients = []
+        missing_examples = []
+        for _, row in self.label_df.iterrows():
+            slides = row.get('wsi')
+            if slides is None or str(slides) == "nan":
+                continue
+            patient_missing = False
+            for slide_id in str(slides).split(", "):
+                if self._resolve_wsi_feature_path(slide_id) is None:
+                    patient_missing = True
+                    if len(missing_examples) < 5:
+                        missing_examples.append(slide_id)
+            if patient_missing:
+                missing_patients.append(row.get('case id', '<unknown>'))
+
+        if missing_patients:
+            total = len(self.label_df)
+            raise FileNotFoundError(
+                f"[on_missing_wsi=error] 癌种 {self.dataset_factory.study} "
+                f"split={self.split_key} fold={self.fold}: "
+                f"{len(missing_patients)}/{total} 名患者的 WSI 特征缺失，拒绝运行。\n"
+                f"  编码器特征目录: {self.wsi_path}\n"
+                f"  缺失 slide 示例: {', '.join(missing_examples)}\n"
+                f"  处理方式二选一：(1) 补齐该编码器对本癌种的特征；"
+                f"(2) 改用覆盖完整的 wsi_encoder（如 uni）并同步 encoding_dim。\n"
+                f"  如确需临时零填充（会污染结果，不推荐），设 on_missing_wsi=zero。"
+            )
 
     def _load_split(self):
         split_path = os.path.join(self.dataset_factory.data_path, "splits", self.dataset_factory.which_splits, f"{self.dataset_factory.study}",
@@ -402,6 +452,13 @@ class SurvivalDataset(Dataset):
                 feature_path = self._resolve_wsi_feature_path(slide_id)
                 if feature_path is not None:
                     wsi.append(self._load_wsi_feature(feature_path))
+                elif self.on_missing_wsi == "error":
+                    # 兜底：即便预检被绕过（如自定义 split），加载期也不静默零填充。
+                    raise FileNotFoundError(
+                        f"WSI feature missing for slide {slide_id!r} under "
+                        f"{self.wsi_path} (on_missing_wsi=error). "
+                        f"补齐特征或改用覆盖完整的 wsi_encoder。"
+                    )
                 else:
                     missing_slide_ids.append(slide_id)
 

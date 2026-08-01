@@ -85,6 +85,24 @@ METHOD_REGISTRY = {
         ),
         "DCTV382PrognosticTransportReconstruction",
     ),
+    "dct_v383_intervention_consistency_centered": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "dct_v383_intervention_consistency_centered",
+        ),
+        "DCTV383InterventionConsistencyCentered",
+    ),
+    "dct_v39_risk_simplex_transport": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "dct_v39_risk_simplex_transport",
+        ),
+        "DCTV39RiskSimplexTransport",
+    ),
     "intervention_stable_survival_transport": (
         os.path.join(
             "survot_rank",
@@ -144,6 +162,12 @@ METHOD_ALIASES = {
     "dct_v38": "dct_transport_intervention_consistency",
     "dct_v382": "dct_v382_prognostic_transport_reconstruction",
     "dct_v3_8_2": "dct_v382_prognostic_transport_reconstruction",
+    "dct_v383": "dct_v383_intervention_consistency_centered",
+    "dct_v3_8_3": "dct_v383_intervention_consistency_centered",
+    "dct_v39": "dct_v39_risk_simplex_transport",
+    "dct_v3_9": "dct_v39_risk_simplex_transport",
+    "rst": "dct_v39_risk_simplex_transport",
+    "risk_simplex_transport": "dct_v39_risk_simplex_transport",
     "dct_v41": "dct_v41_survival_evidence_ledger",
     "dct_v4_1": "dct_v41_survival_evidence_ledger",
     "v40": "intervention_stable_survival_transport",
