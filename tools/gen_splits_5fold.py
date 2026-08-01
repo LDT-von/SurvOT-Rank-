@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Generate and audit 5-fold stratified CV splits for any TCGA study.
 
@@ -305,6 +305,12 @@ def gen(study: str,
         f"[{study}] {len(sub2)} unique cases have valid {label_col} "
         f"({len(sub) - len(sub2)} duplicate rows removed)"
     )
+
+    # Deduplicate by case id before splitting
+    before_dedup = len(sub2)
+    sub2 = sub2.drop_duplicates(subset=["case id"]).reset_index(drop=True)
+    if len(sub2) < before_dedup:
+        print(f"[{study}] removed {before_dedup - len(sub2)} duplicate case ids (slide-level duplicates)")
 
     skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
     fold_assign = np.zeros(len(sub2), dtype=int)
