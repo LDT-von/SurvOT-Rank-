@@ -450,6 +450,8 @@
 > 在 BLCA fold0 上跑 6 种中间变体，逐一检测 direction/dose/reconfiguration 的单体/组合效果。
 > 参考：highscore base=0.6534, highscore full=0.7349
 
+### 旧 highscore 协议 (2026-07-31)
+
 | 变体 | C-Index | Epoch | vs base | vs full |
 |------|:------:|:-----:|:-------:|:-------:|
 | **direction** | **0.6763** | 15 | **+0.023** | -0.059 |
@@ -459,8 +461,68 @@
 | direction_reconfiguration | 0.6415 | 5 | -0.012 | -0.093 |
 | dose_reconfiguration | 0.6398 | 7 | -0.014 | -0.095 |
 
-> **结论**：仅 direction 单独有效（+0.023），dose 微正（+0.013），reconfiguration 负效。
-> 任意两两组合均比单独使用更差。建议保留 direction，去掉 dose/reconfiguration。
+### 新版 robust 20ep 协议 — BLCA fold0 全部 8 变体 (2026-08-01)
+
+> 使用修复后的 `robust` 协议（事件分层批次、确定性槽、结构损失预热/ramp、训练折分箱）
+> 在 BLCA fold0 上跑全部 8 变体，max_epochs=20。参考：base=0.7031
+
+| 变体 | C-Index | Epoch | vs base |
+|------|:------:|:-----:|:-------:|
+| **direction** | **0.7356** | 15 | **+0.0325** |
+| full | 0.7171 | 10 | +0.014 |
+| direction_dose | 0.7111 | 12 | +0.008 |
+| direction_reconfiguration | 0.7036 | 18 | +0.001 |
+| base | 0.7031 | 8 | — |
+| reconfiguration | 0.7028 | 10 | -0.000 |
+| dose | 0.6950 | 10 | -0.008 |
+| dose_reconfiguration | 0.6869 | 2 | -0.016 |
+
+> **结论（两轮一致）**：仅 direction 单独有效（+0.0325 vs base），dose 微负，reconfiguration 负效。
+> 任意两两组合均比单独 direction 更差。**保留 direction 作为唯一结构损失**。
+> robust 协议下 direction 达到 **0.7356**，超过旧 highscore full=0.7349。
+
+### BRCA direction fold0 (robust 20ep) ⚠️ 已终止
+
+> 因 UNI2-h 特征缺 271 人（见下方特征覆盖率分析），BRCA split 含大量全零 WSI 患者，结果无效。已终止并 kill 进程。
+> 最佳 val C-Index 曾达到 0.7892 @epoch4，但迅速过拟合至 ~0.60。
+
+---
+### WSI 编码器特征覆盖率分析 (2026-08-01)
+
+> 检查各癌种 clinical 患者与 UNI v1 / UNI2-h 特征文件的患者 ID 交集。
+
+#### UNI v1 (`/data/CPathPatchFeature/<cancer>/uni/pt_files/`)
+
+| 癌种 | Clinical | Features | 交集 | 覆盖率 |
+|:----:|:--------:|:--------:|:----:|:------:|
+| BRCA | 1046 | 1062 | 1046 | **100.0%** |
+| COADREAD | 573 | 573 | 573 | 100.0% |
+| STAD | 366 | 366 | 366 | 100.0% |
+| LUAD | 467 | 955 | 466 | 99.8% |
+| 其余 6 癌种 | — | — | — | 100.0% |
+| **合计** | **5110** | **6114** | **5109** | **99.98%** |
+
+> UNI v1 近乎完美覆盖，v3.3 复现不受影响。
+
+#### UNI2-h (`/data1/TCGA-UNI2-h-features/<cancer>/uni2-h/pt_files/`)
+
+| 癌种 | Clinical | Features | 交集 | 缺特征 | 覆盖率 |
+|:----:|:--------:|:--------:|:----:|:------:|:------:|
+| BLCA | 381 | 386 | 381 | 0 | 100.0% |
+| HNSC | 438 | 450 | 438 | 0 | 100.0% |
+| KIRC | 488 | 513 | 488 | 0 | 100.0% |
+| LUSC | 460 | 478 | 460 | 0 | 100.0% |
+| SKCM | 403 | 433 | 403 | 0 | 100.0% |
+| UCEC | 488 | 505 | 488 | 0 | 100.0% |
+| LUAD | 467 | 468 | 458 | 9 | 98.1% |
+| COADREAD | 573 | 591 | 556 | 17 | 97.0% |
+| STAD | 366 | 375 | 353 | 13 | 96.4% |
+| **BRCA** | **1046** | **786** | **775** | **271** | **74.1%** |
+
+> **BRCA 缺 271 人 (25.9%)** 为唯一严重问题；COADREAD/LUAD/STAD 各有 1-3% 轻微缺口。
+> 当前 split 生成器未按编码器特征过滤，导致缺特征患者被填入全零 WSI 向量。
+> **修复方向**：split 生成器需支持编码器专属患者白名单 `intersect(clinical, feature_patients)`。
+> 所有 v3.7/v3.8 UNI2-h 实验（BRCA/LUAD/LUSC）需在过滤后的 split 上重跑。
 
 ---
 
@@ -549,38 +611,34 @@
 
 ---
 
-## 🔄 当前运行状态 (2026-07-30 12:00)
-
-> 旧 `highscore` 结果保留作历史记录；重新分层后，正式结果必须由
-> `robust` 协议完整重跑。旧的并发 LUAD fold0 不得复用。
+## 🔄 当前运行状态 (2026-08-01)
 
 | 版本 | 癌种 | Fold | 进度 | 最佳 C-Index | 状态 |
 |:----:|:----:|:----:|------|:----------:|:----:|
-| v3.8 highscore 20ep | BRCA full | 全部5折 | ✅ 完成 | 0.6852 mean | ✅ |
-| v3.8 highscore 20ep | BRCA base | 全部5折 | ✅ 完成 | 0.7185 mean | ✅ |
-| v3.8 highscore 20ep | BLCA full | 全部5折 | ✅ 完成 | 0.7077 mean | ✅ |
-| v3.8 highscore 20ep | BLCA base | fold4 | epoch ~18/20 | ~0.7342@2 | 🔄 最后1折 |
-| v3.8 robust | BRCA | 全部5折 | — | — | ⏳ 首要重跑 |
-| v3.8 robust | BLCA/LUAD/LUSC | 全部5折 | — | — | ⏳ 泛化验证 |
-| v3.7 | LUAD | 全部5折 | ✅ 完成 | 0.6662 mean | ✅ |
-| v3.7 | LUSC | fold0 | ✅ 完成 | 0.4575 | ⚠️ |
-| v4.0 | BLCA | fold0 | epoch 38/50 | 0.6582 @epoch4 | ⏸ 中断 |
-| v3.6 GPL/TCL | — | — | — | — | ❌ 已暂停 |
-| v4.1 | — | — | — | — | ❌ 已暂停 |
+| v3.8 robust 20ep | BLCA 8变体 | fold0 | ✅ 完成 | direction 0.7356 | ✅ |
+| v3.8 robust 20ep | BRCA direction | fold0 | epoch 14/20 | 0.7892@4 | ❌ 已终止 (特征缺口) |
+| v3.8 robust 20ep | BRCA/LUAD/LUSC | fold1-4 | — | — | ❌ 暂停，等 split 修复 |
+| v3.7 | LUSC | fold0 | ✅ 完成 | 0.4575 | ⚠️ 异常偏低 |
+
+### 🔴 阻塞项
+
+| 问题 | 详情 | 状态 |
+|------|------|:----:|
+| UNI2-h BRCA 特征缺口 | 1045 临床患者中仅 775 人有特征 (74.1%)，split 未过滤导致全零 WSI | 🔴 待修复 split 生成器 |
+| UNI2-h STAD/COADREAD/LUAD 轻微缺口 | 各缺 1-3% | 🟡 |
+| v3.7 LUSC fold0 异常 | 0.4575，需排查 | 🟡 |
 
 ### 待办
 
 | 优先级 | 任务 |
 |:------:|:-----|
-| 🔴 | **v3.8 robust BRCA 5-fold** — 先验证统一稀疏事件协议是否提高均值并降低方差 |
-| 🔴 | **v3.8 robust BLCA/LUAD/LUSC** — 使用同一规则验证跨癌种泛化 |
-| 🟡 | **BRCA 其他版本重跑** (v3.3/3.6/3.7) — 需使用新的均衡 1045 人 split |
-|  | v3.6 消融实验 fold1/3/4 |
-| 🟡 | v3.7 剩余癌种 (LUSC fold1-4/SKCM/STAD/UCEC) |
-| ⬜ | v4.0 继续 (BLCA fold0→4 + BRCA) |
-| ⬜ | v4.1 不继续，分数低 |
-| ⚠️ | **v3.7 LUSC fold0=0.4575 异常**：先用 `stable` 协议单独复跑，隔离随机验证槽造成的方差 |
-| ✅ | **v3.8 重复调度代码已修复**：调度器级与 fold 级锁可阻止同一结果目录被并发写入 |
+| 🔴 | **修复 split 生成器** — 支持编码器专属患者白名单，`intersect(clinical, feature_patients)` |
+| 🔴 | **BRCA UNI2-h split 重建** — 对 775 人子集重新分层生成 5-fold |
+| 🟡 | COADREAD/LUAD/STAD UNI2-h split 过滤重建 |
+| 🟡 | v3.7 LUSC fold0=0.4575 排查 |
+| ⬜ | v3.8 robust LUSC fold0 — direction 变体 (LUSC 100% 覆盖，可直接跑) |
+| ⬜ | v3.8 robust 全癌种 5-fold — split 修复后 |
+| ⬜ | BRCA v3.3/v3.6/v3.7 重跑 — UNI v1 覆盖 100%，split 按 1046 人重建后可直接跑 |
 
 ### 已知问题
 
