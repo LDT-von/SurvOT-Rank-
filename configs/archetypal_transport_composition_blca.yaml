@@ -1,0 +1,66 @@
+name: archetypal_transport_composition_blca
+description: >
+  v4.2 ACT-Surv on BLCA DSS。hazard = archetype hazard 曲线的凸组合，坐标由患者
+  patch/pathway 到 archetype 的运输质量给出。可加归因与删除反事实是凸组合的直接
+  推论（不设自由 bias，故归因残差恒为 0），因此没有 attribution/deletion 类辅助损失。
+  唯一辅助损失是抑制 archetype 塌缩的批内平衡 KL。
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  wsi_encoder: uni
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: archetypal_transport_composition
+  specific_simple: act_surv_v42_blca
+  results_dir: results/act_surv_v4.2/blca
+  max_epochs: 50
+  batch_size: 8
+  grad_clip_norm: 1.0
+  early_stop_patience: 0
+  # clean 协议：分箱只在训练折上拟合，删失患者保留在似然中。
+  fit_bins_on_train: true
+  binning_mode: global_qcut
+  event_stratified_batches: true
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+  dct_slot_init_mode: deterministic
+
+model:
+  wsi_projection_dim: 256
+  act_num_archetypes: 6
+  act_epsilon: 0.10
+  act_hazard_scale: 1.0
+  # 唯一辅助损失。
+  act_lambda_balance: 0.01
+  act_lambda_rank: 0.10
+  act_rank_margin: 0.0
+  act_rank_max_pairs: 4096

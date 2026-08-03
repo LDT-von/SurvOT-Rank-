@@ -43,6 +43,11 @@ METHOD_CHOICES = [
     "archetypal_risk_composition",
     "arcsurv",
     "arc_surv",
+    "archetypal_transport_composition",
+    "act_surv",
+    "actsurv",
+    "v42",
+    "dct_v42",
     "cohort_anchored_adaptive_prognostic_slot_attention",
     "ca_psa",
     "capsa",
@@ -563,6 +568,30 @@ def build_base_parser() -> argparse.ArgumentParser:
         type=int,
         default=10,
         help="warmup 之后用多少轮线性拉到满权重；0 = 立即满权重",
+    )
+    # v4.2 ACT-Surv：hazard = archetype hazard 曲线在运输质量坐标下的凸组合。
+    # 可加归因与删除反事实都是凸组合的推论，因此没有对应的辅助损失。
+    parser.add_argument("--act_num_archetypes", type=int, default=6)
+    parser.add_argument(
+        "--act_epsilon",
+        type=float,
+        default=0.10,
+        help="行约束熵正则运输的温度；越小分配越尖锐",
+    )
+    parser.add_argument(
+        "--act_lambda_balance",
+        type=float,
+        default=0.01,
+        help="唯一的辅助损失：批内平均 β 对均匀分布的 KL，抑制 archetype 塌缩",
+    )
+    parser.add_argument("--act_lambda_rank", type=float, default=0.10)
+    parser.add_argument("--act_rank_margin", type=float, default=0.0)
+    parser.add_argument("--act_rank_max_pairs", type=int, default=4096)
+    parser.add_argument(
+        "--act_hazard_scale",
+        type=float,
+        default=1.0,
+        help="archetype hazard 曲线的整体尺度；凸包半径由它控制",
     )
     parser.add_argument(
         "--arc_bank_update_epochs",

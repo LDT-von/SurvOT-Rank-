@@ -89,7 +89,7 @@ def test_legacy_repro_uses_recovered_split_and_original_protocol():
 def test_full_queue_still_covers_every_historical_stage():
     jobs = queue.build_jobs(_args("--stages", "all"))
 
-    assert len(jobs) == 51
+    assert len(jobs) == 54
     assert list(dict.fromkeys(job.stage for job in jobs)) == list(queue.STAGES)
     assert Counter(job.stage for job in jobs) == {
         "b0_mgptr_control": 3,
@@ -98,6 +98,7 @@ def test_full_queue_still_covers_every_historical_stage():
         "v40_staged_rerun": 3,
         "v41_staged_rerun": 3,
         "arcsurv_staged_rerun": 3,
+        "v42_act_surv": 3,
         "v33_blca_uni5": 5,
         "v38_lusc_screen": 8,
         "v382_blca_fold124": 3,
@@ -263,3 +264,24 @@ def test_only_v33_legacy_stage_uses_the_recovered_split():
         if job.stage != "v33_blca_legacy_repro":
             assert job.which_splits in {"5fold", "5fold_uni2h"}
         assert job.cancer in {"blca", "lusc"}
+
+
+def test_v42_is_implemented_but_kept_out_of_the_default_queue():
+    """v4.2 的第二卖点依赖 archetype 真的分化开，须等 ArcSurv 重跑确认后再启动。"""
+    assert "v42_act_surv" in queue.STAGES
+    assert "v42_act_surv" not in queue.DEFAULT_STAGES
+
+    default_stages = {job.stage for job in queue.build_jobs(_args())}
+    assert "v42_act_surv" not in default_stages
+
+    jobs = [
+        job
+        for job in queue.build_jobs(_args("--stages", "v42_act_surv"))
+        if job.stage == "v42_act_surv"
+    ]
+    assert [job.fold for job in jobs] == [1, 2, 4]
+    for job in jobs:
+        assert _override(job, "survot_method") == "archetypal_transport_composition"
+        assert _override(job, "max_epochs") == "50"
+        assert job.encoder == "uni"
+        assert job.which_splits == "5fold"

@@ -120,6 +120,15 @@ METHOD_REGISTRY = {
         os.path.join("survot_rank", "research", "methods", "v60_ot_event_rank"),
         "V60OTEventRank",
     ),
+    "archetypal_transport_composition": (
+        os.path.join(
+            "survot_rank",
+            "research",
+            "methods",
+            "archetypal_transport_composition",
+        ),
+        "ArchetypalTransportComposition",
+    ),
     "archetypal_risk_composition": (
         os.path.join(
             "survot_rank",
@@ -159,6 +168,10 @@ METHOD_ALIASES = {
     "60": "v60_ot_event_rank",
     "arcsurv": "archetypal_risk_composition",
     "arc_surv": "archetypal_risk_composition",
+    "act_surv": "archetypal_transport_composition",
+    "actsurv": "archetypal_transport_composition",
+    "v42": "archetypal_transport_composition",
+    "dct_v42": "archetypal_transport_composition",
     "dct_v38": "dct_transport_intervention_consistency",
     "dct_v382": "dct_v382_prognostic_transport_reconstruction",
     "dct_v3_8_2": "dct_v382_prognostic_transport_reconstruction",

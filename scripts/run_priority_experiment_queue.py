@@ -57,6 +57,10 @@ STAGES = (
     "v40_staged_rerun",
     "v41_staged_rerun",
     "arcsurv_staged_rerun",
+    # v4.2 已实现但刻意不入默认队列：需先由 arcsurv_staged_rerun 确认
+    # archetype 真的分化开（act_archetype_cosine / act_hazard_spread 诊断），
+    # 否则「凸组合 + 精确可加归因」的第二卖点没有立足点。
+    "v42_act_surv",
     # 以下为历史阶段，保留以便复跑/审计。
     "v33_blca_uni5",
     "v38_lusc_screen",
@@ -341,6 +345,31 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
                     encoder=encoder,
                     which_splits=split,
                     overrides=overrides,
+                    smoke=smoke,
+                )
+            )
+
+    if "v42_act_surv" in selected:
+        result_dir = _smoke_dir("v42_act_surv") if smoke else Path(
+            "results/act_surv_v4.2/blca"
+        )
+        folds = FOLDS_124[:1] if smoke else FOLDS_124
+        for fold in folds:
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage="v42_act_surv",
+                    label="v4.2 ACT-Surv archetypal transport BLCA UNI",
+                    config="configs/archetypal_transport_composition_blca.yaml",
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder="uni",
+                    which_splits="5fold",
+                    overrides={
+                        "survot_method": "archetypal_transport_composition",
+                        "max_epochs": 50,
+                        "specific_simple": "act_surv_v42_blca_50ep",
+                    },
                     smoke=smoke,
                 )
             )
