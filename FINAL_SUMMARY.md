@@ -1,6 +1,6 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-07-30 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v4.0 / v4.1
+> 更新时间: 2026-08-02 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.9 / v4.0 / v4.1 / ArcSurv
 
 ---
 
@@ -55,8 +55,10 @@
 | **v3.6** | Listwise | 6变体: NLL/IPCW/ETAR/IPCW+ETAR/GPL/TCL | UNI v1 | NLL + listwise | ⚠️ Listwise暂停 |
 | **v3.7** | UNI2-h HighScore | distributional_counterfactual_transport | UNI2-h (1536d) | NLL + IPCW rank | 🔄 6/10 (LUAD完成) |
 | **v3.8** | Transport Consistency | dct_transport_intervention_consistency | UNI2-h (1536d) | direction+dose+reconfiguration | 🔄 2/4 (BLCA+BRCA完成) |
-| **v4.0** | IST-Surv | intervention_stable_survival_transport | UNI2-h (1536d) | 干预稳定性 | ⏸ 已中断 |
-| **v4.1** | Survival Evidence Ledger | dct_v41_survival_evidence_ledger | UNI v1 (1024d) | 证据账本 | ❌ 已暂停 |
+| **v3.9** | Risk-Simplex Transport | dct_v39_risk_simplex_transport | UNI2-h (1536d) | Risk Simplex约束 | ✅ BLCA完成 |
+| **v4.0** | IST-Surv | intervention_stable_survival_transport | UNI2-h (1536d) | 干预稳定性 | ✅ BLCA完成 |
+| **v4.1** | Survival Evidence Ledger | dct_v41_survival_evidence_ledger | UNI v1 (1024d) | 证据账本 | 🔄 BLCA fold2重跑中 |
+| **ArcSurv** | Archetypal Risk Composition | archetypal_risk_composition | UNI v1 (1024d) | 原型风险组合 | ✅ BLCA完成 |
 
 ---
 
@@ -486,6 +488,25 @@
 > 因 UNI2-h 特征缺 271 人（见下方特征覆盖率分析），BRCA split 含大量全零 WSI 患者，结果无效。已终止并 kill 进程。
 > 最佳 val C-Index 曾达到 0.7892 @epoch4，但迅速过拟合至 ~0.60。
 
+### LUSC 8变体筛选 (robust 20ep) — 已完成 (2026-08-02)
+
+> 在 LUSC (454 样本) 上用 robust 协议跑全部 8 变体，max_epochs=20，UNI2-h。
+> 结论：direction/dose/reconfiguration 三损失在 LUSC 上不仅无效，反而有害。
+
+| Variant | C-Index | Epoch | vs base |
+|---------|:------:|:-----:|:-------:|
+| **base** | **0.7475** | 6 | — |
+| full | 0.7332 | 15 | -0.014 |
+| direction_dose | 0.7134 | 15 | -0.034 |
+| dose | 0.6981 | 7 | -0.049 |
+| dose_reconfiguration | 0.6918 | 14 | -0.056 |
+| direction | 0.6595 | 4 | -0.088 |
+| reconfiguration | 0.6595 | 4 | -0.088 |
+| direction_reconfiguration | 0.6595 | 4 | -0.088 |
+
+> **与 BLCA 完全相反**：BLCA 上 direction 有益 (+0.033)，LUSC 上 direction 有害 (-0.088)。
+> base=0.7475 为 LUSC 最优，三损失全部负效，推测 reconfiguration 未使用时退化到 direction 相同路径。
+
 ---
 ### WSI 编码器特征覆盖率分析 (2026-08-01)
 
@@ -526,54 +547,118 @@
 
 ---
 
-## DCT v4.0 — IST-Surv 🔄 运行中
+## DCT v4.0 — IST-Surv ✅ BLCA完成
 
 > survot_method: intervention_stable_survival_transport
-> 参数: UNI2-h, ist_eps=0.05, ist_num_interventions=3, ist_deletion_penalty=8.0
-> 目标: 2 癌种 (blca/brca), 5 折
+> 参数: UNI2-h (1536d), max_epochs=30, clean/full variant, ist_eps=0.05, ist_num_interventions=3, ist_deletion_penalty=8.0
+> 结果目录: `results/ist_surv_v4.0_30ep/clean/full/blca/`
 
-### BLCA (380 样本) — 🔄
+### BLCA (380 样本) — Mean: 0.7078 ± 0.0490 ✅
 
-| Fold | C-Index | Epoch | 状态 |
-|:----:|:------:|:-----:|:----:|
-| 0 | 0.6582 | 4 | 🔄 epoch 38/50 |
+| Fold | C-Index | Epoch |
+|:----:|:------:|:-----:|
+| 1 | 0.6707 | 0 |
+| 2 | 0.6767 | 10 |
+| 4 | **0.7761** | 12 |
 
-> fold0 最佳 0.6582 @epoch4，训练极慢 (~53s/epoch)，仍在早期阶段，后续被调度器中断
+> fold4=0.7761 为 BLCA 所有方法中单折最高，但 fold1/fold2 偏低，方差较大。
 
 ---
  
-## DCT v4.1 — Survival Evidence Ledger ❌ 已暂停
+## DCT v4.1 — Survival Evidence Ledger ✅ BLCA完成
 
 > survot_method: dct_v41_survival_evidence_ledger
-> 配置: `dct_v41_survival_evidence_ledger_*.yaml`
-> 目标: 4 癌种 (blca/brca/hnsc/stad), 仅 folds 0/2/4
+> 配置: `dct_v41_survival_evidence_ledger_blca.yaml`
+> UNI v1 (1024d), max_epochs=30, batch_size=8
 
-### BLCA (380 样本, UNI v1 1024d) — ❌ 分数偏低，已暂停
+### BLCA (380 样本) — Mean: 0.7039 ± 0.0490 ✅
 
-| Fold | C-Index | Epoch | 状态 |
-|:----:|:------:|:-----:|:----:|
-| 0 | 0.6201 | 20 | ✅ |
-| 2 | **0.6985** | 25 (best so far) | ❌ stopped @epoch 37 |
-| 4 | — | — | ❌ 未跑 |
+| Fold | C-Index | Epoch |
+|:----:|:------:|:-----:|
+| 1 | **0.7300** | 11 |
+| 2 | 0.6354 | 3 |
+| 4 | **0.7462** | 7 |
 
-> fold0=0.6201 偏低，fold2=0.6985 回升但低于 v3.8 BLCA (0.7415)。已终止运行。
+> fold1=0.7300, fold4=0.7462 均不错，但 fold2=0.6354 拉低均值至 0.7039，略低于 v3.3 (0.7074) 和 v4.0 (0.7078)。fold2 连续三次重跑均低分 (~0.635)，该 split 对 v4.1 不友好。
+
+---
+
+## DCT v3.9 — Risk-Simplex Transport ✅ BLCA完成
+
+> survot_method: dct_v39_risk_simplex_transport
+> UNI2-h (1536d), max_epochs=30
+
+### BLCA (380 样本) — Mean: 0.6394 ± 0.0293 ✅
+
+| Fold | C-Index | Epoch |
+|:----:|:------:|:-----:|
+| 1 | 0.6320 | 6 |
+| 2 | 0.6776 | 13 |
+| 4 | 0.6085 | 14 |
+
+> 明显不如 baseline，Risk-Simplex 约束在 BLCA 上效果不佳。
+
+---
+
+## ArcSurv — Archetypal Risk Composition ✅ BLCA完成
+
+> survot_method: archetypal_risk_composition
+> UNI v1 (1024d), max_epochs=30
+
+### BLCA (380 样本) — Mean: 0.6757 ± 0.0534 ✅
+
+| Fold | C-Index | Epoch |
+|:----:|:------:|:-----:|
+| 1 | 0.6702 | 29 |
+| 2 | 0.6134 | 12 |
+| 4 | **0.7436** | 18 |
+
+> fold4=0.7436 不错但 fold2=0.6134 拉低均值。fold2 split 对多种方法都偏难。
+
+---
+
+## BLCA 新方法汇总 (2026-08-02 Priority Queue)
+
+| 排名 | 方法 | Encoder | Fold1 | Fold2 | Fold4 | **Mean** | 状态 |
+|:----:|------|:------:|:-----:|:-----:|:-----:|:--------:|:----:|
+| 1 | v4.0 IST-Surv | UNI2-h | 0.6707 | 0.6767 | 0.7761 | **0.7078** | ✅ |
+| 2 | v3.3 Score-First | UNI | 0.7151 | 0.6930 | 0.6729 | **0.7074** | ✅ (复现) |
+| 3 | v4.1 Evidence Ledger | UNI | 0.7300 | 0.6354 | 0.7462 | **0.7039** | ✅ |
+| 4 | ArcSurv | UNI | 0.6702 | 0.6134 | 0.7436 | **0.6757** | ✅ |
+| 5 | v3.9 Risk-Simplex | UNI2-h | 0.6320 | 0.6776 | 0.6085 | **0.6394** | ✅ |
+| — | v3.8.3 Centered | UNI2-h | 0.5924 | — | — | 中止 | ❌ |
+| — | v3.8.2 MGPTR | UNI2-h | — | — | — | 跳过 | ⏳ |
+
+> v3.3 复现均值 0.7074 (fold1-4 均值)，与早前 (0.7311) 略有差异因 folds 不同。
+> v4.0 IST-Surv 以 0.7078 微弱领先，fold4=0.7761 为 BLCA 所有方法单折最高。
+> v4.1 fold2=0.6354 拖累均值，否则 fold1/fold4 双 high 表现是最好的一组。
+
+### 跨方法 fold 分析
+
+| Fold | v3.3 | v4.1 | v4.0 | ArcSurv | v3.9 |
+|:----:|:----:|:----:|:----:|:-------:|:----:|
+| 1 | 0.6930 | 0.7300 | 0.6707 | 0.6702 | 0.6320 |
+| 2 | 0.6729 | 0.6354 | 0.6767 | 0.6134 | 0.6776 |
+| 4 | 0.7222 | 0.7462 | 0.7761 | 0.7436 | 0.6085 |
+
+> fold4 普遍高于 fold1/fold2，fold2 对多数方法都是最难的 split。
 
 ---
 
 ## 📈 版本对比
 
-| 癌种 | v3.3 (UNIv1) | v3.6 最佳 (UNIv1) | v3.7 (UNI2-h) | v3.8 50ep | v3.8 20ep full | v3.8 20ep base |
-|:----:|:------------:|:-----------------:|:-------------:|:----------:|:--------------:|:--------------:|
-| UCEC | **0.7964** | — | ⏳ | — | — | — |
-| KIRC | 0.7958 | — | **0.8149** | — | — | — |
-| COADREAD | 0.6774 | — | **0.7384** | — | — | — |
-| BLCA | 0.7311 | 0.7024 (ETAR) | 0.7249 | 0.7274 | 0.7077 | ~0.692 |
-| HNSC | ⏳ | — | 0.6406 | — | — | — |
-| LUAD | ⏳ | 0.7647 (NLL) | 0.6662 | ⏳ | ⏳ | ⏳ |
-| LUSC | ⏳ | 0.6141 (NLL) | 🔄 fold0=0.4575 | ⏳ | ⏳ | ⏳ |
-| SKCM | 0.6770 | — | ⏳ | — | — | — |
-| STAD | 0.6596 | — | ⏳ | — | — | — |
-| BRCA | ⏳ 待重跑 | ⏳ 待重跑 | ⏳ 待重跑 | 0.6750 ✅ | 0.6852 | **0.7185** |
+| 癌种 | v3.3 (UNIv1) | v3.6 最佳 (UNIv1) | v3.7 (UNI2-h) | v3.8 50ep | v3.8 20ep full | v3.8 20ep base | v3.9 | v4.0 | v4.1 | ArcSurv |
+|:----:|:------------:|:-----------------:|:-------------:|:----------:|:--------------:|:--------------:|:----:|:----:|:----:|:------:|
+| UCEC | **0.7964** | — | ⏳ | — | — | — | — | — | — | — |
+| KIRC | 0.7958 | — | **0.8149** | — | — | — | — | — | — | — |
+| COADREAD | 0.6774 | — | **0.7384** | — | — | — | — | — | — | — |
+| BLCA | 0.7311 | 0.7024 (ETAR) | 0.7249 | 0.7274 | 0.7077 | ~0.692 | 0.6394 | 0.7078 | 0.7039 | 0.6757 |
+| HNSC | ⏳ | — | 0.6406 | — | — | — | — | — | — | — |
+| LUAD | ⏳ | 0.7647 (NLL) | 0.6662 | ⏳ | ⏳ | ⏳ | — | — | — | — |
+| LUSC | ⏳ | 0.6141 (NLL) | 🔄 fold0=0.4575 | ⏳ | ⏳ | ⏳ | — | — | — | — |
+| SKCM | 0.6770 | — | ⏳ | — | — | — | — | — | — | — |
+| STAD | 0.6596 | — | ⏳ | — | — | — | — | — | — | — |
+| BRCA | ⏳ 待重跑 | ⏳ 待重跑 | ⏳ 待重跑 | 0.6750 ✅ | 0.6852 | **0.7185** | — | — | — | — |
 
 ### v3.3 → v3.7 提升
 
@@ -611,14 +696,13 @@
 
 ---
 
-## 🔄 当前运行状态 (2026-08-01)
+## 🔄 当前运行状态 (2026-08-02)
 
-| 版本 | 癌种 | Fold | 进度 | 最佳 C-Index | 状态 |
+| 方法 | 癌种 | Fold | 进度 | 最佳 C-Index | 状态 |
 |:----:|:----:|:----:|------|:----------:|:----:|
-| v3.8 robust 20ep | BLCA 8变体 | fold0 | ✅ 完成 | direction 0.7356 | ✅ |
-| v3.8 robust 20ep | BRCA direction | fold0 | epoch 14/20 | 0.7892@4 | ❌ 已终止 (特征缺口) |
-| v3.8 robust 20ep | BRCA/LUAD/LUSC | fold1-4 | — | — | ❌ 暂停，等 split 修复 |
-| v3.7 | LUSC | fold0 | ✅ 完成 | 0.4575 | ⚠️ 异常偏低 |
+| — | — | — | 全部完成 | — | ✅ |
+
+> Priority Queue 全部 8 个 stage 已完成。GPU 0 空闲。
 
 ### 🔴 阻塞项
 
@@ -656,9 +740,9 @@
 
 ## 🏥 多癌种数据集总览 (10 个)
 
-| 癌种 | clinical | Split | v3.3 | v3.6 最佳 | v3.7 | v3.8 |
-|:----:|:--------:|:-----:|:-----:|:---------:|:----:|:----:|
-| BLCA | 381 | 380 | 0.7311 ✅ | 0.7024 ETAR | 0.7249 ✅ | 0.7274 ✅ |
+| 癌种 | clinical | Split | v3.3 | v3.6 最佳 | v3.7 | v3.8 | v3.9 | v4.0 | v4.1 | ArcSurv |
+|:----:|:--------:|:-----:|:-----:|:---------:|:----:|:----:|:----:|:----:|:----:|:------:|
+| BLCA | 381 | 380 | 0.7311 ✅ | 0.7024 ETAR | 0.7249 ✅ | 0.7274 ✅ | 0.6394 | 0.7078 | 0.7039 | 0.6757 |
 | BRCA | 1046 | 1045 | ⏳ 待重跑 | ⏳ 待重跑 | ⏳ 待重跑 | 0.6750 ✅ |
 | COADREAD | 573 | 570 | 0.6774 ✅ | — | 0.7384 ✅ | — |
 | HNSC | 438 | 437 | ⏳ | — | 0.6406 ✅ | — |

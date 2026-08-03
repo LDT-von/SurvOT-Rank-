@@ -154,7 +154,7 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
 
     if "v33_blca_uni5" in selected:
         result_dir = _smoke_dir("v33_blca_uni5") if smoke else Path(
-            "results/dct_v3_score_first_diagnostics/full"
+            "results/dct_v3.3_score_first_blca_uni_rep"
         )
         for fold in (range(1) if smoke else range(5)):
             jobs.append(
@@ -186,7 +186,7 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
                 args.gpu,
                 args.num_workers,
                 args.uni2h_root,
-                max_epochs=50,
+                max_epochs=20,
                 smoke=smoke,
             )
             _replace_override(command, "on_missing_wsi", "error")
