@@ -111,12 +111,8 @@ def test_arcsurv_missing_modalities_and_eval_do_not_update_memory():
     )
 
 
-def test_arcsurv_memory_is_frozen_after_epoch_zero():
-    torch.manual_seed(7)
-    model = ArchetypalRiskComposition(make_args(), omic_input_dim=20)
-    model.train()
-    model(**make_inputs(), cur_epoch=0)
-    before = (
+def _memory_snapshot(model):
+    return (
         model.wsi_archetypes.memory.clone(),
         model.wsi_archetypes.memory_priority.clone(),
         model.wsi_archetypes.memory_seen.clone(),
@@ -125,16 +121,54 @@ def test_arcsurv_memory_is_frozen_after_epoch_zero():
         model.omic_archetypes.memory_seen.clone(),
     )
 
-    model(**make_inputs(), cur_epoch=1)
-    after = (
-        model.wsi_archetypes.memory,
-        model.wsi_archetypes.memory_priority,
-        model.wsi_archetypes.memory_seen,
-        model.omic_archetypes.memory,
-        model.omic_archetypes.memory_priority,
-        model.omic_archetypes.memory_seen,
+
+def test_arcsurv_memory_is_frozen_after_the_bank_update_window():
+    """原型库在 warmup 期间持续更新，warmup 结束后冻结。
+
+    原实现只在 epoch 0 建库并冻结，那时编码器还没被生存目标塑形。
+    """
+    torch.manual_seed(7)
+    model = ArchetypalRiskComposition(
+        make_args(arc_warmup_epochs=3, arc_bank_update_epochs=-1),
+        omic_input_dim=20,
     )
-    assert all(torch.equal(left, right) for left, right in zip(before, after))
+    assert model.arc_bank_update_epochs == 3
+    model.train()
+
+    # 窗口内必须仍在更新。
+    model(**make_inputs(), cur_epoch=0)
+    inside_window = _memory_snapshot(model)
+    model(**make_inputs(), cur_epoch=1)
+    assert not all(
+        torch.equal(left, right)
+        for left, right in zip(inside_window, _memory_snapshot(model))
+    )
+
+    # 窗口结束后必须冻结。
+    model(**make_inputs(), cur_epoch=3)
+    frozen = _memory_snapshot(model)
+    model(**make_inputs(), cur_epoch=4)
+    assert all(
+        torch.equal(left, right)
+        for left, right in zip(frozen, _memory_snapshot(model))
+    )
+
+
+def test_arcsurv_zero_warmup_reproduces_epoch_zero_only_bank():
+    """arc_bank_update_epochs=0 时退回旧行为：只在 epoch 0 建库。"""
+    torch.manual_seed(7)
+    model = ArchetypalRiskComposition(
+        make_args(arc_warmup_epochs=0, arc_bank_update_epochs=0),
+        omic_input_dim=20,
+    )
+    model.train()
+    model(**make_inputs(), cur_epoch=0)
+    before = _memory_snapshot(model)
+    model(**make_inputs(), cur_epoch=1)
+    assert all(
+        torch.equal(left, right)
+        for left, right in zip(before, _memory_snapshot(model))
+    )
 
 
 def test_arcsurv_pathway_inputs_match_blca_configuration():

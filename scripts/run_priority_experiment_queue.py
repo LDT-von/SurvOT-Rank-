@@ -53,6 +53,10 @@ STAGES = (
     "b1_mgptr",
     # v3.3 在 2026-07-30 重划之前的旧划分上复现历史分数 (0.7311)。
     "v33_blca_legacy_repro",
+    # 修复分阶段激活后重跑（统一 50ep）。
+    "v40_staged_rerun",
+    "v41_staged_rerun",
+    "arcsurv_staged_rerun",
     # 以下为历史阶段，保留以便复跑/审计。
     "v33_blca_uni5",
     "v38_lusc_screen",
@@ -63,7 +67,14 @@ STAGES = (
     "v41_blca_fold124",
     "arcsurv_blca_fold124",
 )
-DEFAULT_STAGES = ("b0_mgptr_control", "b1_mgptr", "v33_blca_legacy_repro")
+DEFAULT_STAGES = (
+    "b0_mgptr_control",
+    "b1_mgptr",
+    "v33_blca_legacy_repro",
+    "v40_staged_rerun",
+    "v41_staged_rerun",
+    "arcsurv_staged_rerun",
+)
 FOLDS_124 = (1, 2, 4)
 # B0/B1 唯一变量：MGPTR 权重。其余全部相同。
 MGPTR_SHARED = {
@@ -238,6 +249,98 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
                         "max_epochs": 50,
                         "specific_simple": "dct_v3_score_first_legacy_repro",
                     },
+                    smoke=smoke,
+                )
+            )
+
+    # 修复分阶段激活后重跑。三者的唯一共同改动是「辅助约束不再从第一轮生效」。
+    staged_specs = [
+        (
+            "v40_staged_rerun",
+            "v4.0 IST-Surv staged stability BLCA UNI2-h",
+            "configs/intervention_stable_survival_transport_blca.yaml",
+            "results/ist_surv_v4.0_staged_50ep/clean/full/blca",
+            "intervention_stable_survival_transport",
+            "ist_v40_staged_full_blca_50ep",
+            "uni2-h",
+            "5fold_uni2h",
+            {
+                "ist_warmup_epochs": 5,
+                "ist_ramp_epochs": 10,
+                "ist_stability_strength": 0.10,
+                "ist_lambda_plan": 0.05,
+                "ist_lambda_attribution": 0.05,
+                "ist_lambda_risk": 0.0,
+                "fit_bins_on_train": True,
+                "binning_mode": "global_qcut",
+            },
+        ),
+        (
+            "v41_staged_rerun",
+            "v4.1 Evidence Ledger staged aux BLCA UNI",
+            "configs/dct_v41_survival_evidence_ledger_blca.yaml",
+            "results/dct_v4.1_survival_evidence_ledger_staged_50ep/blca",
+            "dct_v41_survival_evidence_ledger",
+            "dct_v41_staged_blca_50ep",
+            "uni",
+            "5fold",
+            {
+                "v41_warmup_epochs": 5,
+                "v41_ramp_epochs": 10,
+                "v41_modality_dropout": 0.20,
+            },
+        ),
+        (
+            "arcsurv_staged_rerun",
+            "ArcSurv staged structure losses BLCA UNI",
+            "configs/archetypal_risk_composition_blca.yaml",
+            "results/archetypal_risk_composition_staged_50ep/blca",
+            "archetypal_risk_composition",
+            "arcsurv_staged_blca_50ep",
+            "uni",
+            "5fold",
+            {
+                "arc_warmup_epochs": 5,
+                "arc_ramp_epochs": 10,
+                "arc_bank_update_epochs": -1,
+                "batch_size": 8,
+            },
+        ),
+    ]
+    for (
+        stage,
+        label,
+        config,
+        root,
+        method,
+        identity,
+        encoder,
+        split,
+        extra,
+    ) in staged_specs:
+        if stage not in selected:
+            continue
+        result_dir = _smoke_dir(stage) if smoke else Path(root)
+        folds = FOLDS_124[:1] if smoke else FOLDS_124
+        for fold in folds:
+            overrides = {
+                "survot_method": method,
+                # 统一 50ep：ArcSurv fold1 在 30ep 下峰值贴在 e29 且仍在上升。
+                "max_epochs": 50,
+                "specific_simple": identity,
+            }
+            overrides.update(extra)
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage=stage,
+                    label=label,
+                    config=config,
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder=encoder,
+                    which_splits=split,
+                    overrides=overrides,
                     smoke=smoke,
                 )
             )

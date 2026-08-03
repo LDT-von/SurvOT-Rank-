@@ -206,16 +206,19 @@ def test_selc_objective_is_active_and_backpropagates_through_new_ledgers():
     model = DCTV41SurvivalEvidenceLedger(make_args(), omic_input_dim=20)
     _configure_reference(model)
     model.train()
+    # 账本损失与模态删除在 warmup 之后才满权重（见 v41_warmup_epochs/ramp）。
     logits, aux_loss = model(
         x_wsi=torch.randn(5, 6, 16),
         x_omics=torch.randn(5, 5, 20),
         event_time=torch.tensor([2.0, 4.0, 7.0, 10.0, 13.0]),
         c=torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+        cur_epoch=model.v41_warmup_epochs + model.v41_ramp_epochs,
     )
     losses = model.last_training_losses
 
     assert logits.shape == (5, 4)
     assert torch.isfinite(aux_loss)
+    assert losses["v41_ledger_scale"] == 1.0
     assert losses["v41_missing_fraction"] > 0
     expected = (
         model.dct_lambda_ipcw_rank * losses["ipcw_rank"]
@@ -313,3 +316,33 @@ def test_v41_configs_and_runner_are_restricted_to_uni_four_cancers_three_folds()
             assert "--set wsi_encoder=uni" in joined
             assert f"--set k_start={fold}" in joined
             assert f"--set k_end={fold + 1}" in joined
+
+
+def test_selc_warmup_suppresses_ledger_objective_and_modality_dropout():
+    """BLCA fold2 在 epoch 3 见顶后持续走低：四项账本损失与模态删除
+    从第一轮就与生存似然竞争。warmup 期间必须完全关闭两者。
+    """
+    torch.manual_seed(1)
+    model = DCTV41SurvivalEvidenceLedger(make_args(), omic_input_dim=20)
+    _configure_reference(model)
+    model.train()
+
+    inputs = dict(
+        x_wsi=torch.randn(5, 6, 16),
+        x_omics=torch.randn(5, 5, 20),
+        event_time=torch.tensor([2.0, 4.0, 7.0, 10.0, 13.0]),
+        c=torch.tensor([0.0, 0.0, 0.0, 0.0, 1.0]),
+    )
+
+    _, aux_loss = model(**inputs, cur_epoch=0)
+    losses = model.last_training_losses
+    assert losses["v41_ledger_scale"] == 0.0
+    # warmup 内不得人为删除模态，也不得贡献账本目标。
+    assert losses["v41_missing_fraction"] == 0.0
+    assert losses["v41_objective"] == 0.0
+    assert torch.isfinite(aux_loss)
+
+    # warmup 结束后线性拉起，不得跳变到满权重。
+    _, _ = model(**inputs, cur_epoch=model.v41_warmup_epochs)
+    ramped = model.last_training_losses["v41_ledger_scale"]
+    assert 0.0 < float(ramped) < 1.0

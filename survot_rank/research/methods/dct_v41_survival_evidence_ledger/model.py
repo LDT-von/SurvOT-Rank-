@@ -247,6 +247,16 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
         self.v41_lambda_private = float(
             getattr(args, "v41_lambda_private", 0.02)
         )
+        # 分阶段激活账本类辅助损失。BLCA fold2 的最佳验证 C-index 出现在
+        # epoch 3 之后持续走低：completion/ledger/survival/private 四项从第一轮
+        # 就与生存似然竞争，且 modality dropout 同时在删模态。
+        # warmup 期间四项全部关闭，之后线性拉起；dropout 同步 ramp。
+        self.v41_warmup_epochs = int(getattr(args, "v41_warmup_epochs", 5))
+        self.v41_ramp_epochs = int(getattr(args, "v41_ramp_epochs", 10))
+        if self.v41_warmup_epochs < 0:
+            raise ValueError("v41_warmup_epochs must be non-negative")
+        if self.v41_ramp_epochs < 0:
+            raise ValueError("v41_ramp_epochs must be non-negative")
         self.v41_confidence_floor = float(
             getattr(args, "v41_confidence_floor", 0.05)
         )
@@ -397,22 +407,37 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
             )
         return bool(flag.item())
 
+    def _ledger_scale(self, epoch) -> float:
+        """账本辅助损失与模态删除的分阶段权重：warmup 内为 0，随后线性拉到 1。
+
+        评估时始终返回 1.0，使验证指标反映方法的完整形态。
+        """
+        if not self.training:
+            return 1.0
+        epoch = int(epoch)
+        if epoch < self.v41_warmup_epochs:
+            return 0.0
+        if self.v41_ramp_epochs <= 0:
+            return 1.0
+        post_warmup = epoch - self.v41_warmup_epochs + 1
+        return min(1.0, post_warmup / self.v41_ramp_epochs)
+
     def _sample_availability(
         self,
         wsi_available: torch.Tensor,
         omic_available: torch.Tensor,
+        scale: float = 1.0,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if not self.training or self.v41_modality_dropout <= 0.0:
+        dropout = self.v41_modality_dropout * float(scale)
+        if not self.training or dropout <= 0.0:
             dropped = torch.zeros_like(wsi_available, dtype=torch.bool)
             return wsi_available, omic_available, dropped
 
         both = (wsi_available > 0) & (omic_available > 0)
         draw = torch.rand_like(wsi_available)
-        half = self.v41_modality_dropout * 0.5
+        half = dropout * 0.5
         drop_wsi = both & (draw < half)
-        drop_omic = both & (draw >= half) & (
-            draw < self.v41_modality_dropout
-        )
+        drop_omic = both & (draw >= half) & (draw < dropout)
         used_wsi = wsi_available * (~drop_wsi).to(wsi_available.dtype)
         used_omic = omic_available * (~drop_omic).to(omic_available.dtype)
         return used_wsi, used_omic, drop_wsi | drop_omic
@@ -464,9 +489,14 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
         if self._global_missing_flag(kwargs.get("omic_missing"), "omic_missing"):
             externally_available_omic = torch.zeros_like(externally_available_omic)
 
+        ledger_scale = self._ledger_scale(
+            kwargs.get("cur_epoch", kwargs.get("epoch", 0))
+        )
+        self._v41_ledger_scale = ledger_scale
         used_wsi, used_omic, artificially_dropped = self._sample_availability(
             externally_available_wsi,
             externally_available_omic,
+            scale=ledger_scale,
         )
         wsi_observed = used_wsi[:, None, None] > 0
         omic_observed = used_omic[:, None, None] > 0
@@ -672,13 +702,15 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
                 per_patient * dropped.to(per_patient.dtype)
             ).sum() / dropped.sum().clamp_min(1)
 
-        objective = (
+        ledger_scale = float(getattr(self, "_v41_ledger_scale", 1.0))
+        objective = ledger_scale * (
             self.v41_lambda_completion * completion_loss
             + self.v41_lambda_ledger * ledger_loss
             + self.v41_lambda_survival * survival_consistency
             + self.v41_lambda_private * private_loss
         )
         metrics = {
+            "v41_ledger_scale": factual_logits.new_tensor(ledger_scale),
             "v41_completion": completion_loss,
             "v41_private_uncertainty": private_loss,
             "v41_ledger": ledger_loss,

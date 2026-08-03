@@ -71,7 +71,11 @@ model:
   spt_prog_cost: 0.20
   rg_eps_start: 0.10
   rg_eps_anneal: 12
-  v41_modality_dropout: 0.35
+  # 0.35 过强：与四项账本损失叠加后，fold2 在 epoch 3 见顶随后持续走低。
+  v41_modality_dropout: 0.20
+  # 前 5 轮关闭四项账本损失与模态删除，第 6-15 轮线性拉起。
+  v41_warmup_epochs: 5
+  v41_ramp_epochs: 10
   v41_ledger_temperature: 0.25
   v41_missing_confidence_cap: 0.65
   v41_confidence_floor: 0.05

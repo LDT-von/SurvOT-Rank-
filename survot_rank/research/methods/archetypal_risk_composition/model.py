@@ -161,6 +161,21 @@ class ArchetypalRiskComposition(nn.Module):
         self.arc_lambda_balance = float(getattr(args, "arc_lambda_balance", 0.01))
         self.arc_lambda_volume = float(getattr(args, "arc_lambda_volume", 0.01))
         self.arc_lambda_rank = float(getattr(args, "arc_lambda_rank", 0.10))
+        # 分阶段激活原型结构类损失。BLCA fold1 的最佳验证 C-index 出现在
+        # epoch 29（预算边界）且最后 5 轮仍在上升：recon/align/balance/volume
+        # 四项从第一轮就与生存目标竞争，拖慢收敛。
+        # warmup 期间只保留 NLL + rank，之后线性拉起四项结构损失。
+        self.arc_warmup_epochs = int(getattr(args, "arc_warmup_epochs", 5))
+        self.arc_ramp_epochs = int(getattr(args, "arc_ramp_epochs", 10))
+        # 原型库原先只在 epoch 0 建立并冻结，此时编码器尚未被生存目标塑形。
+        # 默认改为在 warmup 期间持续更新，warmup 结束后冻结。
+        bank_epochs = int(getattr(args, "arc_bank_update_epochs", -1))
+        self.arc_bank_update_epochs = (
+            self.arc_warmup_epochs if bank_epochs < 0 else bank_epochs
+        )
+        for name in ("arc_warmup_epochs", "arc_ramp_epochs", "arc_bank_update_epochs"):
+            if getattr(self, name) < 0:
+                raise ValueError(f"{name} must be non-negative")
         self.arc_rank_margin = float(getattr(args, "arc_rank_margin", 0.0))
         self.arc_rank_max_pairs = int(getattr(args, "arc_rank_max_pairs", 4096))
         self._validate_hyperparameters()
@@ -219,6 +234,21 @@ class ArchetypalRiskComposition(nn.Module):
                 self.all_gene_names = list(np.unique(np.concatenate(omic_names)))
             except Exception:
                 pass
+
+    def _structure_scale(self, epoch) -> float:
+        """原型结构损失的分阶段权重：warmup 内为 0，随后线性拉到 1。
+
+        评估时始终返回 1.0，使验证指标反映方法的完整形态。
+        """
+        if not self.training:
+            return 1.0
+        epoch = int(epoch)
+        if epoch < self.arc_warmup_epochs:
+            return 0.0
+        if self.arc_ramp_epochs <= 0:
+            return 1.0
+        post_warmup = epoch - self.arc_warmup_epochs + 1
+        return min(1.0, post_warmup / self.arc_ramp_epochs)
 
     def _validate_hyperparameters(self) -> None:
         """Reject ArcSurv settings that would silently poison the objective."""
@@ -376,7 +406,9 @@ class ArchetypalRiskComposition(nn.Module):
         omic_state = self.omic_state_norm(self._masked_mean(omic_slots, omic_mask))
 
         current_epoch = int(kwargs.get("cur_epoch", kwargs.get("epoch", 0)))
-        update_memory = current_epoch == 0
+        # 至少更新 1 轮，否则原型库永远为空。
+        update_memory = current_epoch < max(1, self.arc_bank_update_epochs)
+        structure_scale = self._structure_scale(current_epoch)
         self.wsi_archetypes.update(
             wsi_state[has_wsi],
             allow_update=update_memory,
@@ -453,14 +485,18 @@ class ArchetypalRiskComposition(nn.Module):
         if kwargs.get("y") is not None and kwargs.get("c") is not None:
             rank_loss = self._ranking_loss(logits, kwargs["y"], kwargs["c"])
 
-        aux_loss = (
+        # rank 损失从第一轮即生效（与 NLL 同期），只有四项结构损失走 ramp。
+        aux_loss = structure_scale * (
             self.arc_lambda_recon * reconstruction_loss
             + self.arc_lambda_align * alignment_loss
             + self.arc_lambda_balance * balance_loss
             + self.arc_lambda_volume * volume_loss
-            + self.arc_lambda_rank * rank_loss
-        )
+        ) + self.arc_lambda_rank * rank_loss
         self.last_training_losses = {
+            "arc_structure_scale": logits.new_tensor(structure_scale).detach(),
+            "arc_bank_updating": logits.new_tensor(
+                float(update_memory)
+            ).detach(),
             "arc_reconstruction": reconstruction_loss.detach(),
             "arc_alignment": alignment_loss.detach(),
             "arc_balance": balance_loss.detach(),

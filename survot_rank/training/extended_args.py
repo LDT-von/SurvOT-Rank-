@@ -474,6 +474,20 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--v41_lambda_survival", type=float, default=0.05)
     parser.add_argument("--v41_lambda_private", type=float, default=0.02)
     parser.add_argument("--v41_shared_rank", type=int, default=64)
+    # v4.1 账本辅助损失与模态删除的分阶段激活。四项损失 + modality dropout
+    # 从第一轮就与生存似然竞争：BLCA fold2 最佳 C-index 出现在 epoch 3 后持续走低。
+    parser.add_argument(
+        "--v41_warmup_epochs",
+        type=int,
+        default=5,
+        help="前 N 轮关闭 completion/ledger/survival/private 及模态删除；0 = 旧行为",
+    )
+    parser.add_argument(
+        "--v41_ramp_epochs",
+        type=int,
+        default=10,
+        help="warmup 之后用多少轮线性拉到满权重；0 = 立即满权重",
+    )
 
     # V4.0 intervention-stable survival transport.  Unlike the DCT evolution,
     # this is an independent raw patch-pathway architecture whose hazard logits
@@ -489,6 +503,21 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ist_lambda_risk", type=float, default=0.0)
     parser.add_argument("--ist_edge_value_scale", type=float, default=4.0)
     parser.add_argument("--ist_eval_seed", type=int, default=20260725)
+    # v4.0 干预稳定性的分阶段激活。稳定性项会改写 stable_cost（进而改写用于
+    # 预测的运输计划），从第一轮生效会在生存头学到东西之前压制它：
+    # BLCA fold1 最佳 C-index 出现在 epoch 0，随后 29 轮持续下滑。
+    parser.add_argument(
+        "--ist_warmup_epochs",
+        type=int,
+        default=5,
+        help="前 N 轮完全关闭干预稳定性（成本项与三个辅助损失）；0 = 旧行为",
+    )
+    parser.add_argument(
+        "--ist_ramp_epochs",
+        type=int,
+        default=10,
+        help="warmup 之后用多少轮线性拉到满权重；0 = 立即满权重",
+    )
     parser.add_argument("--ist_deletion_penalty", type=float, default=8.0)
 
     # Censoring-aware temporal evidence transport mainline.
@@ -521,6 +550,29 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--arc_lambda_rank", type=float, default=0.10)
     parser.add_argument("--arc_rank_margin", type=float, default=0.0)
     parser.add_argument("--arc_rank_max_pairs", type=int, default=4096)
+    # ArcSurv 分阶段激活四项结构损失（rank 与 NLL 同期生效，不走 ramp）。
+    # BLCA fold1 最佳 C-index 出现在 epoch 29 且最后 5 轮仍在上升 = 欠训练。
+    parser.add_argument(
+        "--arc_warmup_epochs",
+        type=int,
+        default=5,
+        help="前 N 轮只训 NLL + rank，关闭 recon/align/balance/volume；0 = 旧行为",
+    )
+    parser.add_argument(
+        "--arc_ramp_epochs",
+        type=int,
+        default=10,
+        help="warmup 之后用多少轮线性拉到满权重；0 = 立即满权重",
+    )
+    parser.add_argument(
+        "--arc_bank_update_epochs",
+        type=int,
+        default=-1,
+        help=(
+            "原型库更新轮数，-1 表示跟随 arc_warmup_epochs。"
+            "原实现只在 epoch 0 建库并冻结，此时编码器尚未被生存目标塑形。"
+        ),
+    )
 
     # Cohort-Anchored Adaptive Prognostic Slot Attention (CA-PSA).
     parser.add_argument("--capsa_max_slots", type=int, default=16)

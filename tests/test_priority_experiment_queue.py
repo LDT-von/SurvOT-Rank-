@@ -14,15 +14,18 @@ def _override(job: queue.Job, key: str) -> str | None:
     return queue._override_value(job, key)
 
 
-def test_default_queue_is_the_mgptr_decision_plus_legacy_repro():
+def test_default_queue_is_the_mgptr_decision_plus_repro_and_staged_reruns():
     jobs = queue.build_jobs(_args())
 
-    assert len(jobs) == 11
+    assert len(jobs) == 20
     assert list(dict.fromkeys(job.stage for job in jobs)) == list(queue.DEFAULT_STAGES)
     assert Counter(job.stage for job in jobs) == {
         "b0_mgptr_control": 3,
         "b1_mgptr": 3,
         "v33_blca_legacy_repro": 5,
+        "v40_staged_rerun": 3,
+        "v41_staged_rerun": 3,
+        "arcsurv_staged_rerun": 3,
     }
 
     b0 = [job for job in jobs if job.stage == "b0_mgptr_control"]
@@ -86,12 +89,15 @@ def test_legacy_repro_uses_recovered_split_and_original_protocol():
 def test_full_queue_still_covers_every_historical_stage():
     jobs = queue.build_jobs(_args("--stages", "all"))
 
-    assert len(jobs) == 42
+    assert len(jobs) == 51
     assert list(dict.fromkeys(job.stage for job in jobs)) == list(queue.STAGES)
     assert Counter(job.stage for job in jobs) == {
         "b0_mgptr_control": 3,
         "b1_mgptr": 3,
         "v33_blca_legacy_repro": 5,
+        "v40_staged_rerun": 3,
+        "v41_staged_rerun": 3,
+        "arcsurv_staged_rerun": 3,
         "v33_blca_uni5": 5,
         "v38_lusc_screen": 8,
         "v382_blca_fold124": 3,
@@ -107,14 +113,15 @@ def test_full_queue_still_covers_every_historical_stage():
     }
     assert [job.fold for job in by_stage["v33_blca_uni5"]] == [0, 1, 2, 3, 4]
     assert {job.fold for job in by_stage["v38_lusc_screen"]} == {0}
-    for stage in queue.STAGES[5:]:
+    historical = queue.STAGES[queue.STAGES.index("v382_blca_fold124"):]
+    for stage in historical:
         assert [job.fold for job in by_stage[stage]] == [1, 2, 4]
 
     assert all(_override(job, "on_missing_wsi") == "error" for job in jobs)
     assert all(_override(job, "max_epochs") == "50" for job in by_stage["v33_blca_uni5"])
     # LUSC 八变体筛选按记录使用 20ep。
     assert all(_override(job, "max_epochs") == "20" for job in by_stage["v38_lusc_screen"])
-    for stage in queue.STAGES[5:]:
+    for stage in historical:
         assert all(_override(job, "max_epochs") == "30" for job in by_stage[stage])
 
 
@@ -169,14 +176,37 @@ def test_smoke_uses_first_fold_and_one_epoch_per_stage():
     assert all(_override(job, "max_smoke_batches") == "2" for job in jobs)
 
 
-def test_default_smoke_covers_only_the_mgptr_decision():
+def test_default_smoke_covers_one_fold_per_default_stage():
     jobs = queue.build_jobs(_args(), smoke=True)
 
     assert Counter(job.stage for job in jobs) == {
-        "b0_mgptr_control": 1,
-        "b1_mgptr": 1,
-        "v33_blca_legacy_repro": 1,
+        stage: 1 for stage in queue.DEFAULT_STAGES
     }
+
+
+def test_staged_reruns_enable_delayed_activation_at_fifty_epochs():
+    """三个重跑阶段的共同改动：辅助约束不再从第一轮生效，且统一 50ep。"""
+    jobs = queue.build_jobs(_args())
+    staged = {
+        "v40_staged_rerun": ("ist_warmup_epochs", "ist_ramp_epochs"),
+        "v41_staged_rerun": ("v41_warmup_epochs", "v41_ramp_epochs"),
+        "arcsurv_staged_rerun": ("arc_warmup_epochs", "arc_ramp_epochs"),
+    }
+    for stage, (warmup_key, ramp_key) in staged.items():
+        stage_jobs = [job for job in jobs if job.stage == stage]
+        assert [job.fold for job in stage_jobs] == [1, 2, 4]
+        for job in stage_jobs:
+            assert _override(job, warmup_key) == "5"
+            assert _override(job, ramp_key) == "10"
+            assert _override(job, "max_epochs") == "50"
+            # 结果目录必须与修复前的旧结果隔离。
+            assert "staged" in job.result_dir.as_posix()
+
+    # 具体针对性修复：v4.1 降低模态删除强度，ArcSurv 提高 batch 以获得排序信号。
+    v41 = next(job for job in jobs if job.stage == "v41_staged_rerun")
+    assert _override(v41, "v41_modality_dropout") == "0.2"
+    arc = next(job for job in jobs if job.stage == "arcsurv_staged_rerun")
+    assert _override(arc, "batch_size") == "8"
 
 
 def test_stage_resume_filter_and_nested_completion(tmp_path: Path):

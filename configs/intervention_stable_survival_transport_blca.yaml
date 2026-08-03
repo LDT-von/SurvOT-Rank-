@@ -57,3 +57,8 @@ model:
   ist_edge_value_scale: 4.0
   ist_eval_seed: 20260725
   ist_deletion_penalty: 8.0
+  # 前 5 轮完全关闭稳定性（成本项 + 三个辅助损失），第 6-15 轮线性拉起。
+  # 稳定性项会改写 stable_cost 进而改写用于预测的运输计划，
+  # 从第一轮生效会导致 fold1 在 epoch 0 见顶后连续 29 轮下滑。
+  ist_warmup_epochs: 5
+  ist_ramp_epochs: 10

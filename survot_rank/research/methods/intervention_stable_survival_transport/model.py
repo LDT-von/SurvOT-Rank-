@@ -190,6 +190,12 @@ class InterventionStableSurvivalTransport(nn.Module):
         self.ist_deletion_penalty = float(
             getattr(args, "ist_deletion_penalty", 8.0)
         )
+        # 分阶段激活干预稳定性。BLCA fold1 的最佳验证 C-index 出现在 epoch 0
+        # 之后连续 29 轮下滑：稳定性项从第一轮就改写 stable_cost（进而改写用于
+        # 预测的运输计划），在生存头还没学到东西时就压制它。
+        # warmup 期间完全关闭，之后线性拉起。
+        self.ist_warmup_epochs = int(getattr(args, "ist_warmup_epochs", 5))
+        self.ist_ramp_epochs = int(getattr(args, "ist_ramp_epochs", 10))
         self._validate_hyperparameters()
 
         self.wsi_mlp = WSI_Mlp(
@@ -238,6 +244,8 @@ class InterventionStableSurvivalTransport(nn.Module):
             "ist_lambda_risk",
             "ist_edge_value_scale",
             "ist_deletion_penalty",
+            "ist_warmup_epochs",
+            "ist_ramp_epochs",
         ):
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} must be non-negative")
@@ -521,7 +529,25 @@ class InterventionStableSurvivalTransport(nn.Module):
             torch.stack(view_logits, dim=1),
         )
 
+    def _stability_scale(self, epoch):
+        """干预稳定性的分阶段权重：warmup 内为 0，随后线性拉到 1。
+
+        评估时始终返回 1.0，使验证指标反映方法的完整形态。
+        """
+        if not self.training:
+            return 1.0
+        epoch = int(epoch)
+        if epoch < self.ist_warmup_epochs:
+            return 0.0
+        if self.ist_ramp_epochs <= 0:
+            return 1.0
+        post_warmup = epoch - self.ist_warmup_epochs + 1
+        return min(1.0, post_warmup / self.ist_ramp_epochs)
+
     def forward(self, **kwargs):
+        stability_scale = self._stability_scale(
+            kwargs.get("cur_epoch", kwargs.get("epoch", 0))
+        )
         raw_wsi = kwargs["x_wsi"].float()
         # Determine transport support before sanitising numerical values.  If a
         # patch embedding contains even one NaN/Inf, replacing only that value
@@ -542,8 +568,6 @@ class InterventionStableSurvivalTransport(nn.Module):
             [(row_valid, col_valid), *intervention_masks],
         )
         factual_plan = all_plans[:, 0]
-        rows = all_rows[:, 0]
-        cols = all_cols[:, 0]
         intervention_plan_tensor = all_plans[:, 1:]
         intervention_plans = list(intervention_plan_tensor.unbind(dim=1))
         stability_score, reliability, stability_variance = (
@@ -553,9 +577,9 @@ class InterventionStableSurvivalTransport(nn.Module):
                 intervention_masks,
             )
         )
-        stable_cost = factual_cost + self.ist_stability_strength * (
-            -stability_score.clamp_min(1e-8).log()
-        )
+        stable_cost = factual_cost + (
+            stability_scale * self.ist_stability_strength
+        ) * (-stability_score.clamp_min(1e-8).log())
         stable_plan, stable_rows, stable_cols = self._solve(
             stable_cost, row_valid, col_valid
         )
@@ -584,13 +608,14 @@ class InterventionStableSurvivalTransport(nn.Module):
                 intervention_masks,
             )
         )
-        aux_loss = (
+        aux_loss = stability_scale * (
             self.ist_lambda_plan * plan_loss
             + self.ist_lambda_attribution * attribution_loss
             + self.ist_lambda_risk * risk_loss
         )
 
         self.last_training_losses = {
+            "ist_stability_scale": logits.new_tensor(stability_scale).detach(),
             "ist_plan_stability": plan_loss.detach(),
             "ist_attribution_stability": attribution_loss.detach(),
             "ist_risk_stability": risk_loss.detach(),

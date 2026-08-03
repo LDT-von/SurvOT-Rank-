@@ -21,7 +21,9 @@ train:
   specific_simple: archetypal_risk_composition_blca
   results_dir: results/archetypal_risk_composition
   max_epochs: 20
-  batch_size: 4
+  # batch 4 时每步平均只有 1-3 对可比的未删失样本，rank 损失基本是噪声
+  # （同 docs/LOSS_BLACKLIST.md 的机制）。提到 8 以获得有效排序信号。
+  batch_size: 8
   grad_clip_norm: 1.0
   early_stop_patience: 0
   fit_bins_on_train: true
@@ -60,3 +62,8 @@ model:
   arc_lambda_rank: 0.10
   arc_rank_margin: 0.0
   arc_rank_max_pairs: 4096
+  # 前 5 轮只训 NLL + rank，第 6-15 轮线性拉起四项结构损失；
+  # 原型库在 warmup 期间持续更新后冻结（原实现只在 epoch 0 建库）。
+  arc_warmup_epochs: 5
+  arc_ramp_epochs: 10
+  arc_bank_update_epochs: -1
