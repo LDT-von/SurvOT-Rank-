@@ -27,7 +27,7 @@ STAGE_DEFS = OrderedDict([
     }),
     ("v382_blca_fold124", {
         "label": "DCT v3.8.2 MGPTR BLCA UNI2-h",
-        "dirs": ["dct_v3.8.2_mgptr_30ep"],
+        "dirs": ["dct_v3.8.2_30ep"],
         "folds": [1, 2, 4],
         "max_epochs": 30,
     }),
