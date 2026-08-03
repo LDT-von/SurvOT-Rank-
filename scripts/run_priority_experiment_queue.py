@@ -48,6 +48,12 @@ except ModuleNotFoundError:
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STAGES = (
+    # 当前主线：先用 6 次训练判定 MGPTR 是否成立。
+    "b0_mgptr_control",
+    "b1_mgptr",
+    # v3.3 在 2026-07-30 重划之前的旧划分上复现历史分数 (0.7311)。
+    "v33_blca_legacy_repro",
+    # 以下为历史阶段，保留以便复跑/审计。
     "v33_blca_uni5",
     "v38_lusc_screen",
     "v382_blca_fold124",
@@ -57,7 +63,35 @@ STAGES = (
     "v41_blca_fold124",
     "arcsurv_blca_fold124",
 )
+DEFAULT_STAGES = ("b0_mgptr_control", "b1_mgptr", "v33_blca_legacy_repro")
 FOLDS_124 = (1, 2, 4)
+# B0/B1 唯一变量：MGPTR 权重。其余全部相同。
+MGPTR_SHARED = {
+    "survot_method": "dct_v382_prognostic_transport_reconstruction",
+    "max_epochs": 50,
+    # 前 5 轮只训 NLL + IPCW，第 6-15 轮线性拉起 MGPTR。
+    "dct_v382_warmup_epochs": 5,
+    "dct_v382_ramp_epochs": 10,
+    "dct_v382_adaptive_aux_weights": False,
+    "dct_v382_distill_weight": 0.50,
+    # v3.8 的三个干预损失全部关闭（direction 无任一癌种正向证据）。
+    "dct_v38_lambda_direction": 0.0,
+    "dct_v38_lambda_dose": 0.0,
+    "dct_v38_lambda_reconfiguration": 0.0,
+    # robust 协议。
+    "fit_bins_on_train": True,
+    "binning_mode": "global_qcut",
+    "dct_slot_init_mode": "deterministic",
+    "event_stratified_batches": True,
+    "event_sampling_fraction": 0.0,
+    "dct_lambda_ipcw_rank": 0.10,
+    "dct_ipcw_rank_memory_size": 64,
+    "dct_lambda_etar": 0.0,
+    "dct_lambda_listwise": 0.0,
+    "dct_mix_ratio": 1.0,
+    "num_patches": 2048,
+    "batch_size": 8,
+}
 
 
 @dataclass(frozen=True)
@@ -136,7 +170,7 @@ def _replace_override(command: list[str], key: str, value: object) -> None:
 
 
 def _selected_stages(args: argparse.Namespace) -> list[str]:
-    selected = list(args.stages or STAGES)
+    selected = list(args.stages or DEFAULT_STAGES)
     if args.from_stage:
         selected = [name for name in selected if STAGES.index(name) >= STAGES.index(args.from_stage)]
     return [name for name in STAGES if name in selected]
@@ -151,6 +185,62 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
     """构造固定顺序队列；正式队列共 31 个 fold/variant 任务。"""
     selected = set(_selected_stages(args))
     jobs: list[Job] = []
+
+    # B0/B1：MGPTR 单变量对照。B0 同时充当 UNI2-h clean 基线（台账 #8）。
+    mgptr_specs = [
+        ("b0_mgptr_control", "B0 v3.8.2 base (MGPTR=0) BLCA UNI2-h", 0.0, "base"),
+        ("b1_mgptr", "B1 v3.8.2 mgptr (MGPTR=0.05) BLCA UNI2-h", 0.05, "mgptr"),
+    ]
+    for stage, label, mgptr_weight, variant in mgptr_specs:
+        if stage not in selected:
+            continue
+        result_dir = _smoke_dir(stage) if smoke else Path(
+            "results/dct_v3.8.2/robust"
+        ) / variant / "blca"
+        folds = FOLDS_124[:1] if smoke else FOLDS_124
+        for fold in folds:
+            overrides = dict(MGPTR_SHARED)
+            overrides["dct_v382_lambda_mgptr"] = mgptr_weight
+            overrides["specific_simple"] = f"dct_v382_robust_{variant}_blca_50ep"
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage=stage,
+                    label=label,
+                    config="configs/distributional_counterfactual_transport_blca.yaml",
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder="uni2-h",
+                    which_splits="5fold_uni2h",
+                    overrides=overrides,
+                    smoke=smoke,
+                )
+            )
+
+    # v3.3 在旧划分上复现历史分数（0.7311）。沿用当时的 leaky 分箱（默认 False）。
+    if "v33_blca_legacy_repro" in selected:
+        result_dir = _smoke_dir("v33_blca_legacy_repro") if smoke else Path(
+            "results/dct_v3.3_score_first_blca_legacy_repro"
+        )
+        for fold in (range(1) if smoke else range(5)):
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage="v33_blca_legacy_repro",
+                    label="v3.3 Score-First BLCA UNI legacy-split repro",
+                    config="configs/diagnostics/dct_v3_score_blca.yaml",
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder="uni",
+                    which_splits="5fold_legacy",
+                    overrides={
+                        "survot_method": "distributional_counterfactual_transport",
+                        "max_epochs": 50,
+                        "specific_simple": "dct_v3_score_first_legacy_repro",
+                    },
+                    smoke=smoke,
+                )
+            )
 
     if "v33_blca_uni5" in selected:
         result_dir = _smoke_dir("v33_blca_uni5") if smoke else Path(
@@ -423,6 +513,9 @@ def doctor(args: argparse.Namespace, jobs: list[Job]) -> int:
     split_specs = sorted({(job.cancer, job.which_splits, job.encoder) for job in jobs})
     for cancer, which_splits, encoder in split_specs:
         root = args.uni_root if encoder == "uni" else args.uni2h_root
+        # 旧划分是刻意恢复的历史产物，已知含缺 DSS 标签患者且事件分层更差。
+        # 它只用于复现历史分数，因此审计失败只告警，不阻塞。
+        legacy = which_splits == "5fold_legacy"
         try:
             report = inspect_split_directory(
                 cancer,
@@ -430,17 +523,24 @@ def doctor(args: argparse.Namespace, jobs: list[Job]) -> int:
                 which_splits=which_splits,
             )
             ok = bool(report["ok"])
+            status = "OK" if ok else ("LEGACY" if legacy else "INVALID")
             print(
-                f"{'OK' if ok else 'INVALID':8s} split {cancer.upper()} "
+                f"{status:8s} split {cancer.upper()} "
                 f"{which_splits} eligible={report['eligible_cases']} "
                 f"val_events={report['validation_event_counts']}"
             )
             for error in report["errors"]:
                 print(f"         {error}")
-            failed = failed or not ok
+            if legacy and not ok:
+                print("         (已知缺陷划分，仅用于历史复现，不阻塞运行)")
+            failed = failed or not (ok or legacy)
         except Exception as error:  # doctor 要一次报告全部问题
-            print(f"INVALID  split {cancer.upper()} {which_splits}: {error}")
-            failed = True
+            status = "LEGACY" if legacy else "INVALID"
+            print(f"{status:8s} split {cancer.upper()} {which_splits}: {error}")
+            if legacy:
+                print("         (已知缺陷划分，仅用于历史复现，不阻塞运行)")
+            else:
+                failed = True
     return int(failed)
 
 
@@ -517,6 +617,8 @@ def run_queue(args: argparse.Namespace, jobs: list[Job], *, smoke: bool) -> int:
 def parse_stages(value: str) -> list[str]:
     if value.strip().lower() == "all":
         return list(STAGES)
+    if value.strip().lower() == "default":
+        return list(DEFAULT_STAGES)
     selected = [item.strip() for item in value.split(",") if item.strip()]
     unknown = sorted(set(selected) - set(STAGES))
     if unknown:
@@ -536,7 +638,15 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default="plan",
     )
-    parser.add_argument("--stages", type=parse_stages, default=None)
+    parser.add_argument(
+        "--stages",
+        type=parse_stages,
+        default=None,
+        help=(
+            "默认只跑当前主线 3 个阶段 (b0/b1/v3.3 旧划分复现)；"
+            "用 all 跑全部历史阶段，或逗号分隔指定。"
+        ),
+    )
     parser.add_argument("--from-stage", choices=STAGES, default=None)
     parser.add_argument(
         "--uni-root",

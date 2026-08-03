@@ -54,6 +54,11 @@ survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/*
 survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold/*
 !survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold/*/
 !survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold/*/fold_*.csv
+# 2026-07-30 重划之前的旧划分，仅用于 v3.3 历史复现（见 tools/restore_legacy_splits.py）
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/
+survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/*
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/blca/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/blca/fold_*.csv
 
 # Local open-access papers and upstream code snapshots used for method study.
 references/*/papers/*.pdf
