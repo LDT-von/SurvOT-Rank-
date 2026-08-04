@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -134,3 +136,102 @@ def test_arcsurv_bank_update_window_follows_warmup():
     # 至少更新 1 轮，否则原型库永远为空。
     for warmup in (0, 1, 5):
         assert max(1, warmup) >= 1
+
+
+def test_v41_completion_loss_is_bounded_below_and_non_negative():
+    """补全损失不得被方差项拖成负数。
+
+    实测故障：completion 从正数降到 -1.3 ~ -1.9，使 v4.1 总目标与训练损失
+    变负——模型在压低 log-variance 而不是改善生存预测。根因是高斯 NLL
+    ``0.5 * (err^2 / var + log var)`` 在方差无约束时下界为负无穷，而补全目标
+    是模型自身的 detached 账本表示，误差极易被压到 0。
+    """
+    predicted = torch.zeros(4, 8, 16)
+    target = torch.zeros(4, 8, 16)
+    confidence = torch.ones(4, 8)
+    valid = torch.ones(4, dtype=torch.bool)
+
+    loss_fn = DCTV41SurvivalEvidenceLedger._gaussian_completion_loss
+
+    # 误差为 0 且方差被推到极小：旧实现在这里发散到负无穷。
+    for log_variance_value in (-4.0, -20.0, -1e4):
+        log_variance = torch.full((4, 8, 16), log_variance_value)
+        loss = loss_fn(predicted, log_variance, target, confidence, valid)
+        assert torch.isfinite(loss)
+        assert loss.item() >= 0.0
+
+    # 误差越大，损失越大（仍然是有意义的回归目标）。
+    log_variance = torch.zeros(4, 8, 16)
+    near = loss_fn(predicted, log_variance, target, confidence, valid)
+    far = loss_fn(predicted + 2.0, log_variance, target, confidence, valid)
+    assert far.item() > near.item()
+
+    # 固定方差（floor=0）时不引入平移，损失恰为 0。
+    exact = loss_fn(predicted, log_variance, target, confidence, valid, 0.0)
+    assert exact.item() == pytest.approx(0.0)
+
+
+def test_arcsurv_archetypes_do_not_collapse_to_a_uniform_composition():
+    """原型必须分化，否则凸组合退化为常向量。
+
+    实测故障：6 个原型的组合熵 ≈ ln(6) = 1.7918、患者间组合方差 ≈ 1e-4，
+    即所有患者都均匀使用全部原型。两个放大器：
+      1. ``archetypes = softmax(beta_logits) @ memory`` 摊在整个 bank 上，
+         K 行全部收敛到队列均值附近，彼此重合；
+      2. 距离对 dim 取均值，把量级压掉 dim 倍，softmax 必然接近均匀。
+    """
+    from survot_rank.research.methods.archetypal_risk_composition.model import (
+        CohortArchetypeBank,
+    )
+
+    # 必须用真实规模：塌缩来自「softmax 摊在整个 bank 上」与「距离对 dim 取
+    # 均值」这两个尺度效应，在玩具维度下都不会出现。
+    torch.manual_seed(0)
+    dim, num_archetypes, bank_size = 256, 6, 256
+    # patient state 经过 LayerNorm，因此每维近似标准正态。
+    states = torch.randn(bank_size, dim)
+    uniform_entropy = math.log(num_archetypes)
+
+    def build(distance_reduction: str, anchor_logit: float) -> CohortArchetypeBank:
+        torch.manual_seed(0)
+        bank = CohortArchetypeBank(
+            dim,
+            num_archetypes,
+            bank_size,
+            temperature=0.25,
+            beta_init_scale=1.5,
+            distance_reduction=distance_reduction,
+            anchor_logit=anchor_logit,
+        )
+        bank.train()
+        bank.update(states)
+        return bank
+
+    def entropy_of(bank: CohortArchetypeBank) -> float:
+        composition, _, _ = bank(states)
+        return float(
+            -(composition.clamp_min(1e-12) * composition.clamp_min(1e-12).log())
+            .sum(dim=1)
+            .mean()
+        )
+
+    # 旧配置：熵贴在均匀上界 ln(K) 附近（真实 BLCA 运行实测 1.7898）。
+    legacy = build("mean", 0.0)
+    legacy_entropy = entropy_of(legacy)
+    assert legacy_entropy > uniform_entropy - 0.05
+
+    # 修复后：锚定 + 距离归一使组合明显偏离均匀。
+    fixed = build("scaled", 6.0)
+    assert fixed.seed_anchors_once() is True
+    fixed_entropy = entropy_of(fixed)
+    assert fixed_entropy < uniform_entropy - 0.2
+    assert fixed_entropy < legacy_entropy
+
+    # 锚定只做一次，重复调用不再改写 beta。
+    assert fixed.seed_anchors_once() is False
+
+    # 原型之间必须真的分开。
+    archetypes, _ = fixed.archetypes()
+    pairwise = torch.cdist(archetypes, archetypes)
+    off_diagonal = pairwise[~torch.eye(num_archetypes, dtype=torch.bool)]
+    assert off_diagonal.min().item() > 0.0

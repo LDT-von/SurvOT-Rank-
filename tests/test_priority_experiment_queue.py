@@ -15,25 +15,61 @@ def _override(job: queue.Job, key: str) -> str | None:
 
 
 def test_default_queue_is_the_baseline_plus_single_variable_ablations():
-    """默认队列只做两件事：钉死 A 组底座，跑三个单变量消融。
+    """默认队列 = v3.8.2 自适应对照 + v4.0 机制三档 + A 组 clean 底座。
 
-    v4.1 / ArcSurv / MGPTR 的完整重跑已移出默认队列：50ep 统一复测后它们
-    都没有相对同组基线的增益，继续整体重跑只会消耗 GPU。
+    ArcSurv 与 v4.1 需要先修原型使用塌缩与补全损失下界，因此不入默认队列；
+    MGPTR 单项、v3.8.3、v3.9 已判定停止。
     """
     jobs = queue.build_jobs(_args())
 
-    assert len(jobs) == 18
+    assert len(jobs) == 21
     assert list(dict.fromkeys(job.stage for job in jobs)) == list(queue.DEFAULT_STAGES)
     assert Counter(job.stage for job in jobs) == {
+        "v382_fixed_full": 3,
+        "v382_adaptive_full": 3,
+        "v40_abl_a_factual": 3,
+        "v40_abl_b_cost_only": 3,
+        "v40_staged_rerun": 3,
         "v33_clean_baseline": 3,
         "v33_clean_no_ipcw_rank": 3,
-        "v40_staged_rerun": 3,
-        "v40_no_cost_feedback": 3,
-        "v41_no_modality_dropout": 3,
-        "v41_no_ipcw_rank": 3,
     }
     assert all(_override(job, "max_epochs") == "50" for job in jobs)
     assert all(job.fold in (1, 2, 4) for job in jobs)
+
+
+def test_v382_adaptive_control_isolates_the_adaptive_weight_flag():
+    """此前 base/mgptr 两次都设 adaptive=False，因此测不出自适应权重。"""
+    jobs = queue.build_jobs(_args("--stages", "v382_fixed_full,v382_adaptive_full"))
+    fixed = [job for job in jobs if job.stage == "v382_fixed_full"]
+    adaptive = [job for job in jobs if job.stage == "v382_adaptive_full"]
+    identity_keys = ("specific_simple=", "results_dir=")
+
+    def training_overrides(job: queue.Job) -> set[str]:
+        return {
+            job.command[index + 1]
+            for index, item in enumerate(job.command[:-1])
+            if item == "--set"
+            and not job.command[index + 1].startswith(identity_keys)
+        }
+
+    for left, right in zip(fixed, adaptive):
+        assert left.fold == right.fold
+        assert training_overrides(right) - training_overrides(left) == {
+            "dct_v382_adaptive_aux_weights=true"
+        }
+        assert training_overrides(left) - training_overrides(right) == {
+            "dct_v382_adaptive_aux_weights=false"
+        }
+
+    # 两者都是 full：v3.8 三个干预损失启用，MGPTR 权重相同。
+    for job in fixed + adaptive:
+        assert _override(job, "dct_v382_lambda_mgptr") == "0.05"
+        assert _override(job, "dct_v38_lambda_direction") == "0.05"
+        assert _override(job, "dct_v38_lambda_dose") == "0.03"
+        assert _override(job, "dct_v38_lambda_reconfiguration") == "0.02"
+        assert _override(job, "fit_bins_on_train") == "true"
+        assert _override(job, "max_epochs") == "50"
+    assert fixed[0].result_dir != adaptive[0].result_dir
 
 
 def test_mgptr_control_pair_isolates_the_weight():
@@ -100,7 +136,7 @@ def test_legacy_repro_uses_recovered_split_and_original_protocol():
 def test_full_queue_still_covers_every_historical_stage():
     jobs = queue.build_jobs(_args("--stages", "all"))
 
-    assert len(jobs) == 69
+    assert len(jobs) == 78
     assert list(dict.fromkeys(job.stage for job in jobs)) == list(queue.STAGES)
     assert Counter(job.stage for job in jobs) == {
         "b0_mgptr_control": 3,
@@ -111,7 +147,10 @@ def test_full_queue_still_covers_every_historical_stage():
         "v40_staged_rerun": 3,
         "v41_staged_rerun": 3,
         "arcsurv_staged_rerun": 3,
-        "v40_no_cost_feedback": 3,
+        "v382_fixed_full": 3,
+        "v382_adaptive_full": 3,
+        "v40_abl_a_factual": 3,
+        "v40_abl_b_cost_only": 3,
         "v41_no_modality_dropout": 3,
         "v41_no_ipcw_rank": 3,
         "v42_act_surv": 3,
@@ -255,10 +294,41 @@ def test_v33_clean_baseline_makes_the_binning_protocol_traceable():
     assert baseline[0].result_dir != no_rank[0].result_dir
 
 
+def test_v40_three_way_ablation_separates_cost_feedback_from_aux_loss():
+    """A/B/C 三档：B-A = cost 回写净效果，C-B = 辅助损失净效果。
+
+    不设「关回写但留辅助损失」这一档：实测 plan≈5e-5、attribution≈1e-15、
+    risk 权重为 0，辅助损失本身几乎不工作，那一档等价于 A。
+    """
+    stages = ("v40_abl_a_factual", "v40_abl_b_cost_only", "v40_staged_rerun")
+    jobs = queue.build_jobs(_args("--stages", ",".join(stages)))
+    by_stage = {
+        stage: [job for job in jobs if job.stage == stage] for stage in stages
+    }
+
+    expected = {
+        # (strength, plan, attribution, risk)
+        "v40_abl_a_factual": ("0.0", "0.0", "0.0", "0.0"),
+        "v40_abl_b_cost_only": ("0.1", "0.0", "0.0", "0.0"),
+        "v40_staged_rerun": ("0.1", "0.05", "0.05", "0.0"),
+    }
+    for stage, (strength, plan, attribution, risk) in expected.items():
+        for job in by_stage[stage]:
+            assert _override(job, "ist_stability_strength") == strength
+            assert _override(job, "ist_lambda_plan") == plan
+            assert _override(job, "ist_lambda_attribution") == attribution
+            assert _override(job, "ist_lambda_risk") == risk
+            assert _override(job, "ist_warmup_epochs") == "5"
+            assert _override(job, "ist_ramp_epochs") == "10"
+            assert _override(job, "fit_bins_on_train") == "true"
+            assert _override(job, "max_epochs") == "50"
+
+    # 三档的结果目录必须互不相同。
+    assert len({by_stage[stage][0].result_dir for stage in stages}) == 3
+
+
 def test_single_variable_ablations_change_exactly_one_key():
     stages = (
-        "v40_staged_rerun",
-        "v40_no_cost_feedback",
         "v41_staged_rerun",
         "v41_no_modality_dropout",
         "v41_no_ipcw_rank",
@@ -284,10 +354,6 @@ def test_single_variable_ablations_change_exactly_one_key():
             differences |= training_overrides(variant) - training_overrides(base)
         return differences
 
-    # v4.0：只关掉稳定性回写 cost，辅助损失保持不变。
-    assert sole_difference("v40_staged_rerun", "v40_no_cost_feedback") == {
-        "ist_stability_strength=0.0"
-    }
     # v4.1：只关掉人为删模态。
     assert sole_difference("v41_staged_rerun", "v41_no_modality_dropout") == {
         "v41_modality_dropout=0.0"
@@ -298,13 +364,9 @@ def test_single_variable_ablations_change_exactly_one_key():
     }
 
     # 每个消融的结果目录都必须与其基线隔离。
-    for baseline_stage, variant_stage in (
-        ("v40_staged_rerun", "v40_no_cost_feedback"),
-        ("v41_staged_rerun", "v41_no_modality_dropout"),
-        ("v41_staged_rerun", "v41_no_ipcw_rank"),
-    ):
+    for variant_stage in ("v41_no_modality_dropout", "v41_no_ipcw_rank"):
         assert (
-            by_stage[baseline_stage][0].result_dir
+            by_stage["v41_staged_rerun"][0].result_dir
             != by_stage[variant_stage][0].result_dir
         )
 

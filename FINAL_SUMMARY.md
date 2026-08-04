@@ -924,8 +924,19 @@ fit_bins_on_train: true
 | v3.8.2 mgptr (MGPTR=0.05) | 0.5916 | 0.6926 | 0.7991 | **0.6944** |
 | v4.0 IST-Surv | 0.6973 | 0.6645 | 0.7547 | **0.7055** |
 
-> v3.8.2 base 0.6975 为 B 组 clean 基线。mgptr Δ=−0.0031，自适应权重无增益。
-> v4.0 IST-Surv 0.7055（vs 旧 30ep 0.7078，基本持平），但 fold1 @e0 早熟仍未解决。
+> v3.8.2 base 0.6975 为 B 组 clean 基线。mgptr Δ=−0.0031，即 **MGPTR 权重无增益**。
+> ⚠️ **更正（2026-08-05）**：此处原写「自适应权重无增益」，该结论不成立。
+> `MGPTR_SHARED` 对 base 与 mgptr **两次都设了 `dct_v382_adaptive_aux_weights=False`**，
+> 因此这一组的唯一变量是 MGPTR 权重，完全没有测到自适应权重。
+> 自适应权重的真实对照是 `fixed_full vs adaptive_full`（→ 台账 #17）。
+> 另注同 30ep 下 `adaptive_full 0.7159` vs `base 0.6891`，差约 **+0.027**，
+> 是目前 DCT 侧唯一还有量级的信号。
+>
+> v4.0 IST-Surv 0.7055（vs 旧 30ep 0.7078，基本持平）。
+> ⚠️ **更正（2026-08-05）**：此处原写「fold1 @e0 早熟仍未解决」，与结果包不符。
+> **50ep staged 版本的 fold1 最佳约为 `0.697 @ epoch 13`，不在 epoch 0。**
+> `best @ e0` 只出现在 30ep 那批（跑在 `76bbe20` 之前，当时还没有 warmup）。
+>
 > mgptr fold4=0.7991 为全部 BLCA 实验最高单折分数，但 fold1=0.5916 拉低均值。
 
 **对比 30ep → 50ep 各方法变化**
@@ -1078,16 +1089,33 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 9 | 验证 `5fold` 与 `5fold_uni2h` 在 BLCA 是否同一划分 | ✅ **已完成** | — | **结果：折 1/2/4 验证患者集合完全相同**（各 76 人，overlap 76/76，`same=True`）。**split 维度对 BLCA 已消除**，混淆项从 3 个降为 2 个（编码器 + 分箱协议） |
 | 10 | v3.3 clean 协议基线：`fit_bins_on_train=true`，UNI v1，`5fold`，折 1/2/4，**50ep** | ✅ **已完成** | 3 次训练 | v3.3 clean 基线 = 0.7400（A 组）。编码器不变、协议对齐 |
 | 11 | 统一 epoch 预算到 50ep | ✅ **已完成** | 并入 #8/#10 | 全部 6 个方法统一 50ep。结果见「50ep Staged 统一复测结果」章节 |
-| 12 | v4.0 fold1 `best @ e0` 根因定位 | 🟡 **已定位代码级根因，待重跑验证** | 3 次训练 | **不是过拟合也不是优化失败，而是训练/评估前向图不一致。** `_stability_scale()` 同时驱动两件事：(a) `stable_cost` → 预测用的运输计划，(b) 辅助损失权重；而它在 `not self.training` 时硬返回 `1.0`。于是 warmup 的前 5 轮里，梯度更新的是 factual plan、验证打分的是从未训练过的 stable plan，early-best 因此是选择噪声。已拆分为 `_cost_feedback_scale`（前向图，训练/评估同曲线）与 `_stability_scale`（仅辅助损失）。注：`ist_deletion_penalty=8.0` 只出现在 `explain_last_batch()`，不参与反传，与本现象无关 |
+| 12 | v4.0 fold1 `best @ e0` 根因定位 | ✅ **已结案（结论与最初假设不同）** | 0 | **结果包显示 50ep staged 的 fold1 最佳约 `0.697 @ e13`，`best @ e0` 只属于 30ep 那批。** 而 30ep 跑在 `76bbe20` 之前，当时没有 warmup、`_stability_scale` 不存在，训练与评估都用满强度 stable plan，前向图是一致的——因此 **`e0` 不能归因为前向图不一致**（本表此前的该归因已撤回）。真正待答的问题变成「v4.0 的分数来自哪里」：实测 `plan≈5e-5`、`attribution≈1e-15`、`ist_lambda_risk=0`，辅助损失几乎不工作，故分数主要来自稳定性对 transport cost 的回写 → 由台账 #18 的三档消融判定。注：`ist_deletion_penalty=8.0` 只出现在 `explain_last_batch()`，不参与反传 |
+| 17 | v3.8.2 自适应权重对照 `fixed_full vs adaptive_full` | ⬜ **未开始** | 6 次训练 | 唯一变量 = `dct_v382_adaptive_aux_weights`，两者都启用 full 三损失 + MGPTR=0.05，统一 50ep + clean。**这是 #4 的正确形式**：旧 base/mgptr 对照两次都设 `False`，测不到自适应权重。同 30ep 下 adaptive_full 0.7159 vs base 0.6891（≈+0.027）是启动该对照的依据。已加 `v382_fixed_full` / `v382_adaptive_full` 两个 stage |
+| 18 | v4.0 分数来源三档消融 | ⬜ **未开始** | 9 次训练 | A = 纯 factual（`strength=0` 且三个 `lambda` 全 0）；B = 仅回写（`strength=0.10`，`lambda` 全 0）；C = 完整 IST（现状）。**B−A = 稳定性回写运输计划的净效果，C−B = 辅助损失的净效果。** 不设「关回写但留辅助损失」一档，因为辅助损失实测≈0，那一档等价于 A。已加 `v40_abl_a_factual` / `v40_abl_b_cost_only` |
+| 19 | ArcSurv 原型使用塌缩 | 🟡 **已修代码，待重跑验证** | 3 次训练 | **实测组合熵 ≈ `ln(6) = 1.7918`（BLCA 观测 1.7898）、患者间组合方差 ≈ 1e-4，即几乎所有患者都均匀使用全部原型，凸组合退化为常向量。** 两个独立放大器：(a) `archetypes = softmax(beta_logits) @ memory` 摊在整个 bank（256 项）上，K 行全部收敛到队列均值附近、彼此重合；(b) 距离对 dim 取均值，把量级压掉 dim 倍，再除以 `temperature=0.25` 仍必然接近均匀。另有结构缺口：`balance` 只把**批次平均**推向均匀，而**没有任何一项奖励单个患者的组合变尖**。修复：memory 冻结时做一次 furthest-point 锚定（`arc_anchor_logit`）、距离按 `sqrt(dim)` 归一（`arc_distance_reduction=scaled`）、新增个体熵惩罚（`arc_lambda_sharpness=0.02`）。**判据：熵须明显低于 `ln(K)` 且组合方差远离 0，否则 ArcSurv 停止、v4.2 不启动** |
+| 20 | v4.1 补全损失无下界，总目标变负 | 🟡 **已修代码，待重跑验证** | 3 次训练 | **账本守恒正常、无槽死亡；真正的问题是 completion loss 从正数降到 `-1.3 ~ -1.9`，把总目标与训练损失一起拖成负数——模型在压低 log-variance，而不是改善生存预测。** 根因：高斯 NLL `0.5 * (err²/var + log var)` 在方差无约束时下界为负无穷，而补全目标是模型自身的 **detached 账本表示**（自蒸馏），误差极易被压到 0，方差项因此成为免费的下降通道。修复：`log_variance` 加下界 `v41_min_log_variance=-4.0` 并把该项平移到非负；自编码项方差固定为 1，不做平移。**在此修复验证前，v4.1 的任何分数都不可用** |
 | 14 | v3.3 clean 基线 `0.7400` 的运行溯源缺口 | 🟡 **已补 launcher，待重跑** | 3 次训练 | `configs/diagnostics/dct_v3_score_blca.yaml` 未设 `fit_bins_on_train`，而它在 `extended_args.py` 中是 `action="store_true"`（默认 False）；原 `v33_blca_uni5` 阶段也未覆盖该键。因此现有 launcher 路径跑出来的是 **leaky** 分箱，`0.7400` 无法从代码复现。新增 `v33_clean_baseline` 阶段显式设置 clean 协议。**在此基线重跑确认前，所有「vs 基线」的增减都不作数** |
 | 15 | 训练 C-index 无可比样本对时整折失败 | ✅ **已修复** | 0 | `train_one_epoch` 直接调用 `concordance_index_censored`，事件稀疏/小 batch/smoke 下抛 `NoComparablePairException` 并让整个 fold 失败（ArcSurv smoke fold2 实例）。该值只是诊断量，已降级为 `nan` 并继续训练 |
 | 16 | ArcSurv / v4.2 的 archetype 分化前提未被观测 | 🟡 **已加诊断，待重跑** | 并入 ArcSurv 重跑 | 「凸组合 + 可加归因」这一卖点要求原型真的分化开。新增 `arc_wsi_archetype_cosine`、`arc_omic_archetype_cosine`、`arc_hazard_spread`、`arc_active_archetype_fraction`、`arc_max_composition_weight`。**判据：若 cosine → 1 且 hazard_spread → 0，则 composition 已退化为近似常向量，ArcSurv 停止、v4.2 不启动** |
 | 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
 
-**结算：16 项中已完成 8（#1 #2 #7 #8 #9 #10 #11 #15）、部分完成 5（#6 #12 #13 #14 #16）、未开始 3（#3 #4 #5）。**
+**结算：20 项中已完成 9（#1 #2 #7 #8 #9 #10 #11 #12 #15）、部分完成 6（#6 #13 #14 #16 #19 #20）、未开始 5（#3 #4 #5 #17 #18）。**
 
-> **当前主线只有两个前置**：#14（把 A 组 clean 底座钉死）与 #12（v4.0 前向图修复后重跑）。
-> 二者未完成前，不要再启动 v4.1 / ArcSurv / MGPTR 的整体重跑，也不要启动 v4.2。
+> #4 已被 #17 取代（旧形式测不到自适应权重）。
+
+### 当前优先级（2026-08-05，依据完整结果包诊断）
+
+| 序 | 方法 | 状态 | 下一步 |
+|:-:|------|------|--------|
+| 1 | **v3.8.2 adaptive-full** | 同 30ep 下 vs base 有 ≈+0.027，但三折为 `+0.075 / −0.033 / +0.038`，不稳定 | #17 的 `fixed_full vs adaptive_full` 同协议对照 |
+| 2 | **v4.0 IST-Surv** | 0.7055 vs base 0.6975，仅 +0.008 且三折不一致；辅助损失实测≈0 | #18 的 A/B/C 三档，确认分数来源 |
+| 3 | **ArcSurv** | 50ep 仍在上升，但原型使用已塌缩为均匀 | 先验证 #19 的修复，**不能只加 epoch** |
+| 4 | **v4.1** | 账本守恒正常，但补全损失把总目标拖成负数 | 先验证 #20 的下界修复 |
+
+> **已停止**：MGPTR 单项（0.6944 < 0.6975 base，且重建损失趋 0、风险差异收缩，
+> 容易学成简单重建）、v3.8.3、v3.9。
+> **v4.2 ACT-Surv 暂不运行**：它与 ArcSurv 共用「凸组合」前提，
+> 必须先看到 #19 的塌缩确实解除。
 
 > **依赖关系**：#9 已完成 → 现在 #10（UNI v1 clean 基线）与 #8（UNI2-h clean 基线）
 > 是所有后续判定的前置，共 6 次训练，且必须按 #11 统一到 50ep。之后才能谈 #3/#4。

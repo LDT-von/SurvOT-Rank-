@@ -39,6 +39,8 @@ class CohortArchetypeBank(nn.Module):
         bank_size: int,
         temperature: float,
         beta_init_scale: float = 1.5,
+        distance_reduction: str = "scaled",
+        anchor_logit: float = 6.0,
     ):
         super().__init__()
         if dim < 1:
@@ -56,6 +58,10 @@ class CohortArchetypeBank(nn.Module):
         self.num_archetypes = int(num_archetypes)
         self.bank_size = int(bank_size)
         self.temperature = float(temperature)
+        self.distance_reduction = str(distance_reduction)
+        if self.distance_reduction not in {"mean", "scaled"}:
+            raise ValueError("arc_distance_reduction must be 'mean' or 'scaled'")
+        self.anchor_logit = float(anchor_logit)
 
         # Zero rows make every archetype exactly identical. That symmetry is
         # fatal here: all patients then receive the same uniform composition,
@@ -79,6 +85,44 @@ class CohortArchetypeBank(nn.Module):
             torch.linspace(0.173, 1.913, dim),
             persistent=True,
         )
+        self.register_buffer("anchors_seeded", torch.zeros((), dtype=torch.bool))
+
+    @torch.no_grad()
+    def seed_anchors_once(self) -> bool:
+        """冻结 memory 后，把每个原型锚定到互相最远的队列成员上。
+
+        塌缩根因：``archetypes = softmax(beta_logits) @ memory``，softmax 摊在
+        整个 bank（256 项）上，``randn * beta_init_scale`` 在这个宽度上不足以
+        打破对称，于是 K 行全部收敛到「队列的加权均值」附近——彼此几乎重合。
+        患者到各原型的距离因此近乎相等，composition 退化为均匀分布
+        （实测组合熵 ≈ ln(6) = 1.7918，患者间方差 ≈ 1e-4）。
+
+        这里在 memory 冻结的那一刻做一次 furthest-point 采样，让每行有一个
+        不同的强锚点，同时保留小幅噪声，使 ``A = Beta @ Z`` 的行随机约束不变。
+        """
+        if bool(self.anchors_seeded.item()):
+            return False
+        count = int(self.memory_count.item())
+        if count < self.num_archetypes:
+            return False
+
+        memory = self.memory[:count]
+        centre = memory.mean(dim=0, keepdim=True)
+        selected = [int(torch.cdist(memory, centre).squeeze(1).argmax().item())]
+        while len(selected) < self.num_archetypes:
+            chosen = memory.index_select(
+                0, torch.tensor(selected, device=memory.device)
+            )
+            spread = torch.cdist(memory, chosen).min(dim=1).values
+            spread[torch.tensor(selected, device=memory.device)] = -1.0
+            selected.append(int(spread.argmax().item()))
+
+        logits = torch.empty_like(self.beta_logits).normal_(0.0, 0.1)
+        for row, index in enumerate(selected):
+            logits[row, index] += self.anchor_logit
+        self.beta_logits.data.copy_(logits)
+        self.anchors_seeded.fill_(True)
+        return True
 
     @torch.no_grad()
     def update(self, states: torch.Tensor, *, allow_update: bool = True) -> None:
@@ -136,7 +180,14 @@ class CohortArchetypeBank(nn.Module):
 
     def forward(self, states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         archetypes, _ = self.archetypes()
-        squared_distance = (states[:, None, :] - archetypes[None, :, :]).pow(2).mean(dim=-1)
+        squared = (states[:, None, :] - archetypes[None, :, :]).pow(2)
+        if self.distance_reduction == "mean":
+            # 旧行为：对 dim 取均值，把距离量级压掉 dim 倍（dim=256），
+            # 再除以 temperature 也无法产生有区分度的 softmax。
+            squared_distance = squared.mean(dim=-1)
+        else:
+            # 按 sqrt(dim) 归一，使距离尺度不随投影维度塌缩。
+            squared_distance = squared.sum(dim=-1) / math.sqrt(self.dim)
         composition = torch.softmax(-squared_distance / self.temperature, dim=1)
         reconstruction = composition @ archetypes
         return composition, reconstruction, archetypes
@@ -178,6 +229,13 @@ class ArchetypalRiskComposition(nn.Module):
                 raise ValueError(f"{name} must be non-negative")
         self.arc_rank_margin = float(getattr(args, "arc_rank_margin", 0.0))
         self.arc_rank_max_pairs = int(getattr(args, "arc_rank_max_pairs", 4096))
+        # 个体 composition 的锐度项。balance 只把**批次平均**推向均匀，
+        # 而此前没有任何一项奖励**单个患者**的组合变尖，因此「所有患者都
+        # 平均使用全部原型」是一个可行解（实测组合熵 ≈ ln(K)、方差 ≈ 0）。
+        # 两者组合才是目标形态：批次均匀 + 个体集中 = 不同患者用不同原型。
+        self.arc_lambda_sharpness = float(
+            getattr(args, "arc_lambda_sharpness", 0.02)
+        )
         self._validate_hyperparameters()
 
         self._init_omics_encoder(self.omic_sizes, args.rna_format)
@@ -204,6 +262,10 @@ class ArchetypalRiskComposition(nn.Module):
         bank_size = int(getattr(args, "arc_bank_size", 256))
         temperature = float(getattr(args, "arc_temperature", 0.25))
         beta_init_scale = float(getattr(args, "arc_beta_init_scale", 1.5))
+        distance_reduction = str(
+            getattr(args, "arc_distance_reduction", "scaled")
+        )
+        anchor_logit = float(getattr(args, "arc_anchor_logit", 6.0))
         self.wsi_state_norm = nn.LayerNorm(dim)
         self.omic_state_norm = nn.LayerNorm(dim)
         self.wsi_archetypes = CohortArchetypeBank(
@@ -212,6 +274,8 @@ class ArchetypalRiskComposition(nn.Module):
             bank_size,
             temperature,
             beta_init_scale,
+            distance_reduction,
+            anchor_logit,
         )
         self.omic_archetypes = CohortArchetypeBank(
             dim,
@@ -219,6 +283,8 @@ class ArchetypalRiskComposition(nn.Module):
             bank_size,
             temperature,
             beta_init_scale,
+            distance_reduction,
+            anchor_logit,
         )
 
         self.archetype_hazard_logits = nn.Parameter(
@@ -258,6 +324,7 @@ class ArchetypalRiskComposition(nn.Module):
             "arc_lambda_balance": self.arc_lambda_balance,
             "arc_lambda_volume": self.arc_lambda_volume,
             "arc_lambda_rank": self.arc_lambda_rank,
+            "arc_lambda_sharpness": self.arc_lambda_sharpness,
         }
         for name, value in weights.items():
             if not math.isfinite(value) or value < 0.0:
@@ -470,6 +537,11 @@ class ArchetypalRiskComposition(nn.Module):
             omic_state[has_omic],
             allow_update=update_memory,
         )
+        # memory 冻结后立刻把原型锚定到互相最远的成员上。必须在冻结之后做：
+        # 此时队列内容不再变化，furthest-point 选出的锚点才是稳定的。
+        if self.training and not update_memory:
+            self.wsi_archetypes.seed_anchors_once()
+            self.omic_archetypes.seed_anchors_once()
         (
             wsi_composition,
             wsi_reconstruction,
@@ -534,6 +606,14 @@ class ArchetypalRiskComposition(nn.Module):
             + self._simplex_volume_loss(omic_archetypes)
         )
 
+        # 个体锐度：最小化每个患者 composition 的熵。与 balance（批次平均趋于
+        # 均匀）互补，共同排除「所有患者都均匀使用全部原型」这个退化解。
+        sharpness_loss = (
+            -(composition.clamp_min(1e-8) * composition.clamp_min(1e-8).log())
+            .sum(dim=1)
+            .mean()
+        )
+
         rank_loss = zero
         if kwargs.get("y") is not None and kwargs.get("c") is not None:
             rank_loss = self._ranking_loss(logits, kwargs["y"], kwargs["c"])
@@ -544,6 +624,7 @@ class ArchetypalRiskComposition(nn.Module):
             + self.arc_lambda_align * alignment_loss
             + self.arc_lambda_balance * balance_loss
             + self.arc_lambda_volume * volume_loss
+            + self.arc_lambda_sharpness * sharpness_loss
         ) + self.arc_lambda_rank * rank_loss
         self.last_training_losses = {
             "arc_structure_scale": logits.new_tensor(structure_scale).detach(),
@@ -554,6 +635,10 @@ class ArchetypalRiskComposition(nn.Module):
             "arc_alignment": alignment_loss.detach(),
             "arc_balance": balance_loss.detach(),
             "arc_simplex_volume": volume_loss.detach(),
+            "arc_sharpness": sharpness_loss.detach(),
+            "arc_anchors_seeded": logits.new_tensor(
+                float(bool(self.wsi_archetypes.anchors_seeded.item()))
+            ).detach(),
             "arc_rank": rank_loss.detach(),
             "arc_composition_entropy": (
                 -(composition.clamp_min(1e-8) * composition.clamp_min(1e-8).log())

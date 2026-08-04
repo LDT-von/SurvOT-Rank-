@@ -479,6 +479,17 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--v41_lambda_survival", type=float, default=0.05)
     parser.add_argument("--v41_lambda_private", type=float, default=0.02)
     parser.add_argument("--v41_shared_rank", type=int, default=64)
+    parser.add_argument(
+        "--v41_min_log_variance",
+        type=float,
+        default=-4.0,
+        help=(
+            "补全损失的 log-variance 下界。高斯 NLL 在方差无约束时下界为负无穷，"
+            "而补全目标是模型自身的 detached 账本表示，误差易被压到 0，"
+            "方差项因此成为免费的下降通道（实测补全项降到 -1.3 ~ -1.9，"
+            "使总目标与训练损失变负）。取 0 表示固定方差。"
+        ),
+    )
     # v4.1 账本辅助损失与模态删除的分阶段激活。四项损失 + modality dropout
     # 从第一轮就与生存似然竞争：BLCA fold2 最佳 C-index 出现在 epoch 3 后持续走低。
     parser.add_argument(
@@ -600,6 +611,36 @@ def build_base_parser() -> argparse.ArgumentParser:
         help=(
             "原型库更新轮数，-1 表示跟随 arc_warmup_epochs。"
             "原实现只在 epoch 0 建库并冻结，此时编码器尚未被生存目标塑形。"
+        ),
+    )
+    # ArcSurv 原型使用塌缩修复。实测组合熵 ≈ ln(6) = 1.7918、患者间组合方差
+    # ≈ 1e-4，即几乎所有患者都均匀使用全部原型，凸组合退化为常向量。
+    parser.add_argument(
+        "--arc_distance_reduction",
+        choices=("mean", "scaled"),
+        default="scaled",
+        help=(
+            "patient-archetype 距离的归一方式。mean = 旧行为（对 dim 取均值，"
+            "把距离量级压掉 dim 倍，softmax 必然接近均匀）；"
+            "scaled = 按 sqrt(dim) 归一，使尺度不随投影维度塌缩。"
+        ),
+    )
+    parser.add_argument(
+        "--arc_anchor_logit",
+        type=float,
+        default=6.0,
+        help=(
+            "memory 冻结后对每个原型做 furthest-point 锚定时加在该锚点上的 "
+            "logit。0 = 关闭锚定，退回纯随机 beta 初始化（会重现塌缩）。"
+        ),
+    )
+    parser.add_argument(
+        "--arc_lambda_sharpness",
+        type=float,
+        default=0.02,
+        help=(
+            "个体 composition 熵惩罚。balance 只把批次平均推向均匀，"
+            "此前没有任何一项奖励单个患者的组合变尖；0 = 旧行为。"
         ),
     )
 

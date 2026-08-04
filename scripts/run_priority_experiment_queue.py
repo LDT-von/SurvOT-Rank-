@@ -47,26 +47,37 @@ except ModuleNotFoundError:
     from task_lock import ActiveRunError, acquire_run_lock, release_run_lock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# STAGES 的顺序就是执行优先级：build_jobs 最后按本元组重排任务，
+# 因此这里的次序决定 GPU 先跑什么，与各段代码的书写位置无关。
 STAGES = (
-    # 当前主线：先用 6 次训练判定 MGPTR 是否成立。
-    "b0_mgptr_control",
-    "b1_mgptr",
+    # ── 优先级 1：v3.8.2 自适应权重对照 ──
+    # 同 30ep 下 adaptive_full 0.7159 vs base 0.6891 是目前 DCT 侧唯一还有
+    # +0.027 量级的信号，但此前 base/mgptr 两次都设了 adaptive=False，
+    # 所以「自适应权重是否有增益」从未被真正测过。
+    "v382_fixed_full",
+    "v382_adaptive_full",
+    # ── 优先级 2：v4.0 机制三档 ──
+    # B-A = 稳定性回写 cost 的净效果，C-B = 辅助损失的净效果。
+    # 不设「关回写但留辅助损失」：实测 plan≈5e-5、attribution≈1e-15、
+    # risk 权重为 0，辅助损失本身几乎不工作，那一档等价于 A。
+    "v40_abl_a_factual",
+    "v40_abl_b_cost_only",
+    "v40_staged_rerun",
+    # ── 优先级 3：A 组 clean 底座 ──
+    # 冻结 YAML 未设 fit_bins_on_train，0.7400 目前无法从代码复现。
+    "v33_clean_baseline",
+    "v33_clean_no_ipcw_rank",
+    # ── 优先级 4：v4.1（补全损失下界修复后）──
+    "v41_no_modality_dropout",
+    "v41_no_ipcw_rank",
+    "v41_staged_rerun",
+    # ── 优先级 5：ArcSurv（原型使用塌缩修复后）──
+    "arcsurv_staged_rerun",
     # v3.3 在 2026-07-30 重划之前的旧划分上复现历史分数 (0.7311)。
     "v33_blca_legacy_repro",
-    # A 组 clean 基线：显式写出 fit_bins_on_train，使 0.7400 可溯源。
-    "v33_clean_baseline",
-    # A 组底座候选：去掉稀疏事件下高方差的 IPCW pairwise rank。
-    "v33_clean_no_ipcw_rank",
-    # 修复分阶段激活后重跑（统一 50ep）。
-    "v40_staged_rerun",
-    "v41_staged_rerun",
-    "arcsurv_staged_rerun",
-    # 单变量消融：稳定性分数是否应回写 factual transport cost。
-    "v40_no_cost_feedback",
-    # 单变量消融：完整模态任务上人为删模态是否有害。
-    "v41_no_modality_dropout",
-    # 单变量消融：v4.1 的退化是否来自继承的 IPCW rank。
-    "v41_no_ipcw_rank",
+    # MGPTR 单项已判定停止（0.6944 < 0.6975 base），保留以便审计。
+    "b0_mgptr_control",
+    "b1_mgptr",
     # v4.2 已实现但刻意不入默认队列：需先由 arcsurv_staged_rerun 确认
     # archetype 真的分化开（act_archetype_cosine / act_hazard_spread 诊断），
     # 否则「凸组合 + 精确可加归因」的第二卖点没有立足点。
@@ -81,15 +92,16 @@ STAGES = (
     "v41_blca_fold124",
     "arcsurv_blca_fold124",
 )
+# 默认队列 = 优先级 1~3。ArcSurv 与 v4.1 的重跑需要先确认塌缩/损失下界修复
+# 是否生效，因此不入默认队列，需显式 --stages 选择。
 DEFAULT_STAGES = (
-    # 当前主线只保留三件事：把 A 组底座钉死、修复后的 v4.0、以及三个单变量消融。
-    # v4.1 与 ArcSurv 的完整重跑不入默认队列（见 FINAL_SUMMARY 的判定）。
+    "v382_fixed_full",
+    "v382_adaptive_full",
+    "v40_abl_a_factual",
+    "v40_abl_b_cost_only",
+    "v40_staged_rerun",
     "v33_clean_baseline",
     "v33_clean_no_ipcw_rank",
-    "v40_staged_rerun",
-    "v40_no_cost_feedback",
-    "v41_no_modality_dropout",
-    "v41_no_ipcw_rank",
 )
 FOLDS_124 = (1, 2, 4)
 # B0/B1 唯一变量：MGPTR 权重。其余全部相同。
@@ -409,29 +421,110 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
                 )
             )
 
+    # v3.8.2 自适应权重对照。唯一变量 = dct_v382_adaptive_aux_weights。
+    # 两者都启用 v3.8 的 full 三损失 + MGPTR=0.05，其余协议完全相同。
+    # 说明：此前的 base/mgptr 对照两次都设了 adaptive=False，因此那一组
+    # 无法回答「自适应权重是否有增益」，只能回答「MGPTR 权重是否有增益」。
+    v382_full_shared = {
+        "survot_method": "dct_v382_prognostic_transport_reconstruction",
+        "max_epochs": 50,
+        "dct_v382_warmup_epochs": 5,
+        "dct_v382_ramp_epochs": 10,
+        "dct_v382_lambda_mgptr": 0.05,
+        "dct_v382_distill_weight": 0.50,
+        # full = v3.8 三个干预损失全部启用。
+        "dct_v38_lambda_direction": 0.05,
+        "dct_v38_lambda_dose": 0.03,
+        "dct_v38_lambda_reconfiguration": 0.02,
+        "fit_bins_on_train": True,
+        "binning_mode": "global_qcut",
+        "dct_slot_init_mode": "deterministic",
+        "event_stratified_batches": True,
+        "event_sampling_fraction": 0.0,
+        "dct_lambda_ipcw_rank": 0.10,
+        "dct_ipcw_rank_memory_size": 64,
+        "dct_lambda_etar": 0.0,
+        "dct_lambda_listwise": 0.0,
+        "dct_mix_ratio": 1.0,
+        "num_patches": 2048,
+        "batch_size": 8,
+    }
+    v382_specs = [
+        ("v382_fixed_full", "fixed_full", False),
+        ("v382_adaptive_full", "adaptive_full", True),
+    ]
+    for stage, variant, adaptive in v382_specs:
+        if stage not in selected:
+            continue
+        result_dir = _smoke_dir(stage) if smoke else Path(
+            "results/dct_v3.8.2/robust"
+        ) / variant / "blca"
+        for fold in (FOLDS_124[:1] if smoke else FOLDS_124):
+            overrides = dict(v382_full_shared)
+            overrides["dct_v382_adaptive_aux_weights"] = adaptive
+            overrides["specific_simple"] = f"dct_v382_robust_{variant}_blca_50ep"
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage=stage,
+                    label=f"DCT v3.8.2 {variant} BLCA UNI2-h 50ep",
+                    config="configs/distributional_counterfactual_transport_blca.yaml",
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder="uni2-h",
+                    which_splits="5fold_uni2h",
+                    overrides=overrides,
+                    smoke=smoke,
+                )
+            )
+
     # 单变量消融。每个 stage 相对其 staged 基线只改一个键，其余全部继承，
     # 便于做逐折配对比较。
+    #
+    # v4.0 的三档（A/B/C）用于把分数来源拆开：
+    #   A = 纯 factual（既不回写 cost，也不加辅助损失）
+    #   B = 仅回写 cost
+    #   C = 完整 IST（即 v40_staged_rerun）
+    # B-A 是干预稳定性回写运输计划的净效果，C-B 是辅助损失的净效果。
+    ist_abl_shared = {
+        "ist_warmup_epochs": 5,
+        "ist_ramp_epochs": 10,
+        "fit_bins_on_train": True,
+        "binning_mode": "global_qcut",
+    }
     ablation_specs = [
         (
-            "v40_no_cost_feedback",
-            "v4.0 IST-Surv staged, stability cost feedback off",
+            "v40_abl_a_factual",
+            "v4.0 IST-Surv ablation A: factual only",
             "configs/intervention_stable_survival_transport_blca.yaml",
-            "results/ist_surv_v4.0_staged_50ep/clean/no_cost_feedback/blca",
+            "results/ist_surv_v4.0_staged_50ep/clean/abl_a_factual/blca",
             "intervention_stable_survival_transport",
-            "ist_v40_staged_no_cost_feedback_blca_50ep",
+            "ist_v40_abl_a_factual_blca_50ep",
             "uni2-h",
             "5fold_uni2h",
             {
-                "ist_warmup_epochs": 5,
-                "ist_ramp_epochs": 10,
-                # 唯一变量：稳定性分数不再回写 factual cost。
-                # 辅助损失仍然保留，用于区分「回写运输计划」与「稳定性正则」。
+                **ist_abl_shared,
                 "ist_stability_strength": 0.0,
-                "ist_lambda_plan": 0.05,
-                "ist_lambda_attribution": 0.05,
+                "ist_lambda_plan": 0.0,
+                "ist_lambda_attribution": 0.0,
                 "ist_lambda_risk": 0.0,
-                "fit_bins_on_train": True,
-                "binning_mode": "global_qcut",
+            },
+        ),
+        (
+            "v40_abl_b_cost_only",
+            "v4.0 IST-Surv ablation B: stability cost feedback only",
+            "configs/intervention_stable_survival_transport_blca.yaml",
+            "results/ist_surv_v4.0_staged_50ep/clean/abl_b_cost_only/blca",
+            "intervention_stable_survival_transport",
+            "ist_v40_abl_b_cost_only_blca_50ep",
+            "uni2-h",
+            "5fold_uni2h",
+            {
+                **ist_abl_shared,
+                "ist_stability_strength": 0.10,
+                "ist_lambda_plan": 0.0,
+                "ist_lambda_attribution": 0.0,
+                "ist_lambda_risk": 0.0,
             },
         ),
         (
@@ -736,6 +829,10 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
                     smoke=smoke,
                 )
             )
+
+    # 执行顺序 = STAGES 的顺序（即优先级），而不是上面各段代码的书写顺序。
+    # 稳定排序，因此每个 stage 内部的 fold/variant 次序保持不变。
+    jobs.sort(key=lambda job: STAGES.index(job.stage))
     return jobs
 
 

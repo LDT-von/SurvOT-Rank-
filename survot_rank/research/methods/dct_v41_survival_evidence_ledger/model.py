@@ -22,6 +22,11 @@ from survot_rank.research.methods.distributional_counterfactual_transport.model 
     DistributionalCounterfactualTransport,
 )
 
+# 补全损失的 log-variance 下界。高斯 NLL 在方差无约束时下界为负无穷，而 v4.1
+# 的补全目标是模型自身的 detached 账本表示，误差极易被压到 0，于是方差项变成
+# 免费的下降通道（实测补全项从正数一路降到 -1.3 ~ -1.9，使总目标为负）。
+_MIN_COMPLETION_LOG_VARIANCE = -4.0
+
 
 def _harmonic_ledger(num_slots: int, dim: int) -> torch.Tensor:
     """Create deterministic, non-learned ledger addresses."""
@@ -260,6 +265,16 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
         self.v41_confidence_floor = float(
             getattr(args, "v41_confidence_floor", 0.05)
         )
+        # 补全损失的方差下界，防止总目标被方差项拖成负数。
+        self.v41_min_log_variance = float(
+            getattr(
+                args,
+                "v41_min_log_variance",
+                _MIN_COMPLETION_LOG_VARIANCE,
+            )
+        )
+        if self.v41_min_log_variance > 0.0:
+            raise ValueError("v41_min_log_variance must be non-positive")
         self.v41_missing_confidence_cap = float(
             getattr(args, "v41_missing_confidence_cap", 0.65)
         )
@@ -353,9 +368,29 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
         target: torch.Tensor,
         target_confidence: torch.Tensor,
         valid: torch.Tensor,
+        min_log_variance: float = _MIN_COMPLETION_LOG_VARIANCE,
     ) -> torch.Tensor:
+        """Heteroscedastic completion loss with a floor, kept non-negative.
+
+        The plain form ``0.5 * (err^2 / var + log var)`` is unbounded below:
+        as the error goes to zero the optimal ``log var`` runs to negative
+        infinity and the loss follows it.  Here the completion target is the
+        model's own detached ledger, so driving the error to zero is easy and
+        the variance term becomes a free descent channel.  Observed effect:
+        the completion term fell from positive values to roughly -1.3 to -1.9,
+        dragging the whole v4.1 objective (and the reported training loss)
+        negative while survival ranking did not improve.
+
+        Clamping ``log var`` from below bounds the term, and subtracting the
+        resulting minimum keeps it non-negative, so the reported objective is
+        again comparable across runs and cannot be reduced by inflating
+        confidence alone.
+        """
         error = (predicted - target.detach()).square()
+        log_variance = log_variance.clamp_min(min_log_variance)
         nll = 0.5 * (error * torch.exp(-log_variance) + log_variance)
+        # 下界：error=0 且 log_variance 取到 floor 时的取值。
+        nll = nll - 0.5 * min_log_variance
         nll = nll.mean(dim=-1)
         weights = target_confidence.detach() * valid[:, None].to(nll.dtype)
         return (nll * weights).sum() / weights.sum().clamp_min(1.0)
@@ -546,13 +581,17 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
             target_wsi_shared,
             full_wsi_confidence,
             complete_pair,
+            self.v41_min_log_variance,
         ) + self._gaussian_completion_loss(
             shared_omic,
             omic_log_variance,
             target_omic_shared,
             full_omic_confidence,
             complete_pair,
+            self.v41_min_log_variance,
         )
+        # 自编码项的方差固定为 1（log_variance=0），本身已非负，
+        # 因此这里不需要下界平移。
         shared_autoencoding_loss = 0.5 * (
             self._gaussian_completion_loss(
                 target_wsi_shared,
@@ -560,6 +599,7 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
                 full_wsi,
                 full_wsi_confidence,
                 complete_pair,
+                0.0,
             )
             + self._gaussian_completion_loss(
                 target_omic_shared,
@@ -567,6 +607,7 @@ class DCTV41SurvivalEvidenceLedger(DistributionalCounterfactualTransport):
                 full_omic,
                 full_omic_confidence,
                 complete_pair,
+                0.0,
             )
         )
         completion_loss = completion_loss + 0.25 * shared_autoencoding_loss
