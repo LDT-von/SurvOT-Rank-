@@ -61,6 +61,43 @@ STAGE_DEFS = OrderedDict([
         "folds": [1, 2, 4],
         "max_epochs": 30,
     }),
+    # ── 新队列: 50ep staged ──
+    ("v382_base_50ep", {
+        "label": "DCT v3.8.2 base (MGPTR=0) BLCA UNI2-h staged",
+        "dirs": ["dct_v3.8.2/robust/base"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
+    ("v382_mgptr_50ep", {
+        "label": "DCT v3.8.2 mgptr (MGPTR=0.05) BLCA UNI2-h staged",
+        "dirs": ["dct_v3.8.2/robust/mgptr"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
+    ("v33_legacy_50ep", {
+        "label": "DCT v3.3 Legacy-Repro BLCA UNI staged",
+        "dirs": ["dct_v3.3_score_first_blca_legacy_repro"],
+        "folds": range(5),
+        "max_epochs": 50,
+    }),
+    ("v40_staged_50ep", {
+        "label": "IST-Surv v4.0 Staged BLCA UNI2-h",
+        "dirs": ["ist_surv_v4.0_staged_50ep/clean/full/blca"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
+    ("v41_staged_50ep", {
+        "label": "DCT v4.1 Evidence Ledger Staged BLCA UNI",
+        "dirs": ["dct_v4.1_survival_evidence_ledger_staged_50ep"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
+    ("arcsurv_staged_50ep", {
+        "label": "ArcSurv Staged BLCA UNI",
+        "dirs": ["archetypal_risk_composition_staged_50ep"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
 ])
 
 V38_VARIANTS = [
