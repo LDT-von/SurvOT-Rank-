@@ -3,6 +3,7 @@
 
 import csv
 import pickle
+import subprocess
 import sys
 from collections import OrderedDict
 from datetime import datetime
@@ -81,8 +82,10 @@ STAGE_DEFS = OrderedDict([
         "max_epochs": 50,
     }),
     ("v40_staged_50ep", {
+        # _find_result_dirs 会自动追加 /blca，这里不能再带癌种目录，
+        # 否则会拼出 .../clean/full/blca/blca。
         "label": "IST-Surv v4.0 Staged BLCA UNI2-h",
-        "dirs": ["ist_surv_v4.0_staged_50ep/clean/full/blca"],
+        "dirs": ["ist_surv_v4.0_staged_50ep/clean/full"],
         "folds": [1, 2, 4],
         "max_epochs": 50,
     }),
@@ -95,6 +98,37 @@ STAGE_DEFS = OrderedDict([
     ("arcsurv_staged_50ep", {
         "label": "ArcSurv Staged BLCA UNI",
         "dirs": ["archetypal_risk_composition_staged_50ep"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
+    # ── 当前主线: A 组底座 + 单变量消融 ──
+    ("v33_clean_baseline", {
+        "label": "v3.3 clean 基线 BLCA UNI (显式 fit_bins_on_train)",
+        "dirs": ["dct_v3.3_score_first_blca_clean_50ep"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
+    ("v33_clean_no_ipcw_rank", {
+        "label": "v3.3 clean, IPCW rank 关闭 BLCA UNI",
+        "dirs": ["dct_v3.3_score_first_blca_clean_no_ipcw_50ep"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
+    ("v40_no_cost_feedback", {
+        "label": "v4.0 IST-Surv, 稳定性不回写 cost BLCA UNI2-h",
+        "dirs": ["ist_surv_v4.0_staged_50ep/clean/no_cost_feedback"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
+    ("v41_no_modality_dropout", {
+        "label": "v4.1 Ledger, 模态 dropout 关闭 BLCA UNI",
+        "dirs": ["dct_v4.1_survival_evidence_ledger_staged_50ep/no_dropout"],
+        "folds": [1, 2, 4],
+        "max_epochs": 50,
+    }),
+    ("v41_no_ipcw_rank", {
+        "label": "v4.1 Ledger, IPCW rank 关闭 BLCA UNI",
+        "dirs": ["dct_v4.1_survival_evidence_ledger_staged_50ep/no_ipcw"],
         "folds": [1, 2, 4],
         "max_epochs": 50,
     }),
@@ -266,8 +300,12 @@ def scan() -> list[dict]:
                     "running_cindex": None,
                     "best_running_epoch": None,
                     "best_running_cindex": None,
+                    "result_dir": str(base_dir),
                 }
+                # 目录不存在 ≠ 待运行。把两者混为 pending 会让已完成但未同步到
+                # 本机的实验显示成「从未跑过」。
                 if not base_dir.exists():
+                    entry["status"] = "missing"
                     results.append(entry)
                     continue
 
@@ -315,9 +353,45 @@ def _cindex_str(entry: dict, full: bool = False) -> str:
 
 def _color(status: str, text: str) -> str:
     """Simple ANSI color."""
-    codes = {"done": "\033[32m", "running": "\033[33m", "pending": "\033[90m"}
+    codes = {
+        "done": "\033[32m",
+        "running": "\033[33m",
+        "pending": "\033[90m",
+        "missing": "\033[90m",
+    }
     reset = "\033[0m"
     return f"{codes.get(status, '')}{text}{reset}"
+
+
+def _training_process_lines() -> list[str]:
+    """列出正在运行的训练进程。
+
+    原实现无条件调用 Unix 的 ``ps aux``，在 Windows 上会抛 FileNotFoundError
+    并让整个监控脚本在扫描完成后崩溃退出。这里按平台选择命令，且任何失败都
+    只是跳过这一节，不影响上面的队列汇总。
+    """
+    if sys.platform == "win32":
+        command = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_Process | "
+            "Select-Object -ExpandProperty CommandLine",
+        ]
+    else:
+        command = ["ps", "aux"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    lines = [
+        line
+        for line in (result.stdout or "").splitlines()
+        if "survot_rank" in line and "train" in line
+    ]
+    if not lines:
+        return []
+    return [f"\n  [进程] {len(lines)} 个训练进程在运行"]
 
 
 def main():
@@ -331,12 +405,14 @@ def main():
 
     done_total = sum(1 for e in entries if e["status"] == "done")
     running_total = sum(1 for e in entries if e["status"] == "running")
+    missing_total = sum(1 for e in entries if e["status"] == "missing")
     total = len(entries)
-    # exclude missing dirs
-    missing = sum(1 for e in entries if e.get("missing"))
 
     print(f"\n{'='*82}")
-    print(f"  优先级实验队列监控  ({now})    完成: {done_total}/{total}  进行中: {running_total}")
+    print(
+        f"  优先级实验队列监控  ({now})    完成: {done_total}/{total}  "
+        f"进行中: {running_total}  目录缺失: {missing_total}"
+    )
     print(f"{'='*82}")
 
     for idx, (stage_name, rows) in enumerate(by_stage.items(), 1):
@@ -353,7 +429,15 @@ def main():
             continue
 
         # stage header
-        status_icon = "✅" if len(done) == len(rows) else ("🔄" if running else ("⏳" if rows else "  "))
+        if done and len(done) == len(rows):
+            status_icon = "✅"
+        elif running:
+            status_icon = "🔄"
+        elif all(r["status"] == "missing" for r in rows):
+            # 保持 ASCII：Windows 控制台默认 GBK，无法编码多数 emoji。
+            status_icon = "[?]"
+        else:
+            status_icon = "⏳"
         print(f"\n  {status_icon} [{idx}] {label} ({max_ep}ep)")
 
         # variant × fold table
@@ -386,6 +470,8 @@ def main():
                     if best is not None and best != -1.0:
                         info += f"  best:{best:.4f}@{best_ep}"
                     print(f"       {tag:<24}  {_color('running', info)}")
+                elif r["status"] == "missing":
+                    print(f"       {tag:<24}  {'···':>10}  {'···':>6}  [?]")
                 else:
                     print(f"       {tag:<24}  {'···':>10}  {'···':>6}  ⏳")
         else:
@@ -415,8 +501,10 @@ def main():
                     if best is not None and best != -1.0:
                         info += f" (best:{best:.4f}@{best_ep})"
                     print(f"       {r['fold']:<6} {_color('running', 'running  ')} {info}")
+                elif r["status"] == "missing":
+                    print(f"       {r['fold']:<6} {'no-dir':<10} ···")
                 else:
-                    print(f"       {r['fold']:<6} pending       ···")
+                    print(f"       {r['fold']:<6} {'pending':<10} ···")
             if cindices:
                 valid = [c for c in cindices if c is not None]
                 if valid:
@@ -427,19 +515,17 @@ def main():
                     print(f"       {'-'*40}")
                     print(f"       {'Mean':<6} {' ':<10} N/A   ({len(cindices)}/{len(folds_wanted)} folds)")
 
-    # running process check
-    import subprocess
-    result = subprocess.run(
-        ["ps", "aux"],
-        capture_output=True, text=True,
-    )
-    train_lines = [l for l in result.stdout.split("\n") if "survot_rank" in l and "cli" in l and "train" in l]
-    if train_lines:
-        print(f"\n  [进程] {len(train_lines)} 个训练进程在运行")
+    for line in _training_process_lines():
+        print(line)
 
-    missing = sum(1 for e in entries if e.get("missing"))
-    if missing:
-        print(f"\n  [注意] {missing} 个变体目录不存在")
+    missing_entries = [e for e in entries if e["status"] == "missing"]
+    if missing_entries:
+        print(
+            f"\n  [注意] {len(missing_entries)} 个任务的结果目录不存在"
+            "（未运行，或结果未同步到本机）"
+        )
+        for path in sorted({e["result_dir"] for e in missing_entries}):
+            print(f"         {path}")
 
     print()
 

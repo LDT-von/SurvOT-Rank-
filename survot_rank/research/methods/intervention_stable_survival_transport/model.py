@@ -194,6 +194,11 @@ class InterventionStableSurvivalTransport(nn.Module):
         # 之后连续 29 轮下滑：稳定性项从第一轮就改写 stable_cost（进而改写用于
         # 预测的运输计划），在生存头还没学到东西时就压制它。
         # warmup 期间完全关闭，之后线性拉起。
+        # 注意 warmup 同时作用于两处，但语义不同：
+        #   - cost feedback（_cost_feedback_scale）属于前向图，训练/评估同曲线；
+        #   - 辅助损失（_stability_scale）只在训练路径生效。
+        # 两者曾共用一个在评估时硬返回 1.0 的 scale，导致 warmup 内训练 factual
+        # plan 却用 stable plan 打分。
         self.ist_warmup_epochs = int(getattr(args, "ist_warmup_epochs", 5))
         self.ist_ramp_epochs = int(getattr(args, "ist_ramp_epochs", 10))
         self._validate_hyperparameters()
@@ -529,13 +534,8 @@ class InterventionStableSurvivalTransport(nn.Module):
             torch.stack(view_logits, dim=1),
         )
 
-    def _stability_scale(self, epoch):
-        """干预稳定性的分阶段权重：warmup 内为 0，随后线性拉到 1。
-
-        评估时始终返回 1.0，使验证指标反映方法的完整形态。
-        """
-        if not self.training:
-            return 1.0
+    def _staged_ramp(self, epoch) -> float:
+        """warmup 内为 0，随后线性拉到 1 的公共曲线（与 training 标志无关）。"""
         epoch = int(epoch)
         if epoch < self.ist_warmup_epochs:
             return 0.0
@@ -544,10 +544,36 @@ class InterventionStableSurvivalTransport(nn.Module):
         post_warmup = epoch - self.ist_warmup_epochs + 1
         return min(1.0, post_warmup / self.ist_ramp_epochs)
 
+    def _cost_feedback_scale(self, epoch) -> float:
+        """稳定性回写 factual cost 的权重：训练与评估必须走同一条曲线。
+
+        这个权重决定 ``stable_cost``，进而决定用于预测 hazard logits 的运输
+        计划，因此它属于**前向图**而非损失项。若评估时强制取 1.0 而训练在
+        warmup 内取 0.0，那么前 ``ist_warmup_epochs`` 轮里「被更新的模型」
+        与「被打分的模型」是两个不同的模型：梯度作用在 factual plan 上，
+        而验证 C-index 来自从未训练过的 stable plan。这会把早期 epoch 的
+        验证分数变成无法与后期比较的选择噪声，是 BLCA fold1 最佳 C-index
+        出现在 epoch 0、随后持续下滑的直接来源。
+        """
+        return self._staged_ramp(epoch)
+
+    def _stability_scale(self, epoch):
+        """干预稳定性**辅助损失**的分阶段权重：warmup 内为 0，随后线性拉到 1。
+
+        评估时返回 1.0 只是为了让诊断反映完整形态；辅助损失在评估路径上
+        并不参与计算，因此这里的取值不会改变验证预测。需要改变预测图的
+        权重请使用 :meth:`_cost_feedback_scale`。
+        """
+        if not self.training:
+            return 1.0
+        return self._staged_ramp(epoch)
+
     def forward(self, **kwargs):
-        stability_scale = self._stability_scale(
-            kwargs.get("cur_epoch", kwargs.get("epoch", 0))
-        )
+        current_epoch = kwargs.get("cur_epoch", kwargs.get("epoch", 0))
+        # 前向图与损失权重分开：cost feedback 改写预测用的运输计划，训练与
+        # 评估必须一致；辅助损失只在训练路径生效。
+        cost_feedback_scale = self._cost_feedback_scale(current_epoch)
+        stability_scale = self._stability_scale(current_epoch)
         raw_wsi = kwargs["x_wsi"].float()
         # Determine transport support before sanitising numerical values.  If a
         # patch embedding contains even one NaN/Inf, replacing only that value
@@ -578,7 +604,7 @@ class InterventionStableSurvivalTransport(nn.Module):
             )
         )
         stable_cost = factual_cost + (
-            stability_scale * self.ist_stability_strength
+            cost_feedback_scale * self.ist_stability_strength
         ) * (-stability_score.clamp_min(1e-8).log())
         stable_plan, stable_rows, stable_cols = self._solve(
             stable_cost, row_valid, col_valid
@@ -616,6 +642,9 @@ class InterventionStableSurvivalTransport(nn.Module):
 
         self.last_training_losses = {
             "ist_stability_scale": logits.new_tensor(stability_scale).detach(),
+            "ist_cost_feedback_scale": logits.new_tensor(
+                cost_feedback_scale
+            ).detach(),
             "ist_plan_stability": plan_loss.detach(),
             "ist_attribution_stability": attribution_loss.detach(),
             "ist_risk_stability": risk_loss.detach(),

@@ -1078,11 +1078,16 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 9 | 验证 `5fold` 与 `5fold_uni2h` 在 BLCA 是否同一划分 | ✅ **已完成** | — | **结果：折 1/2/4 验证患者集合完全相同**（各 76 人，overlap 76/76，`same=True`）。**split 维度对 BLCA 已消除**，混淆项从 3 个降为 2 个（编码器 + 分箱协议） |
 | 10 | v3.3 clean 协议基线：`fit_bins_on_train=true`，UNI v1，`5fold`，折 1/2/4，**50ep** | ✅ **已完成** | 3 次训练 | v3.3 clean 基线 = 0.7400（A 组）。编码器不变、协议对齐 |
 | 11 | 统一 epoch 预算到 50ep | ✅ **已完成** | 并入 #8/#10 | 全部 6 个方法统一 50ep。结果见「50ep Staged 统一复测结果」章节 |
-| 12 | v4.0 fold1 `best @ e0` 根因定位 | ⬜ **未开始** | 只读曲线 | 判定过拟合 vs 优化失败：查 `epoch_curve_fold1.csv` 的训练损失轨迹。训练损失降 + val 降 = 过拟合（嫌疑 `ist_deletion_penalty=8.0` 与稳定性损失）；训练损失不降 = 优化失败，需查代码 |
+| 12 | v4.0 fold1 `best @ e0` 根因定位 | 🟡 **已定位代码级根因，待重跑验证** | 3 次训练 | **不是过拟合也不是优化失败，而是训练/评估前向图不一致。** `_stability_scale()` 同时驱动两件事：(a) `stable_cost` → 预测用的运输计划，(b) 辅助损失权重；而它在 `not self.training` 时硬返回 `1.0`。于是 warmup 的前 5 轮里，梯度更新的是 factual plan、验证打分的是从未训练过的 stable plan，early-best 因此是选择噪声。已拆分为 `_cost_feedback_scale`（前向图，训练/评估同曲线）与 `_stability_scale`（仅辅助损失）。注：`ist_deletion_penalty=8.0` 只出现在 `explain_last_batch()`，不参与反传，与本现象无关 |
+| 14 | v3.3 clean 基线 `0.7400` 的运行溯源缺口 | 🟡 **已补 launcher，待重跑** | 3 次训练 | `configs/diagnostics/dct_v3_score_blca.yaml` 未设 `fit_bins_on_train`，而它在 `extended_args.py` 中是 `action="store_true"`（默认 False）；原 `v33_blca_uni5` 阶段也未覆盖该键。因此现有 launcher 路径跑出来的是 **leaky** 分箱，`0.7400` 无法从代码复现。新增 `v33_clean_baseline` 阶段显式设置 clean 协议。**在此基线重跑确认前，所有「vs 基线」的增减都不作数** |
+| 15 | 训练 C-index 无可比样本对时整折失败 | ✅ **已修复** | 0 | `train_one_epoch` 直接调用 `concordance_index_censored`，事件稀疏/小 batch/smoke 下抛 `NoComparablePairException` 并让整个 fold 失败（ArcSurv smoke fold2 实例）。该值只是诊断量，已降级为 `nan` 并继续训练 |
+| 16 | ArcSurv / v4.2 的 archetype 分化前提未被观测 | 🟡 **已加诊断，待重跑** | 并入 ArcSurv 重跑 | 「凸组合 + 可加归因」这一卖点要求原型真的分化开。新增 `arc_wsi_archetype_cosine`、`arc_omic_archetype_cosine`、`arc_hazard_spread`、`arc_active_archetype_fraction`、`arc_max_composition_weight`。**判据：若 cosine → 1 且 hazard_spread → 0，则 composition 已退化为近似常向量，ArcSurv 停止、v4.2 不启动** |
 | 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
 
-**结算：13 项中已完成 7（#1 #2 #7 #8 #9 #10 #11）、部分完成 2（#6 #13）、未开始 4（#3 #4 #5 #12）。**
-零成本：#12。各 3 次训练：#3 #4 #5。
+**结算：16 项中已完成 8（#1 #2 #7 #8 #9 #10 #11 #15）、部分完成 5（#6 #12 #13 #14 #16）、未开始 3（#3 #4 #5）。**
+
+> **当前主线只有两个前置**：#14（把 A 组 clean 底座钉死）与 #12（v4.0 前向图修复后重跑）。
+> 二者未完成前，不要再启动 v4.1 / ArcSurv / MGPTR 的整体重跑，也不要启动 v4.2。
 
 > **依赖关系**：#9 已完成 → 现在 #10（UNI v1 clean 基线）与 #8（UNI2-h clean 基线）
 > 是所有后续判定的前置，共 6 次训练，且必须按 #11 统一到 50ep。之后才能谈 #3/#4。

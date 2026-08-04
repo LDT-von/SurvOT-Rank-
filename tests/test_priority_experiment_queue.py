@@ -14,19 +14,30 @@ def _override(job: queue.Job, key: str) -> str | None:
     return queue._override_value(job, key)
 
 
-def test_default_queue_is_the_mgptr_decision_plus_repro_and_staged_reruns():
+def test_default_queue_is_the_baseline_plus_single_variable_ablations():
+    """默认队列只做两件事：钉死 A 组底座，跑三个单变量消融。
+
+    v4.1 / ArcSurv / MGPTR 的完整重跑已移出默认队列：50ep 统一复测后它们
+    都没有相对同组基线的增益，继续整体重跑只会消耗 GPU。
+    """
     jobs = queue.build_jobs(_args())
 
-    assert len(jobs) == 20
+    assert len(jobs) == 18
     assert list(dict.fromkeys(job.stage for job in jobs)) == list(queue.DEFAULT_STAGES)
     assert Counter(job.stage for job in jobs) == {
-        "b0_mgptr_control": 3,
-        "b1_mgptr": 3,
-        "v33_blca_legacy_repro": 5,
+        "v33_clean_baseline": 3,
+        "v33_clean_no_ipcw_rank": 3,
         "v40_staged_rerun": 3,
-        "v41_staged_rerun": 3,
-        "arcsurv_staged_rerun": 3,
+        "v40_no_cost_feedback": 3,
+        "v41_no_modality_dropout": 3,
+        "v41_no_ipcw_rank": 3,
     }
+    assert all(_override(job, "max_epochs") == "50" for job in jobs)
+    assert all(job.fold in (1, 2, 4) for job in jobs)
+
+
+def test_mgptr_control_pair_isolates_the_weight():
+    jobs = queue.build_jobs(_args("--stages", "b0_mgptr_control,b1_mgptr"))
 
     b0 = [job for job in jobs if job.stage == "b0_mgptr_control"]
     b1 = [job for job in jobs if job.stage == "b1_mgptr"]
@@ -71,7 +82,7 @@ def test_default_queue_is_the_mgptr_decision_plus_repro_and_staged_reruns():
 def test_legacy_repro_uses_recovered_split_and_original_protocol():
     jobs = [
         job
-        for job in queue.build_jobs(_args())
+        for job in queue.build_jobs(_args("--stages", "v33_blca_legacy_repro"))
         if job.stage == "v33_blca_legacy_repro"
     ]
 
@@ -89,15 +100,20 @@ def test_legacy_repro_uses_recovered_split_and_original_protocol():
 def test_full_queue_still_covers_every_historical_stage():
     jobs = queue.build_jobs(_args("--stages", "all"))
 
-    assert len(jobs) == 54
+    assert len(jobs) == 69
     assert list(dict.fromkeys(job.stage for job in jobs)) == list(queue.STAGES)
     assert Counter(job.stage for job in jobs) == {
         "b0_mgptr_control": 3,
         "b1_mgptr": 3,
         "v33_blca_legacy_repro": 5,
+        "v33_clean_baseline": 3,
+        "v33_clean_no_ipcw_rank": 3,
         "v40_staged_rerun": 3,
         "v41_staged_rerun": 3,
         "arcsurv_staged_rerun": 3,
+        "v40_no_cost_feedback": 3,
+        "v41_no_modality_dropout": 3,
+        "v41_no_ipcw_rank": 3,
         "v42_act_surv": 3,
         "v33_blca_uni5": 5,
         "v38_lusc_screen": 8,
@@ -187,7 +203,12 @@ def test_default_smoke_covers_one_fold_per_default_stage():
 
 def test_staged_reruns_enable_delayed_activation_at_fifty_epochs():
     """三个重跑阶段的共同改动：辅助约束不再从第一轮生效，且统一 50ep。"""
-    jobs = queue.build_jobs(_args())
+    jobs = queue.build_jobs(
+        _args(
+            "--stages",
+            "v40_staged_rerun,v41_staged_rerun,arcsurv_staged_rerun",
+        )
+    )
     staged = {
         "v40_staged_rerun": ("ist_warmup_epochs", "ist_ramp_epochs"),
         "v41_staged_rerun": ("v41_warmup_epochs", "v41_ramp_epochs"),
@@ -208,6 +229,84 @@ def test_staged_reruns_enable_delayed_activation_at_fifty_epochs():
     assert _override(v41, "v41_modality_dropout") == "0.2"
     arc = next(job for job in jobs if job.stage == "arcsurv_staged_rerun")
     assert _override(arc, "batch_size") == "8"
+
+
+def test_v33_clean_baseline_makes_the_binning_protocol_traceable():
+    """冻结 YAML 未设 fit_bins_on_train（默认 False），clean 必须显式覆盖。
+
+    否则跑出来的是 leaky 分箱，而 A 组基线是所有后续判定的参照。
+    """
+    jobs = queue.build_jobs(
+        _args("--stages", "v33_clean_baseline,v33_clean_no_ipcw_rank")
+    )
+    baseline = [job for job in jobs if job.stage == "v33_clean_baseline"]
+    no_rank = [job for job in jobs if job.stage == "v33_clean_no_ipcw_rank"]
+
+    for job in baseline + no_rank:
+        assert _override(job, "fit_bins_on_train") == "true"
+        assert _override(job, "binning_mode") == "global_qcut"
+        assert _override(job, "max_epochs") == "50"
+        assert job.encoder == "uni"
+        assert job.which_splits == "5fold"
+
+    # 唯一变量 = IPCW pairwise rank 权重。
+    assert _override(baseline[0], "dct_lambda_ipcw_rank") is None
+    assert _override(no_rank[0], "dct_lambda_ipcw_rank") == "0.0"
+    assert baseline[0].result_dir != no_rank[0].result_dir
+
+
+def test_single_variable_ablations_change_exactly_one_key():
+    stages = (
+        "v40_staged_rerun",
+        "v40_no_cost_feedback",
+        "v41_staged_rerun",
+        "v41_no_modality_dropout",
+        "v41_no_ipcw_rank",
+    )
+    jobs = queue.build_jobs(_args("--stages", ",".join(stages)))
+    by_stage = {
+        stage: [job for job in jobs if job.stage == stage] for stage in stages
+    }
+    identity_keys = ("specific_simple=", "results_dir=")
+
+    def training_overrides(job: queue.Job) -> set[str]:
+        return {
+            job.command[index + 1]
+            for index, item in enumerate(job.command[:-1])
+            if item == "--set"
+            and not job.command[index + 1].startswith(identity_keys)
+        }
+
+    def sole_difference(baseline_stage: str, variant_stage: str) -> set[str]:
+        differences = set()
+        for base, variant in zip(by_stage[baseline_stage], by_stage[variant_stage]):
+            assert base.fold == variant.fold
+            differences |= training_overrides(variant) - training_overrides(base)
+        return differences
+
+    # v4.0：只关掉稳定性回写 cost，辅助损失保持不变。
+    assert sole_difference("v40_staged_rerun", "v40_no_cost_feedback") == {
+        "ist_stability_strength=0.0"
+    }
+    # v4.1：只关掉人为删模态。
+    assert sole_difference("v41_staged_rerun", "v41_no_modality_dropout") == {
+        "v41_modality_dropout=0.0"
+    }
+    # v4.1：只关掉继承的 pairwise IPCW rank。
+    assert sole_difference("v41_staged_rerun", "v41_no_ipcw_rank") == {
+        "dct_lambda_ipcw_rank=0.0"
+    }
+
+    # 每个消融的结果目录都必须与其基线隔离。
+    for baseline_stage, variant_stage in (
+        ("v40_staged_rerun", "v40_no_cost_feedback"),
+        ("v41_staged_rerun", "v41_no_modality_dropout"),
+        ("v41_staged_rerun", "v41_no_ipcw_rank"),
+    ):
+        assert (
+            by_stage[baseline_stage][0].result_dir
+            != by_stage[variant_stage][0].result_dir
+        )
 
 
 def test_stage_resume_filter_and_nested_completion(tmp_path: Path):

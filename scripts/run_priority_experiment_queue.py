@@ -53,10 +53,20 @@ STAGES = (
     "b1_mgptr",
     # v3.3 在 2026-07-30 重划之前的旧划分上复现历史分数 (0.7311)。
     "v33_blca_legacy_repro",
+    # A 组 clean 基线：显式写出 fit_bins_on_train，使 0.7400 可溯源。
+    "v33_clean_baseline",
+    # A 组底座候选：去掉稀疏事件下高方差的 IPCW pairwise rank。
+    "v33_clean_no_ipcw_rank",
     # 修复分阶段激活后重跑（统一 50ep）。
     "v40_staged_rerun",
     "v41_staged_rerun",
     "arcsurv_staged_rerun",
+    # 单变量消融：稳定性分数是否应回写 factual transport cost。
+    "v40_no_cost_feedback",
+    # 单变量消融：完整模态任务上人为删模态是否有害。
+    "v41_no_modality_dropout",
+    # 单变量消融：v4.1 的退化是否来自继承的 IPCW rank。
+    "v41_no_ipcw_rank",
     # v4.2 已实现但刻意不入默认队列：需先由 arcsurv_staged_rerun 确认
     # archetype 真的分化开（act_archetype_cosine / act_hazard_spread 诊断），
     # 否则「凸组合 + 精确可加归因」的第二卖点没有立足点。
@@ -72,12 +82,14 @@ STAGES = (
     "arcsurv_blca_fold124",
 )
 DEFAULT_STAGES = (
-    "b0_mgptr_control",
-    "b1_mgptr",
-    "v33_blca_legacy_repro",
+    # 当前主线只保留三件事：把 A 组底座钉死、修复后的 v4.0、以及三个单变量消融。
+    # v4.1 与 ArcSurv 的完整重跑不入默认队列（见 FINAL_SUMMARY 的判定）。
+    "v33_clean_baseline",
+    "v33_clean_no_ipcw_rank",
     "v40_staged_rerun",
-    "v41_staged_rerun",
-    "arcsurv_staged_rerun",
+    "v40_no_cost_feedback",
+    "v41_no_modality_dropout",
+    "v41_no_ipcw_rank",
 )
 FOLDS_124 = (1, 2, 4)
 # B0/B1 唯一变量：MGPTR 权重。其余全部相同。
@@ -257,6 +269,54 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
                 )
             )
 
+    # A 组 clean 基线与「去掉 IPCW rank」的底座候选。
+    # 冻结 YAML configs/diagnostics/dct_v3_score_blca.yaml 未设 fit_bins_on_train，
+    # 而该参数在 extended_args.py 中是 action="store_true"（默认 False）。
+    # 因此 clean 协议必须在这里显式覆盖，否则跑出来的是 leaky 分箱。
+    v33_clean_specs = [
+        (
+            "v33_clean_baseline",
+            "v3.3 Score-First BLCA UNI clean baseline",
+            "results/dct_v3.3_score_first_blca_clean_50ep/blca",
+            "dct_v3_score_first_clean_50ep",
+            {},
+        ),
+        (
+            "v33_clean_no_ipcw_rank",
+            "v3.3 Score-First BLCA UNI clean, IPCW rank off",
+            "results/dct_v3.3_score_first_blca_clean_no_ipcw_50ep/blca",
+            "dct_v3_score_first_clean_no_ipcw_50ep",
+            {"dct_lambda_ipcw_rank": 0.0},
+        ),
+    ]
+    for stage, label, root, identity, extra in v33_clean_specs:
+        if stage not in selected:
+            continue
+        result_dir = _smoke_dir(stage) if smoke else Path(root)
+        for fold in (FOLDS_124[:1] if smoke else FOLDS_124):
+            overrides = {
+                "survot_method": "distributional_counterfactual_transport",
+                "max_epochs": 50,
+                "fit_bins_on_train": True,
+                "binning_mode": "global_qcut",
+                "specific_simple": identity,
+            }
+            overrides.update(extra)
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage=stage,
+                    label=label,
+                    config="configs/diagnostics/dct_v3_score_blca.yaml",
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder="uni",
+                    which_splits="5fold",
+                    overrides=overrides,
+                    smoke=smoke,
+                )
+            )
+
     # 修复分阶段激活后重跑。三者的唯一共同改动是「辅助约束不再从第一轮生效」。
     staged_specs = [
         (
@@ -330,6 +390,101 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
             overrides = {
                 "survot_method": method,
                 # 统一 50ep：ArcSurv fold1 在 30ep 下峰值贴在 e29 且仍在上升。
+                "max_epochs": 50,
+                "specific_simple": identity,
+            }
+            overrides.update(extra)
+            jobs.append(
+                _generic_command(
+                    args,
+                    stage=stage,
+                    label=label,
+                    config=config,
+                    fold=fold,
+                    result_dir=result_dir,
+                    encoder=encoder,
+                    which_splits=split,
+                    overrides=overrides,
+                    smoke=smoke,
+                )
+            )
+
+    # 单变量消融。每个 stage 相对其 staged 基线只改一个键，其余全部继承，
+    # 便于做逐折配对比较。
+    ablation_specs = [
+        (
+            "v40_no_cost_feedback",
+            "v4.0 IST-Surv staged, stability cost feedback off",
+            "configs/intervention_stable_survival_transport_blca.yaml",
+            "results/ist_surv_v4.0_staged_50ep/clean/no_cost_feedback/blca",
+            "intervention_stable_survival_transport",
+            "ist_v40_staged_no_cost_feedback_blca_50ep",
+            "uni2-h",
+            "5fold_uni2h",
+            {
+                "ist_warmup_epochs": 5,
+                "ist_ramp_epochs": 10,
+                # 唯一变量：稳定性分数不再回写 factual cost。
+                # 辅助损失仍然保留，用于区分「回写运输计划」与「稳定性正则」。
+                "ist_stability_strength": 0.0,
+                "ist_lambda_plan": 0.05,
+                "ist_lambda_attribution": 0.05,
+                "ist_lambda_risk": 0.0,
+                "fit_bins_on_train": True,
+                "binning_mode": "global_qcut",
+            },
+        ),
+        (
+            "v41_no_modality_dropout",
+            "v4.1 Evidence Ledger staged, modality dropout off",
+            "configs/dct_v41_survival_evidence_ledger_blca.yaml",
+            "results/dct_v4.1_survival_evidence_ledger_staged_50ep/no_dropout/blca",
+            "dct_v41_survival_evidence_ledger",
+            "dct_v41_staged_no_dropout_blca_50ep",
+            "uni",
+            "5fold",
+            {
+                "v41_warmup_epochs": 5,
+                "v41_ramp_epochs": 10,
+                # 唯一变量：不再在完整双模态病例上人为删模态。
+                "v41_modality_dropout": 0.0,
+            },
+        ),
+        (
+            "v41_no_ipcw_rank",
+            "v4.1 Evidence Ledger staged, inherited IPCW rank off",
+            "configs/dct_v41_survival_evidence_ledger_blca.yaml",
+            "results/dct_v4.1_survival_evidence_ledger_staged_50ep/no_ipcw/blca",
+            "dct_v41_survival_evidence_ledger",
+            "dct_v41_staged_no_ipcw_blca_50ep",
+            "uni",
+            "5fold",
+            {
+                "v41_warmup_epochs": 5,
+                "v41_ramp_epochs": 10,
+                "v41_modality_dropout": 0.20,
+                # 唯一变量：去掉从 v3.3 继承的 pairwise IPCW rank。
+                "dct_lambda_ipcw_rank": 0.0,
+            },
+        ),
+    ]
+    for (
+        stage,
+        label,
+        config,
+        root,
+        method,
+        identity,
+        encoder,
+        split,
+        extra,
+    ) in ablation_specs:
+        if stage not in selected:
+            continue
+        result_dir = _smoke_dir(stage) if smoke else Path(root)
+        for fold in (FOLDS_124[:1] if smoke else FOLDS_124):
+            overrides = {
+                "survot_method": method,
                 "max_epochs": 50,
                 "specific_simple": identity,
             }
@@ -775,7 +930,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=parse_stages,
         default=None,
         help=(
-            "默认只跑当前主线 3 个阶段 (b0/b1/v3.3 旧划分复现)；"
+            "默认只跑当前主线：A 组 clean 底座 (v3.3 clean / 去 IPCW rank)、"
+            "修复后的 v4.0，以及三个单变量消融；"
             "用 all 跑全部历史阶段，或逗号分隔指定。"
         ),
     )

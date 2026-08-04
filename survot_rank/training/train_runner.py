@@ -51,6 +51,7 @@ from utils.core_utils import (
     _process_data_and_forward, _calculate_risk, _update_arrays,
     _calculate_metrics, _extract_survival_metadata
 )
+from sksurv.exceptions import NoComparablePairException
 from sksurv.metrics import concordance_index_censored
 
 # SurvOT-Rank model factory.
@@ -456,10 +457,22 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
     all_risk_scores = np.concatenate(all_risk_scores, axis=0)
     all_censorships = np.concatenate(all_censorships, axis=0)
     all_event_times = np.concatenate(all_event_times, axis=0)
-    c_index = concordance_index_censored(
-        (1 - all_censorships).astype(bool), all_event_times,
-        all_risk_scores, tied_tol=1e-08
-    )[0]
+    # 训练 C-index 只是诊断量，不参与反传或模型选择。事件稀疏、小 batch 或
+    # smoke 模式下这一批可能没有任何可比较的样本对，sksurv 会抛
+    # NoComparablePairException；此前该异常会一路冒泡并让整个 fold 失败
+    # （例如 ArcSurv smoke 的 fold2）。这里降级为 NaN 并继续训练。
+    try:
+        c_index = concordance_index_censored(
+            (1 - all_censorships).astype(bool), all_event_times,
+            all_risk_scores, tied_tol=1e-08
+        )[0]
+    except NoComparablePairException:
+        c_index = float("nan")
+        msg = (
+            f"  [warn] epoch {epoch} 训练集无可比较样本对，train_cindex 记为 nan"
+        )
+        print(msg, flush=True)
+        safe_write_line(log_file, msg)
 
     diagnostics = {
         name: value / max(method_diagnostic_batches, 1)

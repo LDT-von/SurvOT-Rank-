@@ -367,6 +367,59 @@ class ArchetypalRiskComposition(nn.Module):
         _, log_volume_squared = torch.linalg.slogdet(gram + 1e-4 * identity)
         return -0.5 * log_volume_squared / float(gram.size(0))
 
+    @staticmethod
+    def _mean_pairwise_cosine(archetypes: torch.Tensor) -> torch.Tensor:
+        """原型两两余弦均值。接近 1 表示原型已塌缩成同一个方向。"""
+        if archetypes.size(0) < 2:
+            return archetypes.new_zeros(())
+        normalised = F.normalize(archetypes, dim=-1)
+        gram = normalised @ normalised.transpose(0, 1)
+        upper = torch.triu_indices(
+            gram.size(0), gram.size(1), offset=1, device=gram.device
+        )
+        return gram[upper[0], upper[1]].mean()
+
+    def _archetype_hazard_spread(self) -> torch.Tensor:
+        """各原型风险分数的标准差。接近 0 表示原型在预测上不可区分。"""
+        hazards = torch.sigmoid(self.archetype_hazard_logits + self.hazard_bias)
+        survival = torch.cumprod(1.0 - hazards, dim=1)
+        risk = -survival.sum(dim=1)
+        if risk.numel() < 2:
+            return risk.new_zeros(())
+        return risk.std(unbiased=False)
+
+    def _archetype_diagnostics(
+        self,
+        wsi_archetypes: torch.Tensor,
+        omic_archetypes: torch.Tensor,
+        composition: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """原型是否真的分化开的只读诊断。
+
+        这些量不参与反传，只用于判断 ArcSurv / v4.2 的「凸组合」前提是否成立：
+        原型若既在特征空间塌缩（cosine→1）又在风险上不可区分
+        （hazard_spread→0），那么 composition 就退化成了一个几乎恒定的向量，
+        分数与可解释性两个卖点都不成立。
+        """
+        with torch.no_grad():
+            dominant = composition.argmax(dim=1)
+            active = torch.unique(dominant).numel()
+            return {
+                "arc_wsi_archetype_cosine": self._mean_pairwise_cosine(
+                    wsi_archetypes
+                ).detach(),
+                "arc_omic_archetype_cosine": self._mean_pairwise_cosine(
+                    omic_archetypes
+                ).detach(),
+                "arc_hazard_spread": self._archetype_hazard_spread().detach(),
+                "arc_active_archetype_fraction": composition.new_tensor(
+                    active / float(self.num_archetypes)
+                ),
+                "arc_max_composition_weight": composition.max(dim=1)
+                .values.mean()
+                .detach(),
+            }
+
     def archetype_parameters(self):
         """Return current modality archetypes, hull weights, and hazard curves."""
         wsi_archetypes, wsi_beta = self.wsi_archetypes.archetypes()
@@ -515,6 +568,9 @@ class ArchetypalRiskComposition(nn.Module):
             "arc_omic_bank_count": self.omic_archetypes.memory_count.detach().float(),
             "arc_wsi_bank_seen": self.wsi_archetypes.memory_seen.detach().float(),
             "arc_omic_bank_seen": self.omic_archetypes.memory_seen.detach().float(),
+            **self._archetype_diagnostics(
+                wsi_archetypes, omic_archetypes, composition
+            ),
         }
         return logits, aux_loss
 
