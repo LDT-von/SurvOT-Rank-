@@ -50,6 +50,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # STAGES 的顺序就是执行优先级：build_jobs 最后按本元组重排任务，
 # 因此这里的次序决定 GPU 先跑什么，与各段代码的书写位置无关。
 STAGES = (
+    # ── 2026-08-06 下一队列：主线五折 + 两个修复闸门 ──
+    # fixed_full 已在 fold1/2/4 达到 0.7209；先补 fold0/3，得到完整五折。
+    "v382_fixed_full_fold03",
+    # ArcSurv 与 v4.1 只各跑一个最有诊断价值的 fold。修复通过后才扩成五折，
+    # 避免在原型仍塌缩或 completion 仍异常时浪费 GPU。
+    "arcsurv_repaired_gate",
+    "v41_repaired_gate",
     # ── 优先级 1：v3.8.2 自适应权重对照 ──
     # 同 30ep 下 adaptive_full 0.7159 vs base 0.6891 是目前 DCT 侧唯一还有
     # +0.027 量级的信号，但此前 base/mgptr 两次都设了 adaptive=False，
@@ -102,6 +109,11 @@ DEFAULT_STAGES = (
     "v40_staged_rerun",
     "v33_clean_baseline",
     "v33_clean_no_ipcw_rank",
+)
+NEXT_STAGES = (
+    "v382_fixed_full_fold03",
+    "arcsurv_repaired_gate",
+    "v41_repaired_gate",
 )
 FOLDS_124 = (1, 2, 4)
 # B0/B1 唯一变量：MGPTR 权重。其余全部相同。
@@ -221,7 +233,7 @@ def _smoke_dir(stage: str, suffix: str = "") -> Path:
 
 
 def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
-    """构造固定顺序队列；正式队列共 31 个 fold/variant 任务。"""
+    """构造固定顺序队列；具体任务数由所选阶段决定。"""
     selected = set(_selected_stages(args))
     jobs: list[Job] = []
 
@@ -421,6 +433,72 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
                 )
             )
 
+    # 修复闸门：使用新目录，绝不覆盖修复前的 v4.1 / ArcSurv 结果。
+    # ArcSurv 先测曾明显欠训练的 fold1；v4.1 先测旧版最弱且早熟的 fold2。
+    repair_gate_specs = [
+        (
+            "arcsurv_repaired_gate",
+            "ArcSurv repaired-collapse diagnostic BLCA UNI",
+            "configs/archetypal_risk_composition_blca.yaml",
+            "results/archetypal_risk_composition_repaired_50ep/blca",
+            "archetypal_risk_composition",
+            "arcsurv_repaired_gate_blca_50ep",
+            1,
+            {
+                "arc_warmup_epochs": 5,
+                "arc_ramp_epochs": 10,
+                "arc_bank_update_epochs": -1,
+                "arc_distance_reduction": "scaled",
+                "arc_anchor_logit": 6.0,
+                "arc_lambda_sharpness": 0.02,
+                "batch_size": 8,
+                "fit_bins_on_train": True,
+                "binning_mode": "global_qcut",
+            },
+        ),
+        (
+            "v41_repaired_gate",
+            "v4.1 repaired-completion diagnostic BLCA UNI",
+            "configs/dct_v41_survival_evidence_ledger_blca.yaml",
+            "results/dct_v4.1_survival_evidence_ledger_repaired_50ep/blca",
+            "dct_v41_survival_evidence_ledger",
+            "dct_v41_repaired_gate_blca_50ep",
+            2,
+            {
+                "v41_warmup_epochs": 5,
+                "v41_ramp_epochs": 10,
+                "v41_modality_dropout": 0.20,
+                "v41_min_log_variance": -4.0,
+                "fit_bins_on_train": True,
+                "binning_mode": "global_qcut",
+            },
+        ),
+    ]
+    for stage, label, config, root, method, identity, fold, extra in repair_gate_specs:
+        if stage not in selected:
+            continue
+        result_dir = _smoke_dir(stage) if smoke else Path(root)
+        overrides = {
+            "survot_method": method,
+            "max_epochs": 50,
+            "specific_simple": identity,
+            **extra,
+        }
+        jobs.append(
+            _generic_command(
+                args,
+                stage=stage,
+                label=label,
+                config=config,
+                fold=fold,
+                result_dir=result_dir,
+                encoder="uni",
+                which_splits="5fold",
+                overrides=overrides,
+                smoke=smoke,
+            )
+        )
+
     # v3.8.2 自适应权重对照。唯一变量 = dct_v382_adaptive_aux_weights。
     # 两者都启用 v3.8 的 full 三损失 + MGPTR=0.05，其余协议完全相同。
     # 说明：此前的 base/mgptr 对照两次都设了 adaptive=False，因此那一组
@@ -450,16 +528,17 @@ def build_jobs(args: argparse.Namespace, *, smoke: bool = False) -> list[Job]:
         "batch_size": 8,
     }
     v382_specs = [
-        ("v382_fixed_full", "fixed_full", False),
-        ("v382_adaptive_full", "adaptive_full", True),
+        ("v382_fixed_full_fold03", "fixed_full", False, (0, 3)),
+        ("v382_fixed_full", "fixed_full", False, FOLDS_124),
+        ("v382_adaptive_full", "adaptive_full", True, FOLDS_124),
     ]
-    for stage, variant, adaptive in v382_specs:
+    for stage, variant, adaptive, requested_folds in v382_specs:
         if stage not in selected:
             continue
         result_dir = _smoke_dir(stage) if smoke else Path(
             "results/dct_v3.8.2/robust"
         ) / variant / "blca"
-        for fold in (FOLDS_124[:1] if smoke else FOLDS_124):
+        for fold in (requested_folds[:1] if smoke else requested_folds):
             overrides = dict(v382_full_shared)
             overrides["dct_v382_adaptive_aux_weights"] = adaptive
             overrides["specific_simple"] = f"dct_v382_robust_{variant}_blca_50ep"
@@ -1003,6 +1082,8 @@ def parse_stages(value: str) -> list[str]:
         return list(STAGES)
     if value.strip().lower() == "default":
         return list(DEFAULT_STAGES)
+    if value.strip().lower() == "next":
+        return list(NEXT_STAGES)
     selected = [item.strip() for item in value.split(",") if item.strip()]
     unknown = sorted(set(selected) - set(STAGES))
     if unknown:
@@ -1027,8 +1108,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=parse_stages,
         default=None,
         help=(
-            "默认只跑当前主线：A 组 clean 底座 (v3.3 clean / 去 IPCW rank)、"
-            "修复后的 v4.0，以及三个单变量消融；"
+            "默认复现已完成的默认队列；用 next 跑 2026-08-06 的四任务闸门队列，"
             "用 all 跑全部历史阶段，或逗号分隔指定。"
         ),
     )

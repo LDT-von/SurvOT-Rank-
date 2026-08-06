@@ -1180,6 +1180,17 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 3 | **ArcSurv** | 🟡 代码已修，待重跑验证塌缩修复 | 先跑一折看诊断指标 |
 | 4 | **v4.1** | 🟡 代码已修，待重跑验证 completion 下界 | 先跑一折看 `v41_completion` 是否为正 |
 
+### 下一队列（2026-08-06）
+
+使用 `scripts/run_priority_experiment_queue.py --stages next`，严格串行运行 **4 个任务**：
+
+1. `v382_fixed_full_fold03`：补 BLCA fold0、fold3，与既有 fold1/2/4 合成完整五折；
+2. `arcsurv_repaired_gate`：只跑 fold1，检查原型 cosine、hazard spread、组合熵/方差；
+3. `v41_repaired_gate`：只跑 fold2，检查 `v41_completion` 是否保持非负、总目标是否不再被拖成负数。
+
+闸门原则：ArcSurv 或 v4.1 的内部诊断未通过时，不扩跑剩余 folds；v3.8.2 fixed_full
+完整五折确认后，再决定是否进入第二癌种，而不是现在同时扩大方法数与癌种数。
+
 > **已停止**：v4.0 IST-Surv（三档消融确认 cost 回写和 aux 均无增益，分数全部来自 factual 底座）、
 > MGPTR 单项（0.6944 < 0.6975 base）、v3.8.3、v3.9。
 > **v4.2 ACT-Surv 暂不运行**：需先确认 ArcSurv 塌缩已解除。

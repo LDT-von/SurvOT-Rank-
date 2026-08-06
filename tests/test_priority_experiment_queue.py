@@ -37,6 +37,40 @@ def test_default_queue_is_the_baseline_plus_single_variable_ablations():
     assert all(job.fold in (1, 2, 4) for job in jobs)
 
 
+def test_next_queue_is_four_task_gate_with_isolated_repair_outputs():
+    jobs = queue.build_jobs(_args("--stages", "next"))
+
+    assert len(jobs) == 4
+    assert list(dict.fromkeys(job.stage for job in jobs)) == list(queue.NEXT_STAGES)
+    assert Counter(job.stage for job in jobs) == {
+        "v382_fixed_full_fold03": 2,
+        "arcsurv_repaired_gate": 1,
+        "v41_repaired_gate": 1,
+    }
+
+    fixed = [job for job in jobs if job.stage == "v382_fixed_full_fold03"]
+    assert [job.fold for job in fixed] == [0, 3]
+    assert {job.result_dir.as_posix() for job in fixed} == {
+        "results/dct_v3.8.2/robust/fixed_full/blca"
+    }
+    assert all(_override(job, "dct_v382_adaptive_aux_weights") == "false" for job in fixed)
+
+    arc = next(job for job in jobs if job.stage == "arcsurv_repaired_gate")
+    assert arc.fold == 1
+    assert "repaired_50ep" in arc.result_dir.as_posix()
+    assert _override(arc, "arc_distance_reduction") == "scaled"
+    assert _override(arc, "arc_anchor_logit") == "6.0"
+    assert _override(arc, "arc_lambda_sharpness") == "0.02"
+
+    v41 = next(job for job in jobs if job.stage == "v41_repaired_gate")
+    assert v41.fold == 2
+    assert "repaired_50ep" in v41.result_dir.as_posix()
+    assert _override(v41, "v41_min_log_variance") == "-4.0"
+
+    assert all(_override(job, "max_epochs") == "50" for job in jobs)
+    assert all(_override(job, "fit_bins_on_train") == "true" for job in jobs)
+
+
 def test_v382_adaptive_control_isolates_the_adaptive_weight_flag():
     """此前 base/mgptr 两次都设 adaptive=False，因此测不出自适应权重。"""
     jobs = queue.build_jobs(_args("--stages", "v382_fixed_full,v382_adaptive_full"))
@@ -136,9 +170,12 @@ def test_legacy_repro_uses_recovered_split_and_original_protocol():
 def test_full_queue_still_covers_every_historical_stage():
     jobs = queue.build_jobs(_args("--stages", "all"))
 
-    assert len(jobs) == 78
+    assert len(jobs) == 82
     assert list(dict.fromkeys(job.stage for job in jobs)) == list(queue.STAGES)
     assert Counter(job.stage for job in jobs) == {
+        "v382_fixed_full_fold03": 2,
+        "arcsurv_repaired_gate": 1,
+        "v41_repaired_gate": 1,
         "b0_mgptr_control": 3,
         "b1_mgptr": 3,
         "v33_blca_legacy_repro": 5,

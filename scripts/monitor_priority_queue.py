@@ -3,6 +3,7 @@
 
 import csv
 import pickle
+import subprocess
 import sys
 from collections import OrderedDict
 from datetime import datetime
@@ -12,6 +13,25 @@ REPO = Path(__file__).resolve().parent.parent
 RESULTS = REPO / "results"
 
 STAGE_DEFS = OrderedDict([
+    # 2026-08-06 下一队列：两个主线补折 + 两个修复闸门。
+    ("v382_fixed_full_fold03", {
+        "label": "DCT v3.8.2 fixed_full BLCA 完整五折（本轮补 fold0/3）",
+        "dirs": ["dct_v3.8.2/robust/fixed_full"],
+        "folds": range(5),
+        "max_epochs": 50,
+    }),
+    ("arcsurv_repaired_gate", {
+        "label": "ArcSurv 原型塌缩修复闸门 BLCA UNI",
+        "dirs": ["archetypal_risk_composition_repaired_50ep"],
+        "folds": [1],
+        "max_epochs": 50,
+    }),
+    ("v41_repaired_gate", {
+        "label": "v4.1 completion 下界修复闸门 BLCA UNI",
+        "dirs": ["dct_v4.1_survival_evidence_ledger_repaired_50ep"],
+        "folds": [2],
+        "max_epochs": 50,
+    }),
     ("v33_blca_uni5", {
         "label": "DCT v3.3 Score-First BLCA UNI",
         "dirs": ["dct_v3.3_score_first_blca_uni_rep"],
@@ -316,7 +336,7 @@ def _cindex_str(entry: dict, full: bool = False) -> str:
         if best and best != -1.0:
             return f" {best:.4f}  "
         return f" e{cur_ep}  "
-    return "   ···   "
+    return "   ---   "
 
 
 def _color(status: str, text: str) -> str:
@@ -324,6 +344,29 @@ def _color(status: str, text: str) -> str:
     codes = {"done": "\033[32m", "running": "\033[33m", "pending": "\033[90m"}
     reset = "\033[0m"
     return f"{codes.get(status, '')}{text}{reset}"
+
+
+def _training_process_lines() -> list[str]:
+    """跨平台列出训练进程；失败时只跳过进程栏，不影响结果扫描。"""
+    if sys.platform == "win32":
+        command = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine",
+        ]
+    else:
+        command = ["ps", "aux"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    lines = [
+        line
+        for line in (result.stdout or "").splitlines()
+        if "survot_rank" in line and "train" in line
+    ]
+    return [f"\n  [进程] {len(lines)} 个训练进程在运行"] if lines else []
 
 
 def main():
@@ -359,7 +402,7 @@ def main():
             continue
 
         # stage header
-        status_icon = "✅" if len(done) == len(rows) else ("🔄" if running else ("⏳" if rows else "  "))
+        status_icon = "[OK]" if len(done) == len(rows) else ("[>>]" if running else "[--]")
         print(f"\n  {status_icon} [{idx}] {label} ({max_ep}ep)")
 
         # variant × fold table
@@ -381,7 +424,7 @@ def main():
                 if r["status"] == "done":
                     ci = f"{r['cindex']:.4f}" if r["cindex"] is not None else "N/A"
                     ep = r["epoch"] if r["epoch"] is not None else "?"
-                    print(f"       {tag:<24}  {ci:>10}  {ep:>5}  ✅")
+                    print(f"       {tag:<24}  {ci:>10}  {ep:>5}  [OK]")
                 elif r["status"] == "running":
                     cur = r.get("running_cindex")
                     cur_ep = r.get("running_epoch", "?")
@@ -393,7 +436,7 @@ def main():
                         info += f"  best:{best:.4f}@{best_ep}"
                     print(f"       {tag:<24}  {_color('running', info)}")
                 else:
-                    print(f"       {tag:<24}  {'···':>10}  {'···':>6}  ⏳")
+                    print(f"       {tag:<24}  {'---':>10}  {'---':>6}  [--]")
         else:
             # fold table
             cindices = []
@@ -422,7 +465,7 @@ def main():
                         info += f" (best:{best:.4f}@{best_ep})"
                     print(f"       {r['fold']:<6} {_color('running', 'running  ')} {info}")
                 else:
-                    print(f"       {r['fold']:<6} pending       ···")
+                    print(f"       {r['fold']:<6} pending       ---")
             if cindices:
                 valid = [c for c in cindices if c is not None]
                 if valid:
@@ -434,14 +477,8 @@ def main():
                     print(f"       {'Mean':<6} {' ':<10} N/A   ({len(cindices)}/{len(folds_wanted)} folds)")
 
     # running process check
-    import subprocess
-    result = subprocess.run(
-        ["ps", "aux"],
-        capture_output=True, text=True,
-    )
-    train_lines = [l for l in result.stdout.split("\n") if "survot_rank" in l and "cli" in l and "train" in l]
-    if train_lines:
-        print(f"\n  [进程] {len(train_lines)} 个训练进程在运行")
+    for line in _training_process_lines():
+        print(line)
 
     missing = sum(1 for e in entries if e.get("missing"))
     if missing:
