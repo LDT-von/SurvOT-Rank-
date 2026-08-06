@@ -196,6 +196,37 @@ The DCT v3.7 UNI2-h launcher instead expects
 `/data1/TCGA-UNI2-h-features/<study>/uni2-h/pt_files/*.{h5,hdf5,pt}` and checks
 that the feature dimension is 1536 before server-side screening.
 
+## Frozen DCT v3.8.2 Cross-Cancer Evaluation
+
+The single paper-facing DCT recipe is `v3.8.2 fixed-full`: 50 epochs, fixed
+auxiliary weights, adaptive weighting disabled, IPCW rank enabled, UNI2-h,
+and feature-complete `5fold_uni2h` splits. The launcher does not expose method
+weights or epoch count, preventing cancer-specific recipe selection.
+
+```bash
+PYTHON_BIN=/home/ubuntu/.conda/envs/trisurv/bin/python
+
+# Create only missing deterministic feature-complete splits. Existing invalid
+# split directories are never overwritten automatically.
+"$PYTHON_BIN" scripts/run_dct_v382_final_cross_cancer.py prepare \
+  --python "$PYTHON_BIN"
+
+"$PYTHON_BIN" scripts/run_dct_v382_final_cross_cancer.py doctor \
+  --python "$PYTHON_BIN"
+
+# Default: SKCM, HNSC, LUSC, KIRC, UCEC; folds 0-4 (25 jobs).
+"$PYTHON_BIN" scripts/run_dct_v382_final_cross_cancer.py run \
+  --python "$PYTHON_BIN" --gpu 0 --num-workers 4
+
+"$PYTHON_BIN" scripts/monitor_dct_v382_final_cross_cancer.py
+```
+
+The doctor refuses formal training when any clinically eligible patient lacks
+a matching UNI2-h feature. BRCA, LUAD, COADREAD, and STAD therefore remain out
+of the default queue until their feature coverage is complete. BLCA is omitted
+from the default because its missing folds are completed by the priority queue;
+it can still be selected explicitly after that queue finishes.
+
 ## Notes
 
 - PET no longer imports model layers from SlotSPE. Its slot attention and omics

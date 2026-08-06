@@ -1188,8 +1188,22 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 2. `arcsurv_repaired_gate`：只跑 fold1，检查原型 cosine、hazard spread、组合熵/方差；
 3. `v41_repaired_gate`：只跑 fold2，检查 `v41_completion` 是否保持非负、总目标是否不再被拖成负数。
 
-闸门原则：ArcSurv 或 v4.1 的内部诊断未通过时，不扩跑剩余 folds；v3.8.2 fixed_full
-完整五折确认后，再决定是否进入第二癌种，而不是现在同时扩大方法数与癌种数。
+闸门原则：ArcSurv 或 v4.1 的内部诊断未通过时，不扩跑剩余 folds；这两个闸门
+不再阻塞已经冻结的 v3.8.2 fixed-full 跨癌种验证。
+
+### 唯一最终版与跨癌种五折（2026-08-06）
+
+论文主线冻结为 **DCT v3.8.2 fixed-full**：50 epoch，MGPTR=0.05，
+direction/dose/reconfiguration 权重分别为 0.05/0.03/0.02，关闭 adaptive，保留
+IPCW rank=0.10 与 64 例记忆，使用 clean 分箱、确定性验证槽、UNI2-h 和
+`5fold_uni2h`。跨癌种阶段不允许按癌种修改上述权重；如果某癌种无增益，应作为
+泛化结果报告，而不是另挑参数。
+
+独立入口为 `scripts/run_dct_v382_final_cross_cancer.py`。默认严格运行当前 UNI2-h
+覆盖完整且不与 BLCA 补折重复的 5 个癌种：**SKCM、HNSC、LUSC、KIRC、UCEC**，
+每个 fold0-4，共 25 个任务。BLCA 由 `--stages next` 补齐 fold0/3；BRCA、LUAD、
+COADREAD、STAD 在 UNI2-h 覆盖补齐前仍由 doctor 硬阻断。ArcSurv 与 v4.1 仅保留
+修复闸门身份，不属于该最终 DCT 的变体，也不影响跨癌种队列启动。
 
 > **已停止**：v4.0 IST-Surv（三档消融确认 cost 回写和 aux 均无增益，分数全部来自 factual 底座）、
 > MGPTR 单项（0.6944 < 0.6975 base）、v3.8.3、v3.9。
