@@ -1205,9 +1205,24 @@ IPCW rank=0.10 与 64 例记忆，使用 clean 分箱、确定性验证槽、UNI
 COADREAD、STAD 在 UNI2-h 覆盖补齐前仍由 doctor 硬阻断。ArcSurv 与 v4.1 仅保留
 修复闸门身份，不属于该最终 DCT 的变体，也不影响跨癌种队列启动。
 
-> **已停止**：v4.0 IST-Surv（三档消融确认 cost 回写和 aux 均无增益，分数全部来自 factual 底座）、
-> MGPTR 单项（0.6944 < 0.6975 base）、v3.8.3、v3.9。
+> **已停止**：v4.0 的 full/辅助损失版本（三档消融确认 aux 无增益）、MGPTR 单项
+> （0.6944 < 0.6975 base）、v3.8.3、v3.9。若独立验证 IST，则只保留机制最简的
+> staged cost-feedback-only（B 档），不再把 factual-only 冒充 IST，也不恢复 full。
 > **v4.2 ACT-Surv 暂不运行**：需先确认 ArcSurv 塌缩已解除。
+
+### IST-Surv 唯一跨癌种版本（2026-08-06）
+
+数值最高的 A 档 factual-only 为 0.7072，但它关闭了 `ist_stability_strength`，不含
+IST 的核心干预稳定性机制，不能作为 IST 最终版。保留 IST 机制的 B/C 两档中，
+B 档 staged cost-feedback-only 为 0.7055，略高于 full IST 的 0.7053；C−B 仅
+−0.0002，说明 plan/attribution/risk 三个辅助损失没有贡献。因此 IST 唯一跨癌种
+版本冻结为 **v4.0 staged cost-feedback-only**：50 epoch、warmup=5、ramp=10、
+stability strength=0.10，三个辅助损失权重均为 0。
+
+入口为 `scripts/run_ist_v40_final_cross_cancer.py`。默认对当前 UNI2-h 完整的
+BLCA、SKCM、HNSC、LUSC、KIRC、UCEC 跑五折；BLCA 已有 fold1/2/4 会自动跳过，
+实际只补 fold0/3。BRCA、LUAD、COADREAD、STAD 仍由数据 doctor 动态阻断，补齐
+特征后可显式使用 `--cancers all`。该 IST 队列与 DCT/优先队列共用 GPU 锁。
 
 ### 已识别的混淆维度（累计 4 项）
 

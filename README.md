@@ -227,6 +227,34 @@ of the default queue until their feature coverage is complete. BLCA is omitted
 from the default because its missing folds are completed by the priority queue;
 it can still be selected explicitly after that queue finishes.
 
+## Frozen IST-Surv v4.0 Cross-Cancer Evaluation
+
+The retained IST version is the staged stability-cost-feedback B stage. It
+keeps the defining intervention-stability feedback (`strength=0.10`) while
+fixing plan, attribution, and risk auxiliary weights to zero because their
+matched BLCA contribution was effectively zero. Factual-only is not treated as
+IST, and the larger full variant is not used for cross-cancer selection.
+
+```bash
+PYTHON_BIN=/home/ubuntu/.conda/envs/trisurv/bin/python
+
+"$PYTHON_BIN" scripts/run_ist_v40_final_cross_cancer.py prepare \
+  --python "$PYTHON_BIN"
+
+"$PYTHON_BIN" scripts/run_ist_v40_final_cross_cancer.py doctor \
+  --python "$PYTHON_BIN"
+
+# Default feature-complete set: BLCA, SKCM, HNSC, LUSC, KIRC, UCEC.
+"$PYTHON_BIN" scripts/run_ist_v40_final_cross_cancer.py run \
+  --python "$PYTHON_BIN" --gpu 0 --num-workers 4
+
+"$PYTHON_BIN" scripts/monitor_ist_v40_final_cross_cancer.py
+```
+
+After every cancer passes the feature/split audit, use `--cancers all` to
+select all ten studies. The shared GPU lock prevents this queue from starting
+on a GPU already used by the priority or final DCT queue.
+
 ## Notes
 
 - PET no longer imports model layers from SlotSPE. Its slot attention and omics
