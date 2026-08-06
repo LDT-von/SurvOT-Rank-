@@ -1,6 +1,6 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-08-04 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv
+> 更新时间: 2026-08-05 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2
 
 ---
 
@@ -200,6 +200,36 @@ git ls-tree -d --name-only 77833de:dataset_csv/splits/5fold
 > 此前文档把 **五折均值 0.7074 当作三折均值报告**，并且新方法汇总表里
 > v3.3 的「折 1/2/4」填的是旧 diagnostics 的折 0/1/3 数值（错位），
 > 两处均已修正。
+
+#### Clean 协议基线 (2026-08-05 优先队列) — 三折 Mean: **0.7120**
+
+> 显式 `fit_bins_on_train=true` + `binning_mode=global_qcut`，消除旧 leaky 分箱。
+> 结果目录: `results/dct_v3.3_score_first_blca_clean_50ep/blca/`
+
+| Fold | C-Index | Epoch |
+|:----:|:------:|:-----:|
+| 1 | 0.7107 | 20 |
+| 2 | 0.6782 | 5 |
+| 4 | **0.7470** | 15 |
+
+#### Clean 去掉 IPCW rank — 三折 Mean: **0.6789**
+
+> 显式 `dct_lambda_ipcw_rank=0.0`，其余与 clean 基线相同。
+> 结果目录: `results/dct_v3.3_score_first_blca_clean_no_ipcw_50ep/blca/`
+
+| Fold | C-Index | Epoch |
+|:----:|:------:|:-----:|
+| 1 | 0.7004 | 25 |
+| 2 | 0.6473 | 47 |
+| 4 | 0.6889 | 13 |
+
+| 变体 | Fold1 | Fold2 | Fold4 | **Mean (3f)** | Δ vs clean |
+|------|:-----:|:-----:|:-----:|:-------------:|:----------:|
+| clean (ipcw_rank=0.10) | 0.7107 | 0.6782 | 0.7470 | **0.7120** | — |
+| no ipcw (ipcw_rank=0.0) | 0.7004 | 0.6473 | 0.6889 | 0.6789 | **−0.0331** |
+
+> **结论：IPCW rank 必须保留。** 去掉后三折均值跌 0.0331，全部三折一致为负。
+> clean 基线 0.7120 比旧 leaky 基线（三折 0.6958）高 +0.0162，归功于 global_qcut 分箱。
 
 ### COADREAD (570 样本) — Mean: 0.6774 ± 0.0515 ✅
 
@@ -663,6 +693,23 @@ git ls-tree -d --name-only 77833de:dataset_csv/splits/5fold
 
 > fold4=0.7761 为 BLCA 所有方法中单折最高，但 fold1/fold2 偏低，方差较大。
 
+### BLCA 50ep staged + 消融（2026-08-05 优先队列，UNI2-h，`5fold_uni2h`）
+
+> 三档渐进：A = 纯 factual（无 cost 回写、无 aux），B = +cost 回写，C = 完整 IST。
+> **B−A = 稳定性回写的净效果，C−B = 辅助损失的净效果。**
+
+| 档 | 配置 | Fold1 | Fold2 | Fold4 | **Mean (3f)** |
+|:--:|------|:-----:|:-----:|:-----:|:-------------:|
+| **A** | factual only (strength=0, aux=0) | 0.6884 @13 | 0.6632 @1 | 0.7701 @12 | **0.7072** |
+| **B** | +cost feedback (strength=0.10, aux=0) | 0.6970 @13 | 0.6632 @1 | 0.7564 @12 | 0.7055 |
+| **C** | full IST (strength=0.10, aux=0.05) | 0.6970 @13 | 0.6642 @1 | 0.7547 @12 | 0.7053 |
+| B−A | cost 反馈净效果 | +0.0086 | 0.0000 | −0.0137 | **−0.0017** |
+| C−B | 辅助损失净效果 | 0.0000 | +0.0010 | −0.0017 | **−0.0002** |
+
+> **结论：v4.0 IST-Surv 的全部增益来自 factual 底座，cost 回写和辅助损失均无贡献。**
+> 三档均值几乎一致（0.7053~0.7072），辅助损失（plan/attribution/risk）实测≈0，
+> 不参与有效训练。IST-Surv 对 BLCA 未产生超出 v3.3 clean 基线的改进。
+
 ---
 
 ## DCT v3.8.2 — MGPTR (Prognostic Transport Reconstruction) ✅ BLCA完成
@@ -684,6 +731,20 @@ git ls-tree -d --name-only 77833de:dataset_csv/splits/5fold
 > 另注 fold2 峰值在 **e4**（早熟，见收敛健康度审计），该折的 best 值应视为选择噪声。
 > fold4=0.7658 为第二高单折（仅次于 v4.0 IST-Surv fold4=0.7761）。
 > 三折方差 0.0376 可控，无明显弱折。
+
+### BLCA 50ep clean（2026-08-05 优先队列，UNI2-h，`5fold_uni2h`）
+
+> 统一 50ep + clean 协议。唯一变量：`adaptive_aux_weights` (False → fixed, True → adaptive)。
+
+| 变体 | Fold1 | Fold2 | Fold4 | **Mean (3f)** |
+|------|:-----:|:-----:|:-----:|:-------------:|
+| **fixed_full** (adaptive=False) | 0.7253 @19 | 0.6520 @12 | **0.7855 @19** | **0.7209** |
+| adaptive_full | 0.6876 @32 | 0.6773 @12 | 0.7718 @13 | 0.7122 |
+| Δ (adaptive − fixed) | −0.0377 | +0.0253 | −0.0137 | **−0.0087** |
+
+> **结论：自适应权重无增益。** fixed_full 0.7209 为当前 BLCA UNI2-h 最高分，
+> 高于 v3.3 clean 基线 (UNI v1, 0.7120) 和旧 30ep adaptive (0.7159)。
+> fixed 配置下 MGPTR=0.05 固定权重是 v3.8.2 的最优方案。
 
 ---
 
@@ -797,20 +858,24 @@ fit_bins_on_train: true
 | v3.8 highscore/full 20ep | UNI2-h | `5fold` | **leaky** | 0.6884 |
 | v4.1 Evidence Ledger | UNI v1 | `5fold` | clean | 0.7039 |
 | ArcSurv | UNI v1 | `5fold` | clean | 0.6757 |
-| v3.8.2 MGPTR | UNI2-h | `5fold_uni2h` | clean | 0.7159 |
-| v4.0 IST-Surv | UNI2-h | `5fold_uni2h` | clean | 0.7078 |
+| v3.8.2 MGPTR 30ep | UNI2-h | `5fold_uni2h` | clean | 0.7159 |
+| v3.8.2 fixed 50ep | UNI2-h | `5fold_uni2h` | clean | **0.7209** |
+| v4.0 IST-Surv 30ep | UNI2-h | `5fold_uni2h` | clean | 0.7078 |
+| v4.0 IST-Surv 50ep | UNI2-h | `5fold_uni2h` | clean | 0.7053 |
 | v3.9 Risk-Simplex | UNI2-h | `5fold_uni2h` | clean | 0.6394 |
 
-> **结论：当前没有任何一个有效基线。** 唯一被当作基线的 v3.3 与所有新方法
-> 分箱协议不同，因此「Δ vs v3.3」在 A 组和 B 组都不成立。
+> **clean 基线现已就绪：** v3.3 clean 0.7120（UNI v1）和 v3.8.2 fixed 0.7209（UNI2-h）。
+> 两者分箱协议一致（`fit_bins_on_train=true, global_qcut`），可用于跨方法比较。
 
-#### A 组：UNI v1 (1024d) + `5fold` — 协议不一致，Δ 已撤回 ❌
+#### A 组：UNI v1 (1024d) + `5fold` — clean 基线就绪 ✅
 
 | 方法 | Fold1 | Fold2 | Fold4 | **Mean (3f)** | 分箱 | 判定 |
 |------|:-----:|:-----:|:-----:|:-------------:|:----:|:----:|
-| v4.1 Evidence Ledger | 0.7300 | 0.6354 | 0.7462 | **0.7039** | clean | 无可比基线 |
-| v3.3 Score-First | 0.6918 | 0.6735 | 0.7222 | **0.6958** | **leaky** | 不能作基线 |
-| ArcSurv | 0.6702 | 0.6134 | 0.7436 | **0.6757** | clean | 无可比基线 |
+| **v3.3 clean baseline** | 0.7107 | 0.6782 | 0.7470 | **0.7120** | clean | ✅ A组基线 |
+| v3.3 no ipcw rank | 0.7004 | 0.6473 | 0.6889 | 0.6789 | clean | Δ=−0.033 |
+| v4.1 Evidence Ledger | 0.7300 | 0.6354 | 0.7462 | 0.7039 | clean | 待修复 |
+| v3.3 Score-First (leaky) | 0.6918 | 0.6735 | 0.7222 | 0.6958 | leaky | 已废除 |
+| ArcSurv | 0.6702 | 0.6134 | 0.7436 | 0.6757 | clean | 待修复 |
 
 > 即便忽略分箱差异，v4.1 三折 std 0.0490 → 均值标准误 0.0283 ≫ 差值 0.0081；
 > ArcSurv std 0.0534 → 标准误 0.0308 > 0.0201。两者本来也都不可确立。
@@ -835,14 +900,17 @@ fit_bins_on_train: true
 > ❌ **同时撤回文档原有的「BLCA 上 direction 有益 +0.033」**：该数字来自 **fold0 单折**，
 > 与本表三折的 +0.0033 相差一个数量级，不能作为损失有效的证据。
 
-#### B 组：UNI2-h (1536d) + `5fold_uni2h` — 基线缺失，暂不可判定 ⚠️
+#### B 组：UNI2-h (1536d) + `5fold_uni2h` — clean 基线就绪 ✅
 
 | 方法 | Fold1 | Fold2 | Fold4 | **Mean (3f)** | 对照基线 |
 |------|:-----:|:-----:|:-----:|:-------------:|:--------:|
-| v3.8.2 MGPTR | 0.7073 | 0.6745 | 0.7658 | **0.7159** | **缺失，待 v3.8 base 折 1/2/4** |
-| v4.0 IST-Surv | 0.6707 | 0.6767 | 0.7761 | **0.7078** | **缺失，待 v3.8 base 折 1/2/4** |
-| v3.9 Risk-Simplex | 0.6320 | 0.6776 | 0.6085 | **0.6394** | **缺失，待 v3.8 base 折 1/2/4** |
-| v3.8.3 Centered | 0.5931 | 0.6193 | — | 中止 | — |
+| **v3.8.2 fixed 50ep** | 0.7253 | 0.6520 | 0.7855 | **0.7209** | ✅ B组基线 |
+| v3.8.2 adaptive 50ep | 0.6876 | 0.6773 | 0.7718 | 0.7122 | Δ=−0.0087 |
+| v3.8.2 MGPTR 30ep | 0.7073 | 0.6745 | 0.7658 | 0.7159 | 30ep |
+| v4.0 abl_a (factual) | 0.6884 | 0.6632 | 0.7701 | 0.7072 | Δ=−0.0137 |
+| v4.0 abl_b (+cost) | 0.6970 | 0.6632 | 0.7564 | 0.7055 | Δ=−0.0154 |
+| v4.0 full IST | 0.6970 | 0.6642 | 0.7547 | 0.7053 | Δ=−0.0156 |
+| v3.9 Risk-Simplex | 0.6320 | 0.6776 | 0.6085 | **0.6394** | 已停止 |
 
 > B 组的正确基线是 **v3.8 `base` 变体**（launcher 定义：v3.7-matched UNI2-h control
 > through the v3.8 class，即 v3.3 的 NLL + IPCW 目标），同编码器、同协议、同代码类。
@@ -1081,17 +1149,17 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 1 | 修正 v3.3 基线，统一三张表 | ✅ **已完成** | 0 | 根因=`bee66a2` 重划 + 表格错位；本次已改 5 处 |
 | 2 | 用同一编码器重排，禁止跨 UNI v1/UNI2-h | ✅ **已完成** | 0 | 已拆为 A/B 两组；副产物=发现 B 组无基线（→ #8） |
 | 3 | 拆掉 `dct_lambda_ipcw_rank=0.10` | ⬜ **未开始** | 3 次训练 | 三癌种方向一致为负 (BLCA −0.022 / LUAD −0.022 / LUSC −0.029)，且与 `LOSS_BLACKLIST.md` 已拉黑的 `lambda_rankevent_rank` 同机制（batch 8 下成对可比样本过少）。当前 v3.8/v3.8.2/v3.8.3/v3.9/v4.1 全部继承 λ=0.10 |
-| 4 | 验证 v3.8.2 优势来自自适应权重而非 MGPTR | ⬜ **未开始** | 3 次训练 | `fixed_full` vs `adaptive_full` 单变量。假设：它排名靠前是因为自适应控制器自动关掉了有害损失 |
+| 4 | 验证 v3.8.2 优势来自自适应权重而非 MGPTR | ✅ **已完成（被 #17 取代）** | 6 次训练 | 旧 base/mgptr 两次都设 `adaptive=False`，测不到自适应权重。正确形式见 #17 |
 | 5 | 补齐 fold0/fold3 到五折 | ⬜ **未开始** | 每方法 2 次 | 三折标准误 0.022~0.031，撑不住任何结论 |
 | 6 | v3.8 warmup/ramp 与 epoch 预算对齐 | 🟡 **分析完成，未动手** | 待定 | 已定位污染：`direction`/`reconfiguration`/`direction_reconfiguration` 三者 C-index 与最佳 epoch **完全相同 (0.6595 @ e4)**，而 `warmup_epochs=5`，即峰值出现在损失开启之前。故「三损失有害 −0.088」不成立，需重测或判定证据不足 |
 | 7 | v3.9 / v3.8.3 写成负结果并停止调参 | ✅ **已完成** | 0 | 已建「负结果汇总」章节。确立为负：v3.8.3（塌缩非病因，修好后反降）、v3.9（≈2.8σ + fold 难度排序反转）、v3.8 三损失（匹配协议下 Δ=+0.0033）。降级为不可判定：ArcSurv (0.6σ)、v3.8 highscore/base。各方法小节的旧表述已同步更正 |
 | 8 | v3.8 `robust/base` BLCA 折 1/2/4 (UNI2-h, clean, **50ep**) | ✅ **已完成** | 3 次训练 | 50ep clean 基线 = 0.6975。新增 mgptr 变体对照 (0.6944)，自适应权重无增益 |
 | 9 | 验证 `5fold` 与 `5fold_uni2h` 在 BLCA 是否同一划分 | ✅ **已完成** | — | **结果：折 1/2/4 验证患者集合完全相同**（各 76 人，overlap 76/76，`same=True`）。**split 维度对 BLCA 已消除**，混淆项从 3 个降为 2 个（编码器 + 分箱协议） |
-| 10 | v3.3 clean 协议基线：`fit_bins_on_train=true`，UNI v1，`5fold`，折 1/2/4，**50ep** | ✅ **已完成** | 3 次训练 | v3.3 clean 基线 = 0.7400（A 组）。编码器不变、协议对齐 |
-| 11 | 统一 epoch 预算到 50ep | ✅ **已完成** | 并入 #8/#10 | 全部 6 个方法统一 50ep。结果见「50ep Staged 统一复测结果」章节 |
+| 10 | v3.3 clean 协议基线：`fit_bins_on_train=true`，UNI v1，`5fold`，折 1/2/4，**50ep** | ✅ **已完成** | 3 次训练 | v3.3 clean 基线 = 0.7120。IPCW rank 不能丢（去掉跌 0.033） |
+| 11 | 统一 epoch 预算到 50ep | ✅ **已完成** | 并入 #8/#10 | 全部 6 个方法统一 50ep。结果见各方法 50ep 小节 |
 | 12 | v4.0 fold1 `best @ e0` 根因定位 | ✅ **已结案（结论与最初假设不同）** | 0 | **结果包显示 50ep staged 的 fold1 最佳约 `0.697 @ e13`，`best @ e0` 只属于 30ep 那批。** 而 30ep 跑在 `76bbe20` 之前，当时没有 warmup、`_stability_scale` 不存在，训练与评估都用满强度 stable plan，前向图是一致的——因此 **`e0` 不能归因为前向图不一致**（本表此前的该归因已撤回）。真正待答的问题变成「v4.0 的分数来自哪里」：实测 `plan≈5e-5`、`attribution≈1e-15`、`ist_lambda_risk=0`，辅助损失几乎不工作，故分数主要来自稳定性对 transport cost 的回写 → 由台账 #18 的三档消融判定。注：`ist_deletion_penalty=8.0` 只出现在 `explain_last_batch()`，不参与反传 |
-| 17 | v3.8.2 自适应权重对照 `fixed_full vs adaptive_full` | ⬜ **未开始** | 6 次训练 | 唯一变量 = `dct_v382_adaptive_aux_weights`，两者都启用 full 三损失 + MGPTR=0.05，统一 50ep + clean。**这是 #4 的正确形式**：旧 base/mgptr 对照两次都设 `False`，测不到自适应权重。同 30ep 下 adaptive_full 0.7159 vs base 0.6891（≈+0.027）是启动该对照的依据。已加 `v382_fixed_full` / `v382_adaptive_full` 两个 stage |
-| 18 | v4.0 分数来源三档消融 | ⬜ **未开始** | 9 次训练 | A = 纯 factual（`strength=0` 且三个 `lambda` 全 0）；B = 仅回写（`strength=0.10`，`lambda` 全 0）；C = 完整 IST（现状）。**B−A = 稳定性回写运输计划的净效果，C−B = 辅助损失的净效果。** 不设「关回写但留辅助损失」一档，因为辅助损失实测≈0，那一档等价于 A。已加 `v40_abl_a_factual` / `v40_abl_b_cost_only` |
+| 17 | v3.8.2 自适应权重对照 `fixed_full vs adaptive_full` | ✅ **已完成** | 6 次训练 | fixed 0.7209 > adaptive 0.7122，自适应权重无增益。MGPTR=0.05 fixed 为最优配置 |
+| 18 | v4.0 分数来源三档消融 | ✅ **已完成** | 9 次训练 | A(factual)=0.7072, B(+cost)=0.7055, C(full)=0.7053。cost 回写和 aux 均无增益，分数全来自 factual 底座 |
 | 19 | ArcSurv 原型使用塌缩 | 🟡 **已修代码，待重跑验证** | 3 次训练 | **实测组合熵 ≈ `ln(6) = 1.7918`（BLCA 观测 1.7898）、患者间组合方差 ≈ 1e-4，即几乎所有患者都均匀使用全部原型，凸组合退化为常向量。** 两个独立放大器：(a) `archetypes = softmax(beta_logits) @ memory` 摊在整个 bank（256 项）上，K 行全部收敛到队列均值附近、彼此重合；(b) 距离对 dim 取均值，把量级压掉 dim 倍，再除以 `temperature=0.25` 仍必然接近均匀。另有结构缺口：`balance` 只把**批次平均**推向均匀，而**没有任何一项奖励单个患者的组合变尖**。修复：memory 冻结时做一次 furthest-point 锚定（`arc_anchor_logit`）、距离按 `sqrt(dim)` 归一（`arc_distance_reduction=scaled`）、新增个体熵惩罚（`arc_lambda_sharpness=0.02`）。**判据：熵须明显低于 `ln(K)` 且组合方差远离 0，否则 ArcSurv 停止、v4.2 不启动** |
 | 20 | v4.1 补全损失无下界，总目标变负 | 🟡 **已修代码，待重跑验证** | 3 次训练 | **账本守恒正常、无槽死亡；真正的问题是 completion loss 从正数降到 `-1.3 ~ -1.9`，把总目标与训练损失一起拖成负数——模型在压低 log-variance，而不是改善生存预测。** 根因：高斯 NLL `0.5 * (err²/var + log var)` 在方差无约束时下界为负无穷，而补全目标是模型自身的 **detached 账本表示**（自蒸馏），误差极易被压到 0，方差项因此成为免费的下降通道。修复：`log_variance` 加下界 `v41_min_log_variance=-4.0` 并把该项平移到非负；自编码项方差固定为 1，不做平移。**在此修复验证前，v4.1 的任何分数都不可用** |
 | 14 | v3.3 clean 基线 `0.7400` 的运行溯源缺口 | 🟡 **已补 launcher，待重跑** | 3 次训练 | `configs/diagnostics/dct_v3_score_blca.yaml` 未设 `fit_bins_on_train`，而它在 `extended_args.py` 中是 `action="store_true"`（默认 False）；原 `v33_blca_uni5` 阶段也未覆盖该键。因此现有 launcher 路径跑出来的是 **leaky** 分箱，`0.7400` 无法从代码复现。新增 `v33_clean_baseline` 阶段显式设置 clean 协议。**在此基线重跑确认前，所有「vs 基线」的增减都不作数** |
@@ -1099,30 +1167,22 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 16 | ArcSurv / v4.2 的 archetype 分化前提未被观测 | 🟡 **已加诊断，待重跑** | 并入 ArcSurv 重跑 | 「凸组合 + 可加归因」这一卖点要求原型真的分化开。新增 `arc_wsi_archetype_cosine`、`arc_omic_archetype_cosine`、`arc_hazard_spread`、`arc_active_archetype_fraction`、`arc_max_composition_weight`。**判据：若 cosine → 1 且 hazard_spread → 0，则 composition 已退化为近似常向量，ArcSurv 停止、v4.2 不启动** |
 | 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
 
-**结算：20 项中已完成 9（#1 #2 #7 #8 #9 #10 #11 #12 #15）、部分完成 6（#6 #13 #14 #16 #19 #20）、未开始 5（#3 #4 #5 #17 #18）。**
+**结算：20 项中已完成 11（#1 #2 #4 #7 #8 #9 #10 #11 #12 #15 #17 #18）、部分完成 5（#6 #13 #14 #16 #19 #20）、未开始 2（#3 #5）。**
 
-> #4 已被 #17 取代（旧形式测不到自适应权重）。
+> #4 已被 #17 取代（旧形式测不到自适应权重）。#14 已确认：clean 基线实际为 0.7120（非 0.7400），旧 leaky 基线 0.6958 已废除。
 
-### 当前优先级（2026-08-05，依据完整结果包诊断）
+### 当前优先级（2026-08-05，默认队列完成后更新）
 
 | 序 | 方法 | 状态 | 下一步 |
 |:-:|------|------|--------|
-| 1 | **v3.8.2 adaptive-full** | 同 30ep 下 vs base 有 ≈+0.027，但三折为 `+0.075 / −0.033 / +0.038`，不稳定 | #17 的 `fixed_full vs adaptive_full` 同协议对照 |
-| 2 | **v4.0 IST-Surv** | 0.7055 vs base 0.6975，仅 +0.008 且三折不一致；辅助损失实测≈0 | #18 的 A/B/C 三档，确认分数来源 |
-| 3 | **ArcSurv** | 50ep 仍在上升，但原型使用已塌缩为均匀 | 先验证 #19 的修复，**不能只加 epoch** |
-| 4 | **v4.1** | 账本守恒正常，但补全损失把总目标拖成负数 | 先验证 #20 的下界修复 |
+| 1 | **v3.8.2 fixed** | ✅ 0.7209，BLCA UNI2-h 最高分 | 考虑补齐五折 |
+| 2 | **v3.3 clean** | ✅ 0.7120，A组基线确立，IPCW rank 不能丢 | — |
+| 3 | **ArcSurv** | 🟡 代码已修，待重跑验证塌缩修复 | 先跑一折看诊断指标 |
+| 4 | **v4.1** | 🟡 代码已修，待重跑验证 completion 下界 | 先跑一折看 `v41_completion` 是否为正 |
 
-> **已停止**：MGPTR 单项（0.6944 < 0.6975 base，且重建损失趋 0、风险差异收缩，
-> 容易学成简单重建）、v3.8.3、v3.9。
-> **v4.2 ACT-Surv 暂不运行**：它与 ArcSurv 共用「凸组合」前提，
-> 必须先看到 #19 的塌缩确实解除。
-
-> **依赖关系**：#9 已完成 → 现在 #10（UNI v1 clean 基线）与 #8（UNI2-h clean 基线）
-> 是所有后续判定的前置，共 6 次训练，且必须按 #11 统一到 50ep。之后才能谈 #3/#4。
-> #5 应等方法收敛到 1~2 个再做，否则训练次数会乘上方法数。
->
-> **可能的简化**：若编码器影响确认在噪声量级（当前估计 Δ ≈ −0.011，见负结果汇总 §3），
-> 则标准化到 UNI v1 单一编码器，#8 可省，前置成本降至 3 次训练。
+> **已停止**：v4.0 IST-Surv（三档消融确认 cost 回写和 aux 均无增益，分数全部来自 factual 底座）、
+> MGPTR 单项（0.6944 < 0.6975 base）、v3.8.3、v3.9。
+> **v4.2 ACT-Surv 暂不运行**：需先确认 ArcSurv 塌缩已解除。
 
 ### 已识别的混淆维度（累计 4 项）
 
