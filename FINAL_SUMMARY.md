@@ -1,6 +1,6 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-08-05 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2
+> 更新时间: 2026-08-06 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2 / CA-PSA Final / ArcSurv Final / CATET Final
 
 ---
 
@@ -131,6 +131,9 @@ git ls-tree -d --name-only 77833de:dataset_csv/splits/5fold
 | **v4.0** | IST-Surv | intervention_stable_survival_transport | UNI2-h (1536d) | 干预稳定性 | ✅ BLCA完成 |
 | **v4.1** | Survival Evidence Ledger | dct_v41_survival_evidence_ledger | UNI v1 (1024d) | 证据账本 | 🔄 BLCA fold2重跑中 |
 | **ArcSurv** | Archetypal Risk Composition | archetypal_risk_composition | UNI v1 (1024d) | 原型风险组合 | ✅ BLCA完成 |
+| **CA-PSA Final** | Cohort-Anchored Adaptive PSA | cohort_anchored_adaptive_prognostic_slot_attention | UNI2-h (1536d) | 身份预算 + 硬门控 | 🟡 BLCA fold0 筛选 |
+| **ArcSurv Final** | Shared Cohort Prognostic Simplex | archetypal_risk_composition | UNI2-h (1536d) | 共享凸包组合 | 🟡 BLCA fold0 筛选 |
+| **CATET Final** | Censoring-Aware Temporal Evidence Transport | censoring_aware_temporal_evidence_transport | UNI2-h (1536d) | 阶段重运输 | 🟡 BLCA fold0 筛选 |
 
 ---
 
@@ -1166,8 +1169,11 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 15 | 训练 C-index 无可比样本对时整折失败 | ✅ **已修复** | 0 | `train_one_epoch` 直接调用 `concordance_index_censored`，事件稀疏/小 batch/smoke 下抛 `NoComparablePairException` 并让整个 fold 失败（ArcSurv smoke fold2 实例）。该值只是诊断量，已降级为 `nan` 并继续训练 |
 | 16 | ArcSurv / v4.2 的 archetype 分化前提未被观测 | 🟡 **已加诊断，待重跑** | 并入 ArcSurv 重跑 | 「凸组合 + 可加归因」这一卖点要求原型真的分化开。新增 `arc_wsi_archetype_cosine`、`arc_omic_archetype_cosine`、`arc_hazard_spread`、`arc_active_archetype_fraction`、`arc_max_composition_weight`。**判据：若 cosine → 1 且 hazard_spread → 0，则 composition 已退化为近似常向量，ArcSurv 停止、v4.2 不启动** |
 | 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
+| 21 | 旧 CA-PSA/ArcSurv/CATET 队列停用（旧机制冒充 Final） | ✅ **已停用** | 0 | `f636660` 三个「final」启动器实际仍调用旧机制，非真正 Final 版本。已停止并保留旧结果作历史对照（CA-PSA 六癌种 30/30、ArcSurv BLCA+SKCM 10 折），不得与真正 Final 结果混用 |
+| 22 | 三个 Final 方法 BLCA fold0 机制筛选 | 🟡 **进行中** | 3 次训练 | 真正 Final 代码 `0eb705b`：CA-PSA（身份预算/identifiable cohort routes）、ArcSurv（共享凸包/shared simplex）、CATET（重新 Sinkhorn/stage re-transport）。先跑 BLCA fold0 看机制指标，通过才扩五折 |
+| 23 | DCT v3.8.2 提分闸门（4 变量预注册） | 🟡 **进行中** | 36 次训练 | `patches4096` / `grad_accum4` / `slot_iters5` / `lr2e4`，BLCA/KIRC/SKCM × fold 1/2/4，对照 frozen fixed_full |
 
-**结算：20 项中已完成 14（#1 #2 #4 #5 #7 #8 #9 #10 #11 #12 #13 #15 #17 #18）、修复无效 2（#19 #20）、部分完成 4（#6 #14 #16）、未开始 1（#3）。**
+**结算：23 项中已完成 15（#1 #2 #4 #5 #7 #8 #9 #10 #11 #12 #13 #15 #17 #18 #21）、修复无效 2（#19 #20）、部分完成 4（#6 #14 #16）、进行中 2（#22 #23）、未开始 1（#3）。**
 
 > #4 已被 #17 取代（旧形式测不到自适应权重）。#14 已确认：clean 基线实际为 0.7120（非 0.7400），旧 leaky 基线 0.6958 已废除。
 
@@ -1179,6 +1185,34 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 2 | **IST v4.0 abl_b** | ✅ 6癌种五折全部完成 | 6癌种仅 KIRC(+0.007) 反超，其余 5 癌种 DCT 领先或持平 |
 | 3 | **ArcSurv** | ❌ 修复无效（0.5665 < 0.7132） | 停止 |
 | 4 | **v4.1** | ❌ 修复无效（0.6436 = 修复前） | 停止 |
+
+### 三个 Final 方法与 DCT 提分闸门（2026-08-06，进行中）
+
+2026-08-06 停止旧三方法队列（`f636660` 启动器实际调用旧机制、非真正 Final），拉取真正 Final 代码 `0eb705b`。当前两条线并行推进，均以 BLCA/KIRC/SKCM 先行、机制通过再扩五折。
+
+**A. 三个 Final 方法（BLCA fold0 机制筛选，`results/three_method_final/<method>/blca/`）**
+
+| 方法 | CLI 名 | 核心机制 | 封闭目标 |
+|---|---|---|---|
+| **CA-PSA Final** | `cohort_anchored_adaptive_prognostic_slot_attention` | 身份预算：每锚点=一条预后路线，预算硬门控选路线 | L_surv + λ_id(L_cross+L_sep) + λ_budget·L_gate |
+| **ArcSurv Final** | `archetypal_risk_composition` | 共享凸包：单一 bank+Beta，患者风险=原型风险凸组合 | L_surv + λ_recon·L_hull + λ_align·L_JS + λ_vol·L_simplex + λ_bal·L_usage + λ_rank·L_rank |
+| **CATET Final** | `censoring_aware_temporal_evidence_transport` | 重新 Sinkhorn：阶段改运输几何，keep/remove 重新求解 OT | L_surv + λ_ot·L_transport + λ_rank·L_IPCW + λ_stage·L_stage + λ_interv·(L_suff+L_comp) |
+
+放行判据（fold0 看完再决定扩五折）：
+- CA-PSA：槽身份不接近随机、门控非全开/全关
+- ArcSurv：原型使用率 ≥ 半数、原型不高度相似、hazard spread 非零
+- CATET：阶段计划互不相同、边际守恒、remove 干预可测量改变风险
+
+**B. DCT v3.8.2 提分闸门（4 变量预注册，`results/dct_v3.8.2_score_gate/<variant>/<cancer>/`）**
+
+| 变体 | 改动 | 检验 |
+|---|---|---|
+| `patches4096` | num_patches 2048→4096 | 病理采样预算 |
+| `grad_accum4` | grad_accum 1→4 | 参数更新方差 |
+| `slot_iters5` | slot 3→5 | slot 欠迭代 |
+| `lr2e4` | lr 5e-4→2e-4 | 学习率尖峰 |
+
+范围 BLCA/KIRC/SKCM × fold 1/2/4 = 36 任务，对照 frozen DCT v3.8.2 fixed_full。晋级规则（全满足）：宏平均 best ≥ +0.005、≥2/3 癌种提升、无癌种降 >0.005、SKCM ≥ +0.005、last-5 不降。
 
 ### 下一队列（2026-08-06，✅ 已完成）
 
