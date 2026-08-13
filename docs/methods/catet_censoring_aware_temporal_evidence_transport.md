@@ -1,55 +1,57 @@
-# CA-TET: Censoring-Aware Temporal Evidence Transport
+# CATET Final: Censoring-Aware Stage Re-Transport
 
-## Positioning
+## Problem and claim
 
-CA-TET is the new mainline method for SurvOT-Rank. It addresses a specific
-problem in multimodal WSI-pathway survival modeling: an attention map can look
-plausible without proving that the selected pathology-pathway relation is used
-by the survival predictor, while right censoring makes ordinary pairwise
-supervision unreliable.
+An attention map does not prove that selected pathology-pathway relations are
+used by a survival predictor.  CATET Final makes stage identity part of the OT
+cost before Sinkhorn and tests evidence through new balanced OT solutions.
 
-## Mechanism
-
-1. A learned stage-specific edge risk score changes the OT cost before
-   Sinkhorn optimization. The evidence therefore changes the transport plan,
-   rather than being computed from a detached attention map.
-2. Each temporal stage has an evidence gate over WSI-slot/pathway-slot pairs.
-   The gated plan feeds the event token and the factual hazard head.
-3. The risk-set transport loss only anchors comparisons at observed events and
-   uses the empirical at-risk-set size as a censoring-aware weight. Censored
-   patients remain context in the risk set but are not treated as observed
-   failures.
-4. The same plan is intervened on by keeping or removing gated edges. The
-   intervention term rewards sufficiency and measurable comprehensiveness
-   without forcing a preselected low-risk/high-risk direction.
-
-## Objective
-
-The outer training loop supplies the discrete-time survival NLL. CA-TET adds
-only three compact terms:
+For stage `s`, factual cost and interventions are:
 
 ```text
-L = L_survival + lambda_ot L_ot
-                  + lambda_rank L_risk-set-transport
-                  + lambda_int L_evidence-intervention
+C_s       = C_base + lambda_prog * C_risk(pair, stage_s)
+C_keep_s  = C_s + lambda_cf * (1 - evidence_gate_s)
+C_drop_s  = C_s + lambda_cf * evidence_gate_s
+P_s       = Sinkhorn(C_s)
+P_keep_s  = Sinkhorn(C_keep_s)
+P_drop_s  = Sinkhorn(C_drop_s)
 ```
 
-The counterfactual output is a model-faithful intervention diagnostic, not a
-causal treatment recommendation.
+All plan families preserve the same uniform row and column marginals.  Factual
+logits are decoded from `P_s`; keep/drop logits are explanation audits and
+never replace the factual survival prediction.
 
-## Required evidence for a paper claim
+## Closed objective
 
-The method should not be claimed as superior until the following are reported:
+```text
+L = L_surv + lambda_ot * (L_transport + L_stage_plan_diversity)
+           + lambda_rank * L_IPCW_rank
+           + lambda_stage * L_censored_stage
+           + lambda_intervention * (L_sufficiency + L_comprehensiveness)
+```
 
-- shared OT versus stage-specific OT;
-- stage-specific OT without edge-risk cost;
-- edge-risk cost without risk-set supervision;
-- full CA-TET;
-- keep/remove/random evidence interventions;
-- patch-level and pathway-level stability across seeds and folds;
-- mean and standard deviation over the complete five-fold protocol.
+`configure_train_reference()` fits stage edges and the censoring Kaplan-Meier
+curve from the current training fold only.  Observed patients supervise their
+event stage with IPCW; a censored patient contributes survival probability
+beyond the censoring stage.  The method claims model-faithful evidence
+counterfactuals, not causal treatment effects.
 
-The clean novelty claim is: **risk-set supervision is injected into the
-stage-specific OT geometry and evaluated through interventions on that same
-transport evidence under right censoring**. This is a methodological claim,
-not a claim of causal discovery.
+## Exact explanations
+
+`explain_last_batch()` returns stage edge risks, evidence gates, factual/keep/
+drop plans, event-stage probabilities, risks, intervention gaps, adjacent-stage
+plan distances, and row/column marginal errors.  These are the exact plans and
+predictions used in the forward pass.
+
+## Run and required evidence
+
+```bash
+python -m survot_rank.cli train \
+  --config configs/censoring_aware_temporal_evidence_transport_blca.yaml
+```
+
+Do not start the cross-cancer queue unless stage plans are non-identical,
+marginal error stays below tolerance, IPCW pairs are nonzero, and evidence
+removal changes risk without non-finite values.  Required ablations are shared
+stage cost, no IPCW, no censored-stage term, masked-plan intervention, random
+intervention, and the complete final model.

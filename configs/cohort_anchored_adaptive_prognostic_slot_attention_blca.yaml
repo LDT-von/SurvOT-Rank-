@@ -1,5 +1,5 @@
 name: cohort_anchored_adaptive_prognostic_slot_attention_blca
-description: CA-PSA with shared cohort identities and patient-adaptive prognostic slots on BLCA DSS.
+description: CA-PSA Final with identifiable cohort routes and budgeted patient activation on BLCA DSS.
 
 data:
   study: blca
@@ -18,8 +18,8 @@ split:
 
 train:
   survot_method: cohort_anchored_adaptive_prognostic_slot_attention
-  specific_simple: cohort_anchored_adaptive_prognostic_slot_attention_blca
-  results_dir: results/cohort_anchored_adaptive_prognostic_slot_attention_blca
+  specific_simple: capsa_final_blca
+  results_dir: results/capsa_final
   max_epochs: 50
   batch_size: 8
   grad_accum_steps: 1
@@ -56,9 +56,10 @@ model:
   capsa_gate_gamma: -0.1
   capsa_gate_zeta: 1.1
   capsa_gate_threshold: 0.5
-  # Learnable ordered capacity prior: avoids all-on/all-off initial validation.
-  capsa_gate_prior_start: -1.0
-  capsa_gate_prior_end: -2.2
-  # Total objective: trainer NLL + these two terms only.
-  capsa_lambda_sparse: 0.01
-  capsa_lambda_align: 0.02
+  # Final objective: survival NLL + identity + non-degenerate route budget.
+  capsa_lambda_budget: 0.01
+  capsa_lambda_identity: 0.02
+  capsa_target_active_ratio: 0.25
+  capsa_identity_temperature: 0.10
+  capsa_anchor_cosine_margin: 0.20
+  capsa_anchor_scale: 0.50

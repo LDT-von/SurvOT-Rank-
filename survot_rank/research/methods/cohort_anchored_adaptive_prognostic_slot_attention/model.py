@@ -3,8 +3,9 @@
 CA-PSA gives slot index ``k`` a cohort-level identity shared by WSI and omics,
 while modality-specific recurrent states retain patient-level variation.  A
 hard-concrete gate chooses how many of the shared identities are active for
-each patient.  The trainer supplies the survival NLL; this module adds only an
-expected-L0 sparsity term and a same-identity cross-modal alignment term.
+each patient.  The trainer supplies the survival NLL; this module makes route
+identity identifiable up to a global permutation and uses a budgeted gate so
+that sparsity cannot be optimized by closing every route.
 """
 
 from __future__ import annotations
@@ -115,8 +116,23 @@ class CohortAnchoredAdaptivePrognosticSlotAttention(nn.Module):
         self.gate_threshold = float(getattr(args, "capsa_gate_threshold", 0.5))
         self.gate_prior_start = float(getattr(args, "capsa_gate_prior_start", -1.0))
         self.gate_prior_end = float(getattr(args, "capsa_gate_prior_end", -2.2))
-        self.lambda_sparse = float(getattr(args, "capsa_lambda_sparse", 0.01))
-        self.lambda_align = float(getattr(args, "capsa_lambda_align", 0.02))
+        # The legacy expected-L0 objective had an all-off optimum.  Keep the
+        # old names as fallbacks for checkpoint/config compatibility, but the
+        # final objective is a target budget plus an explicit identity loss.
+        self.lambda_budget = float(
+            getattr(args, "capsa_lambda_budget", getattr(args, "capsa_lambda_sparse", 0.01))
+        )
+        self.lambda_identity = float(
+            getattr(args, "capsa_lambda_identity", getattr(args, "capsa_lambda_align", 0.02))
+        )
+        self.target_active_ratio = float(getattr(args, "capsa_target_active_ratio", 0.25))
+        self.identity_temperature = float(getattr(args, "capsa_identity_temperature", 0.10))
+        self.anchor_cosine_margin = float(getattr(args, "capsa_anchor_cosine_margin", 0.20))
+        self.anchor_scale = float(getattr(args, "capsa_anchor_scale", 0.50))
+        # Public aliases make historical audit code readable without changing
+        # the final loss definition.
+        self.lambda_sparse = self.lambda_budget
+        self.lambda_align = self.lambda_identity
         self._validate_hyperparameters()
 
         dim = self.wsi_projection_dim
@@ -124,7 +140,7 @@ class CohortAnchoredAdaptivePrognosticSlotAttention(nn.Module):
         self._init_omics_encoder(args.rna_format)
 
         self.cohort_anchors = nn.Parameter(torch.empty(self.max_slots, dim))
-        nn.init.normal_(self.cohort_anchors, std=0.02)
+        nn.init.orthogonal_(self.cohort_anchors)
         self.wsi_slot_updater = CohortAnchoredSlotUpdater(
             dim, heads=self.heads, iters=self.slot_iters, dropout=self.dropout
         )
@@ -146,11 +162,17 @@ class CohortAnchoredAdaptivePrognosticSlotAttention(nn.Module):
             nn.Linear(dim // 2, 1),
         )
         nn.init.zeros_(self.gate_head[-1].bias)
-        # Ordered capacity priors keep the first validation pass away from the
-        # degenerate all-on/all-off regimes. They are fully learnable and the
-        # patient feature still determines the posterior activation.
+        # Every identity receives the same prior.  An ordered prior makes the
+        # first routes systematically more likely and confounds identity with
+        # capacity rank.  Patient features learn deviations from this neutral
+        # cohort-level budget.
+        prior_probability = min(max(self.target_active_ratio, 1e-4), 1.0 - 1e-4)
+        prior_logit = (
+            math.log(prior_probability / (1.0 - prior_probability))
+            + self.gate_temperature * math.log(-self.gate_gamma / self.gate_zeta)
+        )
         self.gate_prior_logits = nn.Parameter(
-            torch.linspace(self.gate_prior_start, self.gate_prior_end, self.max_slots)
+            torch.full((self.max_slots,), prior_logit)
         )
         self.temporal_attention = nn.Linear(dim, self.num_classes)
         self.slot_hazard = nn.Sequential(
@@ -184,8 +206,16 @@ class CohortAnchoredAdaptivePrognosticSlotAttention(nn.Module):
             raise ValueError("hard-concrete bounds require capsa_gate_gamma < 0 < 1 < capsa_gate_zeta")
         if not 0 < self.gate_threshold < 1:
             raise ValueError("capsa_gate_threshold must be strictly between 0 and 1")
-        if self.lambda_sparse < 0 or self.lambda_align < 0:
+        if self.lambda_budget < 0 or self.lambda_identity < 0:
             raise ValueError("CA-PSA loss weights must be non-negative")
+        if not 0.0 < self.target_active_ratio <= 1.0:
+            raise ValueError("capsa_target_active_ratio must be in (0, 1]")
+        if self.identity_temperature <= 0.0:
+            raise ValueError("capsa_identity_temperature must be positive")
+        if not -1.0 <= self.anchor_cosine_margin < 1.0:
+            raise ValueError("capsa_anchor_cosine_margin must be in [-1, 1)")
+        if self.anchor_scale <= 0.0:
+            raise ValueError("capsa_anchor_scale must be positive")
 
     def _init_omics_encoder(self, rna_format: str) -> None:
         dim = self.wsi_projection_dim
@@ -247,7 +277,9 @@ class CohortAnchoredAdaptivePrognosticSlotAttention(nn.Module):
             hard = (soft > 0).to(soft.dtype)
         else:
             soft = expected_open
-            hard = (expected_open >= self.gate_threshold).to(soft.dtype)
+            keep = max(1, min(self.max_slots, round(self.target_active_ratio * self.max_slots)))
+            selected = log_alpha.topk(keep, dim=1).indices
+            hard = torch.zeros_like(soft).scatter(1, selected, 1.0)
         # A patient must retain at least one prognostic route.  This affects only
         # the hard forward pass; straight-through gradients still follow `soft`.
         empty = hard.sum(dim=1, keepdim=True) == 0
@@ -257,34 +289,78 @@ class CohortAnchoredAdaptivePrognosticSlotAttention(nn.Module):
 
         return gates, expected_open
 
-    def _alignment_loss(
+    def _identity_loss(
         self,
         wsi_state: torch.Tensor,
         omic_state: torch.Tensor,
-        expected_open: torch.Tensor,
         jointly_available: torch.Tensor,
-    ) -> torch.Tensor:
+        anchors: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Separate anchors and match same-index modality states contrastively."""
         wsi_common = F.normalize(self.wsi_align_projection(wsi_state), dim=-1)
         omic_common = F.normalize(self.omic_align_projection(omic_state), dim=-1)
-        distance = 1.0 - (wsi_common * omic_common).sum(dim=-1)
-        weights = expected_open * jointly_available.unsqueeze(1)
-        return (distance * weights).sum() / weights.sum().clamp_min(1e-6)
+        similarity = torch.einsum("bkd,bjd->bkj", wsi_common, omic_common)
+        available = jointly_available > 0
+        if bool(available.any()):
+            selected = similarity[available] / self.identity_temperature
+            targets = torch.arange(self.max_slots, device=selected.device)
+            targets = targets.unsqueeze(0).expand(selected.size(0), -1).reshape(-1)
+            forward_loss = F.cross_entropy(selected.reshape(-1, self.max_slots), targets)
+            reverse_loss = F.cross_entropy(
+                selected.transpose(1, 2).reshape(-1, self.max_slots), targets
+            )
+            cross_modal = 0.5 * (forward_loss + reverse_loss)
+            match_accuracy = (
+                selected.argmax(dim=-1)
+                == torch.arange(self.max_slots, device=selected.device).unsqueeze(0)
+            ).to(selected.dtype).mean()
+            diagonal_similarity = similarity[available].diagonal(dim1=1, dim2=2).mean()
+        else:
+            cross_modal = similarity.sum() * 0.0
+            match_accuracy = similarity.new_zeros(())
+            diagonal_similarity = similarity.new_zeros(())
+
+        normalised_anchors = F.normalize(anchors, dim=-1)
+        gram = normalised_anchors @ normalised_anchors.transpose(0, 1)
+        off_diagonal = ~torch.eye(self.max_slots, dtype=torch.bool, device=gram.device)
+        anchor_separation = F.relu(
+            gram[off_diagonal] - self.anchor_cosine_margin
+        ).square().mean()
+        return (
+            cross_modal + anchor_separation,
+            match_accuracy,
+            diagonal_similarity,
+            gram,
+        )
+
+    def _gate_budget_loss(self, expected_open: torch.Tensor) -> torch.Tensor:
+        """Match both patient capacity and cohort route usage to one budget."""
+        patient_ratio = expected_open.mean(dim=1)
+        route_ratio = expected_open.mean(dim=0)
+        target = expected_open.new_tensor(self.target_active_ratio)
+        return 0.5 * (
+            (patient_ratio - target).square().mean()
+            + (route_ratio - target).square().mean()
+        )
 
     def forward(self, **kwargs):
         wsi_tokens = self.wsi_mlp(kwargs["x_wsi"])
         omic_tokens = self._encode_omics(kwargs)
         batch = wsi_tokens.size(0)
 
+        identity_anchors = (
+            F.normalize(self.cohort_anchors, dim=-1) * self.anchor_scale
+        )
         wsi_slots, wsi_state, wsi_attention = self.wsi_slot_updater(
-            wsi_tokens, self.cohort_anchors
+            wsi_tokens, identity_anchors
         )
         omic_slots, omic_state, omic_attention = self.omic_slot_updater(
-            omic_tokens, self.cohort_anchors
+            omic_tokens, identity_anchors
         )
 
         wsi_available = self._availability(kwargs, "wsi_available", batch, wsi_tokens)
         omics_available = self._availability(kwargs, "omics_available", batch, wsi_tokens)
-        anchors = self.cohort_anchors.unsqueeze(0).expand(batch, -1, -1)
+        anchors = identity_anchors.unsqueeze(0).expand(batch, -1, -1)
         wsi_mask = wsi_available[:, None, None] > 0
         omic_mask = omics_available[:, None, None] > 0
         wsi_slots = torch.where(wsi_mask, wsi_slots, anchors)
@@ -306,28 +382,41 @@ class CohortAnchoredAdaptivePrognosticSlotAttention(nn.Module):
         gated_alpha = gated_alpha / gated_alpha.sum(dim=1, keepdim=True).clamp_min(1e-6)
         logits = (gated_alpha * slot_logits).sum(dim=1)
 
-        sparse_loss = expected_open.mean()
-        align_loss = self._alignment_loss(
+        budget_loss = self._gate_budget_loss(expected_open)
+        identity_loss, match_accuracy, diagonal_similarity, anchor_gram = self._identity_loss(
             wsi_state,
             omic_state,
-            expected_open,
             (wsi_available > 0).to(wsi_tokens.dtype) * (omics_available > 0).to(wsi_tokens.dtype),
+            identity_anchors,
         )
-        aux_loss = self.lambda_sparse * sparse_loss + self.lambda_align * align_loss
+        aux_loss = self.lambda_budget * budget_loss + self.lambda_identity * identity_loss
         if not self.training:
             aux_loss = logits.new_zeros(())
 
         self.last_training_losses = {
-            "sparse": sparse_loss.detach(),
-            "align": align_loss.detach(),
+            "gate_budget": budget_loss.detach(),
+            "identity": identity_loss.detach(),
+            "identity_match_accuracy": match_accuracy.detach(),
+            "identity_diagonal_similarity": diagonal_similarity.detach(),
+            "anchor_max_offdiag_cosine": (
+                anchor_gram
+                - torch.eye(self.max_slots, device=anchor_gram.device)
+            ).amax().detach(),
+            "mean_expected_active_ratio": expected_open.mean().detach(),
+            "mean_hard_active_count": (gates.detach() > 0.5).sum(dim=1).float().mean(),
             "auxiliary": aux_loss.detach(),
         }
+        route_contribution = gated_alpha * slot_logits
         self._last_explanation = {
             "gates": gates.detach(),
             "expected_open_probability": expected_open.detach(),
             "active_slot_count": (gates.detach() > 0.5).sum(dim=1),
             "slot_logits": slot_logits.detach(),
             "temporal_slot_weights": gated_alpha.detach(),
+            "route_time_contribution": route_contribution.detach(),
+            "anchor_cosine_matrix": anchor_gram.detach(),
+            "identity_match_accuracy": match_accuracy.detach(),
+            "identity_diagonal_similarity": diagonal_similarity.detach(),
             "wsi_slots": wsi_slots.detach(),
             "omic_slots": omic_slots.detach(),
             "wsi_attention": wsi_attention.detach(),

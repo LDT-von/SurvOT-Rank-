@@ -1,5 +1,5 @@
 name: censoring_aware_temporal_evidence_transport_blca
-description: Censoring-aware temporal evidence transport for BLCA DSS.
+description: CATET Final with stage-conditioned balanced OT and keep/remove re-transport on BLCA DSS.
 
 data:
   study: blca
@@ -18,8 +18,8 @@ split:
 
 train:
   survot_method: censoring_aware_temporal_evidence_transport
-  specific_simple: censoring_aware_temporal_evidence_transport_blca
-  results_dir: results/censoring_aware_temporal_evidence_transport_blca
+  specific_simple: catet_final_blca
+  results_dir: results/catet_final
   max_epochs: 50           # 30ep 下 fold2 峰值仍在末段，延长到 50 确保收敛
   batch_size: 16           # 调大物理 batch：单次 forward 有16样本，排序/risk-set 损失才有足够可比对（梯度累积替代不了这点）
   grad_accum_steps: 1      # 有效 batch = 16；每 epoch ~19 步更新（比 accum=2 翻倍，缓解欠训练），排序损失仍有16样本/forward
@@ -54,10 +54,15 @@ model:
   catet_prog_cost: 0.20
   catet_lambda_ot: 0.04
   catet_lambda_rank: 0.08
+  catet_lambda_stage: 0.04
   catet_lambda_intervention: 0.05
   catet_keep_ratio: 0.25
   catet_intervention_margin: 0.05
+  catet_intervention_cost: 1.0
+  catet_plan_diversity_margin: 0.01
   catet_rank_margin: 0.0
+  catet_rank_temperature: 0.50
+  catet_ipcw_max_weight: 10.0
   catet_rank_max_pairs: 4096
   rg_eps_start: 0.10
   rg_eps_anneal: 12

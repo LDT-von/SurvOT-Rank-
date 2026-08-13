@@ -32,6 +32,9 @@ def make_args(**overrides):
         arc_lambda_rank=0.10,
         arc_rank_margin=0.0,
         arc_rank_max_pairs=128,
+        arc_seed_anchors=0,
+        arc_freeze_state_encoder=1,
+        arc_lambda_sharpness=0.0,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -73,11 +76,12 @@ def test_arcsurv_archetypes_are_convex_combinations_of_memory():
     model.train()
     model(**make_inputs())
     parameters = model.archetype_parameters()
-    wsi_beta = parameters["wsi_beta"]
-    assert torch.all(wsi_beta >= 0)
-    assert torch.allclose(wsi_beta.sum(dim=1), torch.ones(4), atol=1e-6)
-    expected = wsi_beta @ model.wsi_archetypes.memory[:3]
-    assert torch.allclose(parameters["wsi_archetypes"], expected, atol=1e-6)
+    beta = parameters["shared_beta"]
+    assert torch.all(beta >= 0)
+    assert torch.allclose(beta.sum(dim=1), torch.ones(4), atol=1e-6)
+    expected = beta @ model.shared_archetypes.memory[:3]
+    assert torch.allclose(parameters["shared_archetypes"], expected, atol=1e-6)
+    assert model.wsi_archetypes is model.omic_archetypes
 
 
 def test_arcsurv_missing_modalities_and_eval_do_not_update_memory():
@@ -94,8 +98,9 @@ def test_arcsurv_missing_modalities_and_eval_do_not_update_memory():
     logits, aux_loss = model(**inputs)
     assert torch.isfinite(logits).all()
     assert torch.isfinite(aux_loss)
-    assert model.wsi_archetypes.memory_count.item() == 2
-    assert model.omic_archetypes.memory_count.item() == 2
+    # One shared bank stores one fused support point for every patient with at
+    # least one available modality.
+    assert model.shared_archetypes.memory_count.item() == 3
 
     model.eval()
     before = (
@@ -113,12 +118,9 @@ def test_arcsurv_missing_modalities_and_eval_do_not_update_memory():
 
 def _memory_snapshot(model):
     return (
-        model.wsi_archetypes.memory.clone(),
-        model.wsi_archetypes.memory_priority.clone(),
-        model.wsi_archetypes.memory_seen.clone(),
-        model.omic_archetypes.memory.clone(),
-        model.omic_archetypes.memory_priority.clone(),
-        model.omic_archetypes.memory_seen.clone(),
+        model.shared_archetypes.memory.clone(),
+        model.shared_archetypes.memory_priority.clone(),
+        model.shared_archetypes.memory_seen.clone(),
     )
 
 
@@ -146,6 +148,8 @@ def test_arcsurv_memory_is_frozen_after_the_bank_update_window():
 
     # 窗口结束后必须冻结。
     model(**make_inputs(), cur_epoch=3)
+    assert model.state_encoder_frozen.item()
+    assert not any(parameter.requires_grad for parameter in model.wsi_mlp.parameters())
     frozen = _memory_snapshot(model)
     model(**make_inputs(), cur_epoch=4)
     assert all(
@@ -191,6 +195,21 @@ def test_arcsurv_pathway_inputs_match_blca_configuration():
     assert logits.shape == (3, 4)
     assert torch.isfinite(logits).all()
     assert torch.isfinite(aux_loss)
+
+
+def test_arcsurv_explanation_reconstructs_logits_from_shared_archetypes():
+    torch.manual_seed(31)
+    model = ArchetypalRiskComposition(make_args(), omic_input_dim=20)
+    model.eval()
+    with torch.no_grad():
+        logits, _ = model(**make_inputs())
+    explanation = model.explain_last_batch()
+    reconstructed = (
+        explanation["archetype_logit_contribution"].sum(dim=1)
+        + model.hazard_bias
+    )
+    assert torch.allclose(reconstructed, logits, atol=1e-6)
+    assert explanation["bank_support_weights"].shape[0] == model.num_archetypes
 
 
 def test_arcsurv_is_registered_and_parser_accepts_alias():

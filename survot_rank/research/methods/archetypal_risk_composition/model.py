@@ -234,7 +234,11 @@ class ArchetypalRiskComposition(nn.Module):
         # 平均使用全部原型」是一个可行解（实测组合熵 ≈ ln(K)、方差 ≈ 0）。
         # 两者组合才是目标形态：批次均匀 + 个体集中 = 不同患者用不同原型。
         self.arc_lambda_sharpness = float(
-            getattr(args, "arc_lambda_sharpness", 0.02)
+            getattr(args, "arc_lambda_sharpness", 0.0)
+        )
+        self.arc_seed_anchors = bool(getattr(args, "arc_seed_anchors", False))
+        self.arc_freeze_state_encoder = bool(
+            getattr(args, "arc_freeze_state_encoder", True)
         )
         self._validate_hyperparameters()
 
@@ -268,7 +272,10 @@ class ArchetypalRiskComposition(nn.Module):
         anchor_logit = float(getattr(args, "arc_anchor_logit", 6.0))
         self.wsi_state_norm = nn.LayerNorm(dim)
         self.omic_state_norm = nn.LayerNorm(dim)
-        self.wsi_archetypes = CohortArchetypeBank(
+        # One cohort hull is the central final-version invariant.  Separate
+        # WSI and omics banks silently gave the same archetype index two
+        # unrelated meanings and made the JS composition loss ill-posed.
+        self.shared_archetypes = CohortArchetypeBank(
             dim,
             self.num_archetypes,
             bank_size,
@@ -277,14 +284,9 @@ class ArchetypalRiskComposition(nn.Module):
             distance_reduction,
             anchor_logit,
         )
-        self.omic_archetypes = CohortArchetypeBank(
-            dim,
-            self.num_archetypes,
-            bank_size,
-            temperature,
-            beta_init_scale,
-            distance_reduction,
-            anchor_logit,
+        self.register_buffer(
+            "state_encoder_frozen",
+            torch.zeros((), dtype=torch.bool),
         )
 
         self.archetype_hazard_logits = nn.Parameter(
@@ -294,12 +296,23 @@ class ArchetypalRiskComposition(nn.Module):
         self.missing_logits = nn.Parameter(torch.zeros(self.num_classes))
         self.last_training_losses: dict[str, torch.Tensor] = {}
         self.last_composition: torch.Tensor | None = None
+        self._last_explanation: dict[str, torch.Tensor] = {}
 
         if omic_names:
             try:
                 self.all_gene_names = list(np.unique(np.concatenate(omic_names)))
             except Exception:
                 pass
+
+    @property
+    def wsi_archetypes(self) -> CohortArchetypeBank:
+        """Compatibility alias: both modalities use the same final bank."""
+        return self.shared_archetypes
+
+    @property
+    def omic_archetypes(self) -> CohortArchetypeBank:
+        """Compatibility alias: both modalities use the same final bank."""
+        return self.shared_archetypes
 
     def _structure_scale(self, epoch) -> float:
         """原型结构损失的分阶段权重：warmup 内为 0，随后线性拉到 1。
@@ -457,8 +470,7 @@ class ArchetypalRiskComposition(nn.Module):
 
     def _archetype_diagnostics(
         self,
-        wsi_archetypes: torch.Tensor,
-        omic_archetypes: torch.Tensor,
+        archetypes: torch.Tensor,
         composition: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
         """原型是否真的分化开的只读诊断。
@@ -472,11 +484,15 @@ class ArchetypalRiskComposition(nn.Module):
             dominant = composition.argmax(dim=1)
             active = torch.unique(dominant).numel()
             return {
+                "arc_shared_archetype_cosine": self._mean_pairwise_cosine(
+                    archetypes
+                ).detach(),
+                # Historical names remain aliases in result collectors.
                 "arc_wsi_archetype_cosine": self._mean_pairwise_cosine(
-                    wsi_archetypes
+                    archetypes
                 ).detach(),
                 "arc_omic_archetype_cosine": self._mean_pairwise_cosine(
-                    omic_archetypes
+                    archetypes
                 ).detach(),
                 "arc_hazard_spread": self._archetype_hazard_spread().detach(),
                 "arc_active_archetype_fraction": composition.new_tensor(
@@ -488,21 +504,54 @@ class ArchetypalRiskComposition(nn.Module):
             }
 
     def archetype_parameters(self):
-        """Return current modality archetypes, hull weights, and hazard curves."""
-        wsi_archetypes, wsi_beta = self.wsi_archetypes.archetypes()
-        omic_archetypes, omic_beta = self.omic_archetypes.archetypes()
+        """Return the shared hull, support weights, and hazard curves."""
+        archetypes, beta = self.shared_archetypes.archetypes()
         return {
-            "wsi_archetypes": wsi_archetypes,
-            "wsi_beta": wsi_beta,
-            "omic_archetypes": omic_archetypes,
-            "omic_beta": omic_beta,
+            "shared_archetypes": archetypes,
+            "shared_beta": beta,
+            "wsi_archetypes": archetypes,
+            "wsi_beta": beta,
+            "omic_archetypes": archetypes,
+            "omic_beta": beta,
             "hazard_logits": self.archetype_hazard_logits,
         }
+
+    def _freeze_state_encoder_once(self) -> None:
+        """Freeze the coordinate map exactly when its cohort bank freezes."""
+        if bool(self.state_encoder_frozen.item()):
+            return
+        modules = (
+            self.wsi_mlp,
+            self.sig_networks,
+            self.slot_attention_wsi,
+            self.slot_attention_omic,
+            self.wsi_state_norm,
+            self.omic_state_norm,
+        )
+        for module in modules:
+            for parameter in module.parameters():
+                parameter.requires_grad_(False)
+        self.state_encoder_frozen.fill_(True)
 
     def forward(self, **kwargs):
         x_wsi = kwargs["x_wsi"]
         batch_size = x_wsi.size(0)
         device = x_wsi.device
+
+        current_epoch = int(
+            getattr(
+                self.args,
+                "cur_epoch",
+                kwargs.get("cur_epoch", kwargs.get("epoch", 0)),
+            )
+        )
+        freeze_epoch = max(1, self.arc_bank_update_epochs)
+        if (
+            self.training
+            and self.arc_freeze_state_encoder
+            and current_epoch >= freeze_epoch
+        ):
+            self._freeze_state_encoder_once()
 
         wsi_tokens = self.wsi_mlp(x_wsi)
         omic_tokens = self._encode_omics(kwargs)
@@ -525,37 +574,35 @@ class ArchetypalRiskComposition(nn.Module):
         wsi_state = self.wsi_state_norm(self._masked_mean(wsi_slots, wsi_mask))
         omic_state = self.omic_state_norm(self._masked_mean(omic_slots, omic_mask))
 
-        current_epoch = int(kwargs.get("cur_epoch", kwargs.get("epoch", 0)))
         # 至少更新 1 轮，否则原型库永远为空。
         update_memory = current_epoch < max(1, self.arc_bank_update_epochs)
         structure_scale = self._structure_scale(current_epoch)
-        self.wsi_archetypes.update(
-            wsi_state[has_wsi],
-            allow_update=update_memory,
-        )
-        self.omic_archetypes.update(
-            omic_state[has_omic],
+        wsi_weight = has_wsi.to(wsi_state.dtype).unsqueeze(1)
+        omic_weight = has_omic.to(wsi_state.dtype).unsqueeze(1)
+        denominator = (wsi_weight + omic_weight).clamp_min(1.0)
+        shared_state = (
+            wsi_weight * wsi_state + omic_weight * omic_state
+        ) / denominator
+        has_any = has_wsi | has_omic
+        self.shared_archetypes.update(
+            shared_state[has_any],
             allow_update=update_memory,
         )
         # memory 冻结后立刻把原型锚定到互相最远的成员上。必须在冻结之后做：
         # 此时队列内容不再变化，furthest-point 选出的锚点才是稳定的。
-        if self.training and not update_memory:
-            self.wsi_archetypes.seed_anchors_once()
-            self.omic_archetypes.seed_anchors_once()
+        if self.training and not update_memory and self.arc_seed_anchors:
+            self.shared_archetypes.seed_anchors_once()
         (
             wsi_composition,
             wsi_reconstruction,
-            wsi_archetypes,
-        ) = self.wsi_archetypes(wsi_state)
+            archetypes,
+        ) = self.shared_archetypes(wsi_state)
         (
             omic_composition,
             omic_reconstruction,
-            omic_archetypes,
-        ) = self.omic_archetypes(omic_state)
+            _,
+        ) = self.shared_archetypes(omic_state)
 
-        wsi_weight = has_wsi.to(wsi_state.dtype).unsqueeze(1)
-        omic_weight = has_omic.to(wsi_state.dtype).unsqueeze(1)
-        denominator = (wsi_weight + omic_weight).clamp_min(1.0)
         composition = (
             wsi_weight * wsi_composition + omic_weight * omic_composition
         ) / denominator
@@ -566,6 +613,23 @@ class ArchetypalRiskComposition(nn.Module):
         logits = composition @ self.archetype_hazard_logits + self.hazard_bias
         logits = torch.where(neither.unsqueeze(1), self.missing_logits.unsqueeze(0), logits)
         self.last_composition = composition.detach()
+        archetype_hazards = torch.sigmoid(
+            self.archetype_hazard_logits + self.hazard_bias
+        )
+        archetype_survival = torch.cumprod(1.0 - archetype_hazards, dim=1)
+        self._last_explanation = {
+            "composition": composition.detach(),
+            "wsi_composition": wsi_composition.detach(),
+            "omic_composition": omic_composition.detach(),
+            "archetypes": archetypes.detach(),
+            "archetype_hazards": archetype_hazards.detach(),
+            "archetype_survival": archetype_survival.detach(),
+            "archetype_logit_contribution": (
+                composition.unsqueeze(-1)
+                * self.archetype_hazard_logits.unsqueeze(0)
+            ).detach(),
+            "bank_support_weights": self.shared_archetypes.archetypes()[1].detach(),
+        }
 
         if not self.training:
             self.last_training_losses = {}
@@ -601,10 +665,7 @@ class ArchetypalRiskComposition(nn.Module):
         else:
             balance_loss = zero
 
-        volume_loss = 0.5 * (
-            self._simplex_volume_loss(wsi_archetypes)
-            + self._simplex_volume_loss(omic_archetypes)
-        )
+        volume_loss = self._simplex_volume_loss(archetypes)
 
         # 个体锐度：最小化每个患者 composition 的熵。与 balance（批次平均趋于
         # 均匀）互补，共同排除「所有患者都均匀使用全部原型」这个退化解。
@@ -637,8 +698,9 @@ class ArchetypalRiskComposition(nn.Module):
             "arc_simplex_volume": volume_loss.detach(),
             "arc_sharpness": sharpness_loss.detach(),
             "arc_anchors_seeded": logits.new_tensor(
-                float(bool(self.wsi_archetypes.anchors_seeded.item()))
+                float(bool(self.shared_archetypes.anchors_seeded.item()))
             ).detach(),
+            "arc_state_encoder_frozen": self.state_encoder_frozen.detach().float(),
             "arc_rank": rank_loss.detach(),
             "arc_composition_entropy": (
                 -(composition.clamp_min(1e-8) * composition.clamp_min(1e-8).log())
@@ -649,15 +711,23 @@ class ArchetypalRiskComposition(nn.Module):
             "arc_composition_variance": (
                 composition.var(dim=0, unbiased=False).mean().detach()
             ),
-            "arc_wsi_bank_count": self.wsi_archetypes.memory_count.detach().float(),
-            "arc_omic_bank_count": self.omic_archetypes.memory_count.detach().float(),
-            "arc_wsi_bank_seen": self.wsi_archetypes.memory_seen.detach().float(),
-            "arc_omic_bank_seen": self.omic_archetypes.memory_seen.detach().float(),
+            "arc_shared_bank_count": self.shared_archetypes.memory_count.detach().float(),
+            "arc_shared_bank_seen": self.shared_archetypes.memory_seen.detach().float(),
+            "arc_wsi_bank_count": self.shared_archetypes.memory_count.detach().float(),
+            "arc_omic_bank_count": self.shared_archetypes.memory_count.detach().float(),
+            "arc_wsi_bank_seen": self.shared_archetypes.memory_seen.detach().float(),
+            "arc_omic_bank_seen": self.shared_archetypes.memory_seen.detach().float(),
             **self._archetype_diagnostics(
-                wsi_archetypes, omic_archetypes, composition
+                archetypes, composition
             ),
         }
         return logits, aux_loss
+
+    def explain_last_batch(self) -> dict[str, torch.Tensor]:
+        """Return the exact shared-simplex quantities used for prediction."""
+        if not self._last_explanation:
+            raise RuntimeError("Run a forward pass before requesting ArcSurv diagnostics")
+        return dict(self._last_explanation)
 
 
 __all__ = ["ArchetypalRiskComposition", "CohortArchetypeBank"]

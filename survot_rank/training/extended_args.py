@@ -494,10 +494,15 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--catet_prog_cost", type=float, default=0.20)
     parser.add_argument("--catet_lambda_ot", type=float, default=0.04)
     parser.add_argument("--catet_lambda_rank", type=float, default=0.08)
+    parser.add_argument("--catet_lambda_stage", type=float, default=0.04)
     parser.add_argument("--catet_lambda_intervention", type=float, default=0.05)
     parser.add_argument("--catet_keep_ratio", type=float, default=0.25)
     parser.add_argument("--catet_intervention_margin", type=float, default=0.05)
+    parser.add_argument("--catet_intervention_cost", type=float, default=1.0)
+    parser.add_argument("--catet_plan_diversity_margin", type=float, default=0.01)
     parser.add_argument("--catet_rank_margin", type=float, default=0.0)
+    parser.add_argument("--catet_rank_temperature", type=float, default=0.50)
+    parser.add_argument("--catet_ipcw_max_weight", type=float, default=10.0)
     parser.add_argument("--catet_rank_max_pairs", type=int, default=4096)
 
     # V60 OT Event Rank method.
@@ -519,6 +524,10 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--arc_lambda_rank", type=float, default=0.10)
     parser.add_argument("--arc_rank_margin", type=float, default=0.0)
     parser.add_argument("--arc_rank_max_pairs", type=int, default=4096)
+    parser.add_argument("--arc_seed_anchors", type=int, choices=(0, 1), default=0)
+    parser.add_argument(
+        "--arc_freeze_state_encoder", type=int, choices=(0, 1), default=1
+    )
     # ArcSurv 分阶段激活四项结构损失（rank 与 NLL 同期生效，不走 ramp）。
     # BLCA fold1 最佳 C-index 出现在 epoch 29 且最后 5 轮仍在上升 = 欠训练。
     parser.add_argument(
@@ -590,7 +599,7 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--arc_lambda_sharpness",
         type=float,
-        default=0.02,
+        default=0.0,
         help=(
             "个体 composition 熵惩罚。balance 只把批次平均推向均匀，"
             "此前没有任何一项奖励单个患者的组合变尖；0 = 旧行为。"
@@ -610,6 +619,12 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--capsa_gate_prior_end", type=float, default=-2.2)
     parser.add_argument("--capsa_lambda_sparse", type=float, default=0.01)
     parser.add_argument("--capsa_lambda_align", type=float, default=0.02)
+    parser.add_argument("--capsa_lambda_budget", type=float, default=0.01)
+    parser.add_argument("--capsa_lambda_identity", type=float, default=0.02)
+    parser.add_argument("--capsa_target_active_ratio", type=float, default=0.25)
+    parser.add_argument("--capsa_identity_temperature", type=float, default=0.10)
+    parser.add_argument("--capsa_anchor_cosine_margin", type=float, default=0.20)
+    parser.add_argument("--capsa_anchor_scale", type=float, default=0.50)
 
     # V70 Patient-Specific Prognostic Circuits (PSPC-Surv).
     parser.add_argument("--pspc_max_modules", type=int, default=16)
