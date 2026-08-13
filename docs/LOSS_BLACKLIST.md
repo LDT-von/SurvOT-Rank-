@@ -53,7 +53,7 @@
 | **V45v2** `OTEHV2RankEventV2` | `prognostic_event_transport/model.py` | 默认路径下继承 V45，用全部 4 项 |
 | **V50** `OTEHTimeLocalCompeting` | `prognostic_event_transport/model.py` | 继承 V45，用全部 4 项（另加 timelocal_spec/cover/compete） |
 
-其余方法（V31 / RG-ET / SPT / FET / CA-TET / DCT）在 forward 里**不引用** `lambda_rankevent_*`，
+其余方法（V31 / RG-ET / SPT / FET / CATET / DCT）在 forward 里**不引用** `lambda_rankevent_*`，
 只有各自的替代损失（`rg_lambda_*` / `spt_lambda_*` / `catet_lambda_*` 等）。
 **「rankevent 组黑名单」只适用于 V45 / V45v2 / V50 这三个 config。**
 

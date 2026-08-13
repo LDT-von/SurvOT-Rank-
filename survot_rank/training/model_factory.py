@@ -8,190 +8,18 @@ import importlib.util
 import os
 import sys
 
+from survot_rank.research.methods.catalog import (
+    METHOD_ALIASES,
+    METHOD_CATALOG,
+    METHOD_REGISTRY,
+)
+
 
 COMMON_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(COMMON_DIR))
 
 if COMMON_DIR not in sys.path:
     sys.path.insert(0, COMMON_DIR)
-
-
-METHOD_REGISTRY = {
-    "ot_event_hazard_v2": (
-        os.path.join("survot_rank", "research", "methods", "ot_event_hazard_v2"),
-        "OTEventHazardV2Survival",
-    ),
-    "otehv2_rankevent": (
-        os.path.join("survot_rank", "research", "methods", "prognostic_event_transport"),
-        "OTEHV2RankEvent",
-    ),
-    "otehv2_rankevent_v2": (
-        os.path.join("survot_rank", "research", "methods", "prognostic_event_transport"),
-        "OTEHV2RankEventV2",
-    ),
-    "otehv2_timelocal_competing": (
-        os.path.join("survot_rank", "research", "methods", "prognostic_event_transport"),
-        "OTEHTimeLocalCompeting",
-    ),
-    "rank_guided_event_transport": (
-        os.path.join("survot_rank", "research", "methods", "rank_guided_event_transport"),
-        "RankGuidedEventTransport",
-    ),
-    "stagewise_prognostic_transport": (
-        os.path.join("survot_rank", "research", "methods", "stagewise_prognostic_transport"),
-        "StagewisePrognosticTransport",
-    ),
-    "faithful_evidence_transport": (
-        os.path.join("survot_rank", "research", "methods", "faithful_evidence_transport"),
-        "FaithfulEvidenceTransport",
-    ),
-    "distributional_counterfactual_transport": (
-        os.path.join("survot_rank", "research", "methods", "distributional_counterfactual_transport"),
-        "DistributionalCounterfactualTransport",
-    ),
-    "dct_v41_survival_evidence_ledger": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "dct_v41_survival_evidence_ledger",
-        ),
-        "DCTV41SurvivalEvidenceLedger",
-    ),
-    "dct_listwise_transport": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "dct_listwise_transport",
-        ),
-        "DCTListwiseTransport",
-    ),
-    "dct_transport_intervention_consistency": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "dct_transport_intervention_consistency",
-        ),
-        "DCTTransportInterventionConsistency",
-    ),
-    "dct_v382_prognostic_transport_reconstruction": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "dct_v382_prognostic_transport_reconstruction",
-        ),
-        "DCTV382PrognosticTransportReconstruction",
-    ),
-    "dct_v383_intervention_consistency_centered": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "dct_v383_intervention_consistency_centered",
-        ),
-        "DCTV383InterventionConsistencyCentered",
-    ),
-    "dct_v39_risk_simplex_transport": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "dct_v39_risk_simplex_transport",
-        ),
-        "DCTV39RiskSimplexTransport",
-    ),
-    "intervention_stable_survival_transport": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "intervention_stable_survival_transport",
-        ),
-        "InterventionStableSurvivalTransport",
-    ),
-    "censoring_aware_temporal_evidence_transport": (
-        os.path.join("survot_rank", "research", "methods", "censoring_aware_temporal_evidence_transport"),
-        "CensoringAwareTemporalEvidenceTransport",
-    ),
-    "v60_ot_event_rank": (
-        os.path.join("survot_rank", "research", "methods", "v60_ot_event_rank"),
-        "V60OTEventRank",
-    ),
-    "archetypal_transport_composition": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "archetypal_transport_composition",
-        ),
-        "ArchetypalTransportComposition",
-    ),
-    "archetypal_risk_composition": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "archetypal_risk_composition",
-        ),
-        "ArchetypalRiskComposition",
-    ),
-    "cohort_anchored_adaptive_prognostic_slot_attention": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "cohort_anchored_adaptive_prognostic_slot_attention",
-        ),
-        "CohortAnchoredAdaptivePrognosticSlotAttention",
-    ),
-    "v70_patient_specific_prognostic_circuits": (
-        os.path.join(
-            "survot_rank",
-            "research",
-            "methods",
-            "v70_patient_specific_prognostic_circuits",
-        ),
-        "V70PatientSpecificPrognosticCircuits",
-    ),
-}
-
-METHOD_ALIASES = {
-    "31": "ot_event_hazard_v2",
-    "45": "otehv2_rankevent",
-    "pet": "otehv2_rankevent",
-    "prognostic_event_transport": "otehv2_rankevent",
-    "45v2": "otehv2_rankevent_v2",
-    "50": "otehv2_timelocal_competing",
-    "60": "v60_ot_event_rank",
-    "arcsurv": "archetypal_risk_composition",
-    "arc_surv": "archetypal_risk_composition",
-    "act_surv": "archetypal_transport_composition",
-    "actsurv": "archetypal_transport_composition",
-    "v42": "archetypal_transport_composition",
-    "dct_v42": "archetypal_transport_composition",
-    "dct_v38": "dct_transport_intervention_consistency",
-    "dct_v382": "dct_v382_prognostic_transport_reconstruction",
-    "dct_v3_8_2": "dct_v382_prognostic_transport_reconstruction",
-    "dct_v383": "dct_v383_intervention_consistency_centered",
-    "dct_v3_8_3": "dct_v383_intervention_consistency_centered",
-    "dct_v39": "dct_v39_risk_simplex_transport",
-    "dct_v3_9": "dct_v39_risk_simplex_transport",
-    "rst": "dct_v39_risk_simplex_transport",
-    "risk_simplex_transport": "dct_v39_risk_simplex_transport",
-    "dct_v41": "dct_v41_survival_evidence_ledger",
-    "dct_v4_1": "dct_v41_survival_evidence_ledger",
-    "v40": "intervention_stable_survival_transport",
-    "ist_surv": "intervention_stable_survival_transport",
-    "ca_psa": "cohort_anchored_adaptive_prognostic_slot_attention",
-    "capsa": "cohort_anchored_adaptive_prognostic_slot_attention",
-    "70": "v70_patient_specific_prognostic_circuits",
-    "pspc_surv": "v70_patient_specific_prognostic_circuits",
-    "pspc": "v70_patient_specific_prognostic_circuits",
-}
-
 
 # OTEHV2RankEventV2 新增能力字段的声明类型（用于 _validate_config 的类型校验）。
 # 说明：argparse CLI 路径下，未知的 `--flag` 名称与无法解析为声明类型的取值已经由
@@ -303,9 +131,8 @@ def _resolve_method_path(method_dir: str) -> str:
 
 def _load_model_module(method_key: str, method_dir: str):
     method_path = _resolve_method_path(method_dir)
-    model_file = os.path.join(method_path, "model.py")
-    if method_key == "ot_event_hazard_v2":
-        model_file = os.path.join(method_path, "model_v2.py")
+    method_spec = METHOD_CATALOG[method_key]
+    model_file = os.path.join(method_path, method_spec.model_file)
     if not os.path.isfile(model_file):
         raise FileNotFoundError(f"model file not found: {model_file}")
 
