@@ -28,6 +28,12 @@ def make_args(**overrides):
         capsa_gate_prior_end=-2.2,
         capsa_lambda_sparse=0.01,
         capsa_lambda_align=0.02,
+        capsa_lambda_budget=0.01,
+        capsa_lambda_identity=0.02,
+        capsa_target_active_ratio=0.25,
+        capsa_identity_temperature=0.10,
+        capsa_anchor_cosine_margin=0.20,
+        capsa_anchor_scale=0.50,
     )
     for key, value in overrides.items():
         setattr(args, key, value)
@@ -41,7 +47,7 @@ def make_inputs(batch=3):
     }
 
 
-def test_capsa_forward_backward_has_shared_anchor_and_only_two_auxiliary_terms():
+def test_capsa_forward_backward_has_closed_identity_and_budget_objective():
     torch.manual_seed(3)
     model = CohortAnchoredAdaptivePrognosticSlotAttention(make_args(), omic_input_dim=20)
     model.train()
@@ -50,11 +56,20 @@ def test_capsa_forward_backward_has_shared_anchor_and_only_two_auxiliary_terms()
     assert logits.shape == (3, 4)
     assert torch.isfinite(logits).all()
     assert aux_loss.ndim == 0 and torch.isfinite(aux_loss)
-    assert set(model.last_training_losses) == {"sparse", "align", "auxiliary"}
+    assert set(model.last_training_losses) == {
+        "gate_budget",
+        "identity",
+        "identity_match_accuracy",
+        "identity_diagonal_similarity",
+        "anchor_max_offdiag_cosine",
+        "mean_expected_active_ratio",
+        "mean_hard_active_count",
+        "auxiliary",
+    }
     assert torch.allclose(
         aux_loss,
-        0.01 * model.last_training_losses["sparse"]
-        + 0.02 * model.last_training_losses["align"],
+        0.01 * model.last_training_losses["gate_budget"]
+        + 0.02 * model.last_training_losses["identity"],
     )
 
     (logits.sum() + aux_loss).backward()
@@ -70,7 +85,7 @@ def test_capsa_hard_concrete_is_dynamic_deterministic_and_keeps_one_slot():
         [[8.0, 8.0, -8.0, -8.0, -8.0], [-8.0, -8.0, -8.0, -8.0, -8.0]]
     )
     gates, expected = model._hard_concrete(log_alpha, sample=False)
-    assert gates[0].sum() == 2
+    assert gates[0].sum() == 1
     assert gates[1].sum() == 1
     assert torch.equal(gates[1], torch.tensor([1.0, 0.0, 0.0, 0.0, 0.0]))
     assert expected[0, 0] > expected[0, 2]
@@ -119,8 +134,29 @@ def test_capsa_capacity_prior_avoids_initial_all_on_or_single_slot_collapse():
             x_omics=torch.randn(4, 6, 20),
         )
     counts = model.explain_last_batch()["active_slot_count"]
-    assert torch.all(counts > 1)
-    assert torch.all(counts < 16)
+    assert torch.all(counts == 4)
+
+
+def test_capsa_explanation_is_the_exact_additive_prediction_path():
+    torch.manual_seed(19)
+    model = CohortAnchoredAdaptivePrognosticSlotAttention(make_args(), omic_input_dim=20)
+    model.eval()
+    with torch.no_grad():
+        logits, _ = model(**make_inputs())
+    explanation = model.explain_last_batch()
+    assert torch.allclose(
+        explanation["route_time_contribution"].sum(dim=1), logits, atol=1e-6
+    )
+    gram = explanation["anchor_cosine_matrix"]
+    assert torch.allclose(torch.diagonal(gram), torch.ones(5), atol=1e-6)
+    assert torch.isfinite(gram).all()
+
+
+def test_capsa_gate_budget_has_no_all_off_optimum():
+    model = CohortAnchoredAdaptivePrognosticSlotAttention(make_args(), omic_input_dim=20)
+    target = torch.full((4, 5), 0.25)
+    all_off = torch.zeros_like(target)
+    assert model._gate_budget_loss(target) < model._gate_budget_loss(all_off)
 
 
 def test_capsa_missing_modality_and_pathway_inputs_are_supported():

@@ -1,70 +1,52 @@
-# Cohort-Anchored Adaptive Prognostic Slot Attention (CA-PSA)
+# CA-PSA Final: Identifiable Cohort Routes
 
-`cohort_anchored_adaptive_prognostic_slot_attention` is an experimental
-WSI--omics survival method. Its target is a specific weakness of ordinary Slot
-Attention in cohort modelling: independently sampled, exchangeable slots have
-no stable meaning across patients or modalities, and a fixed slot count asserts
-the same latent complexity for every patient.
+## Problem and claim
 
-## Mechanism
+Ordinary patient-wise slots are exchangeable and a fixed slot count gives every
+patient the same latent capacity.  CA-PSA Final defines a cohort route anchor
+`a_k`, updates that same route separately from WSI and omics, and activates a
+patient-specific subset.  Route identity is claimed only up to a global
+permutation; cross-fold comparison therefore requires optimal matching.
 
-For patient `i`, modality `m`, and cohort identity `k`, CA-PSA constructs
-
-```text
-z_i,k,m = a_k + s_i,k,m
-```
-
-where `a_k` is one learnable cohort anchor shared by WSI and omics, while
-`s_i,k,m` is produced by a modality-specific competitive recurrent update. The
-two modalities therefore start from the exact same indexed identity without a
-post-hoc `K x K` OT matching step.
-
-The same-index WSI and omics slots are fused as
+For modality `m` and patient `i`:
 
 ```text
-[z_w, z_o, z_w * z_o, abs(z_w - z_o)] -> slot feature
+z_i,k,m = normalize(a_k) * anchor_scale + state_i,k,m
 ```
 
-Each slot emits discrete-time hazard logits and time-specific mixture weights.
-A hard-concrete gate selects a patient-specific subset from `K_max`; a one-slot
-safety constraint prevents an empty prediction route. A learnable ordered
-capacity prior avoids an all-on or all-off initial validation pass, while the
-patient feature determines the posterior activation. `K_max=16` is a capacity
-limit, not a claim that every patient has sixteen prognostic factors.
+Tokens compete across the shared route indices.  Same-index WSI and omics
+routes are fused, emit time-bin logits, and receive time-specific mixture
+weights.  A hard-concrete estimator is used during training; evaluation keeps
+the top `round(target_active_ratio * K_max)` routes deterministically.
 
-## Objective
-
-The complete training objective has exactly three terms:
+## Closed objective
 
 ```text
-L = L_NLL + lambda_sparse * L_expected_L0
-          + lambda_align * L_same_identity_alignment
+L = L_surv + lambda_identity * (L_contrastive_identity + L_anchor_separation)
+           + lambda_budget * L_gate_budget
 ```
 
-`L_NLL` is supplied once by the common trainer. The model returns only the two
-auxiliary terms. Alignment is computed on modality-specific patient states, not
-on the shared anchor itself, and is restricted to patients with both modalities
-available.
+- Bidirectional contrastive identity makes WSI route `k` match omics route `k`
+  more strongly than every off-index route.
+- Anchor separation penalizes off-diagonal anchor cosine above a margin.
+- Gate budget matches both per-patient capacity and cohort route usage to the
+  target ratio.  Unlike expected-L0 minimization, it has no all-off optimum.
 
-## Run
+## Exact explanations
+
+`explain_last_batch()` returns gates, open probabilities, active counts,
+attention maps, anchor cosine, identity matching diagnostics, and
+`route_time_contribution`.  Summing the last tensor over routes exactly
+reconstructs the logits used by survival NLL.
+
+## Run and required evidence
 
 ```bash
 python -m survot_rank.cli train \
   --config configs/cohort_anchored_adaptive_prognostic_slot_attention_blca.yaml
 ```
 
-The first score-oriented defaults use batch size 8, 50 epochs, AdamW, five
-warm-up epochs, gradient clipping, and a small auxiliary scale. Recommended
-ablation order is: fixed all-on gates; independent modality anchors; no state
-alignment; and the complete CA-PSA model.
-
-## Novelty boundary and claims
-
-CA-PSA is influenced by dynamic slot selection, learned-query initialization,
-and identity/state separation in prior Slot Attention research. Its proposed
-contribution is the unified survival-specific combination of cohort-shared
-cross-modal identity, patient state, and adaptive prognostic capacity. It does
-not claim that a learned slot is a biological pathway, a causal mechanism, or a
-globally unique factor without external validation. The code should be treated
-as a new hypothesis until full five-fold results and the listed ablations are
-available.
+Before a paper claim, report cross-fold anchor matching, identity accuracy,
+route usage, gate counts, and the ablations `no identity`, `no budget`, fixed
+all-on routes, and independent modality anchors.  A route is not called a
+biological pathway without external enrichment evidence.
