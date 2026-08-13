@@ -1,27 +1,35 @@
 ﻿# SurvOT-Rank
 
-SurvOT-Rank is a cleaned framework for WSI-pathway survival modeling. The
-current compact method is **V60 / `v60_ot_event_rank`**. V60 keeps the stable
-OT-event backbone from V9/V45, uses log-domain Sinkhorn transport and an OT
-auxiliary loss, then adds only per-event survival supervision and censor-aware
-Cox-style ranking.
+SurvOT-Rank is a WSI-pathway survival research framework with 21 executable
+method registrations and one shared training path. The current paper mainline
+is **DCT v3.8.2 fixed-full** /
+`dct_v382_prognostic_transport_reconstruction`. CA-PSA, CATET repaired and
+ArcSurv staged are formal candidates; IST-Surv v4.0 is currently behind a
+repair gate.
 
-V45 / `otehv2_rankevent` remains available as the legacy composite reference.
-It includes additional global residual, consistency, gate-entropy, and epsilon
-annealing components, so it is useful for historical comparison but is not the
-compact paper-facing default.
+**V60 OT Event Rank** / `v60_ot_event_rank` is the compact, config-driven
+reference. V45/PET, V50 and V31 remain historical baselines. Always use the
+full name “V60 OT Event Rank”: “V60” was also used as a temporary server label
+for CA-PSA and is therefore ambiguous.
 
-The repository keeps the original SlotSPE-based experiment backend for
-reproducibility, but new work should use the unified package, YAML configs, and
-short script wrappers.
+Method registration and research priority are deliberately separate. See
+[`docs/METHODS.md`](docs/METHODS.md) for the current status vocabulary and
+all canonical names. Historical implementations remain available for
+reproducibility.
 
 ## Clean Entry Points
 
 ```bash
+# List canonical methods, aliases and current roles
+python -m survot_rank.cli methods
+
 # Check whether the expected project files exist
 python -m survot_rank.cli doctor
 
-# Default V60 BLCA run
+# Current DCT v3.8.2 fixed-full protocol (read-only plan)
+python scripts/run_dct_v382_final_cross_cancer.py plan
+
+# Compact reference: V60 OT Event Rank on BLCA
 python -m survot_rank.cli train --config configs/v60_ot_event_rank_blca.yaml
 
 # Legacy V45 BLCA reference
@@ -77,7 +85,7 @@ python scripts/run_recent_transport_5fold.py plan
 python -m survot_rank.cli ensemble --dirs results/seed3 results/seed5
 ```
 
-V60 method alias:
+V60 OT Event Rank alias:
 
 ```bash
 python -m survot_rank.cli train --config configs/v60_ot_event_rank_blca.yaml --set survot_method=60
@@ -98,48 +106,34 @@ bash scripts/train_v45_blca.sh configs/v45_blca.yaml
 ## Directory Layout
 
 ```text
-survot_rank/                  clean Python package, CLI, and research code
-configs/                      experiment YAML files
-scripts/                      short run wrappers
-scripts/legacy/               old root-level run_*.sh scripts
-docs/                         framework and migration notes
-survot_rank/training/         training runner, args, paths, and model factory
-survot_rank/research/methods/v60_ot_event_rank/
-                              compact V60 paper-facing method
-survot_rank/research/methods/archetypal_risk_composition/
-                              experimental cohort prognostic simplex
-survot_rank/research/methods/cohort_anchored_adaptive_prognostic_slot_attention/
-                              experimental cohort-anchored adaptive slots
-survot_rank/research/methods/dct_v41_survival_evidence_ledger/
-                              missing-aware evidence-conserving ledger slots + DCT v3.3
-survot_rank/research/methods/v70_patient_specific_prognostic_circuits/
-                              experimental patient-specific sparse circuits
-survot_rank/research/methods/prognostic_event_transport/
-                              legacy composite PET method, formerly V45
-survot_rank/research/methods/ot_event_hazard_v2/
-                              parent OT-event model, formerly V31
+survot_rank/                  Python package and public CLI
+survot_rank/training/         training runner, arguments and model factory
+survot_rank/research/methods/ method implementations plus catalog.py
 survot_rank/research/components/
-                              copied-in model components used by PET
+                              shared research components
 survot_rank/research/legacy/slotspe_runtime/
-                              minimal SlotSPE runtime for data/loss compatibility
-tools/                        old sweep, monitor, and data utilities
+                              SlotSPE-compatible data and loss runtime
+configs/                      experiment instances; see configs/INDEX.md
+scripts/                      queues, screens, monitors and exporters
+docs/                         documentation map in docs/README.md
+tools/                        data and historical utilities
 important_outputs/            packaged reproduction artifacts
-閲嶈鏂囦欢/                     historical experiment notes
+重要文件/                       historical experiment notes
 ```
 
 ## Main Code Path
 
 ```text
-configs/*.yaml
-  -> survot_rank.cli train
+YAML config or frozen launcher
+  -> survot_rank.cli / generated arguments
   -> survot_rank.training.train_runner
   -> survot_rank.training.model_factory
-  -> v60_ot_event_rank.V60OTEventRank
-  -> ot_event_hazard_v2.OTEventHazardV2Survival
+  -> survot_rank.research.methods.catalog
+  -> selected method implementation
   -> SlotSPE dataset/loss utilities
 ```
 
-## V60 Objective
+## V60 OT Event Rank Reference Objective
 
 ```text
 L = L_survival
@@ -148,13 +142,13 @@ L = L_survival
   + lambda_rank * L_censor_aware_rank
 ```
 
-The OT plans use log-domain Sinkhorn updates. V60 does not use the V45 global
+The OT plans use log-domain Sinkhorn updates. V60 OT Event Rank does not use the V45 global
 residual head, gate-entropy penalty, global consistency loss, or epsilon
 annealing schedule.
 
 ## Missing Modalities
 
-V60 accepts optional availability and slot masks:
+V60 OT Event Rank accepts optional availability and slot masks:
 
 ```text
 wsi_available:  [B]
@@ -171,12 +165,12 @@ treated as available for backward compatibility.
 
 ## Verification
 
-The V60 implementation is covered by focused forward, backward, registration,
-masked-OT, missing-modality, and censoring edge-case tests. The current full
-test suite passes with 263 tests, including ArcSurv's simplex, pathway-input,
-missing-modality, and fold-local memory checks. This is code-level verification; real-data
-five-fold performance for V60 still needs to be run before making a paper
-performance claim.
+The V60 OT Event Rank implementation is covered by focused forward, backward, registration,
+masked-OT, missing-modality, and censoring edge-case tests. The full working
+tree passed **409 tests** on 2026-08-11, including catalog/alias consistency,
+DCT, IST-Surv, ArcSurv, missing-modality and fold-local memory checks. This is
+code-level verification; real-data five-fold evidence must still be evaluated
+under each method's frozen protocol before making a paper performance claim.
 
 ## Data Expectations
 
@@ -229,6 +223,10 @@ it can still be selected explicitly after that queue finishes.
 
 ## Frozen IST-Surv v4.0 Cross-Cancer Evaluation
 
+> This section records the frozen pre-repair protocol. IST-Surv is currently
+> behind a repair gate; do not treat the frozen queue as the repaired method's
+> final scientific conclusion.
+
 The retained IST version is the staged stability-cost-feedback B stage. It
 keeps the defining intervention-stability feedback (`strength=0.10`) while
 fixing plan, attribution, and risk auxiliary weights to zero because their
@@ -261,6 +259,9 @@ on a GPU already used by the priority or final DCT queue.
   encoder live in `survot_rank/research/components/`.
 - `survot_rank/research/legacy/slotspe_runtime/` is kept only for the old
   dataset, loss, and metric helpers still used by the training loop.
-- New experiments should be added as `configs/*.yaml`, not new root-level shell
-  scripts.
-- See `docs/FRAMEWORK.md` and `docs/MIGRATION.md` for the cleanup map.
+- Register new methods in
+  `survot_rank/research/methods/catalog.py` before adding configs or launchers.
+- Prefer YAML for single experiments; use a launcher only for frozen queues,
+  dynamic overrides, locks or monitoring.
+- Start from `docs/README.md`, `configs/INDEX.md` and `scripts/README.md`
+  instead of creating another top-level summary.
