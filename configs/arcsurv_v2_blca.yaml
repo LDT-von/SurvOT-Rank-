@@ -1,0 +1,68 @@
+name: arcsurv_v2_blca
+description: ArcSurv v2 — staged_final mechanism + hard top-K gate (CA-PSA) + balanced cross-modal OT re-transport (CATET) on BLCA DSS.
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: archetypal_risk_composition
+  specific_simple: arcsurv_v2_blca
+  results_dir: results/arcsurv_v2
+  # staged_final epoch budget + clean protocol.
+  max_epochs: 30
+  batch_size: 8
+  grad_clip_norm: 1.0
+  fit_bins_on_train: true
+  binning_mode: global_qcut
+  event_stratified_batches: true
+  seed: 3
+  lr: 0.0005
+  opt: adam
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  # staged_final core.
+  arc_num_archetypes: 6
+  arc_bank_size: 256
+  arc_temperature: 0.25
+  arc_beta_init_scale: 1.5
+  arc_lambda_recon: 0.05
+  arc_lambda_balance: 0.01
+  arc_lambda_rank: 0.10
+  arc_rank_margin: 0.0
+  arc_rank_max_pairs: 4096
+  # bank updates in epoch 0 only (staged_final semantics); 0 means
+  # "build once, freeze".
+  arc_bank_update_epochs: 0
+  # v2: balanced re-transport (CATET) + hard top-K gate (CA-PSA).
+  arc_lambda_ot: 0.04
+  arc_lambda_gate: 0.01
+  arc_topk_active: 3
+  arc_ot_eps: 0.05
+  arc_ot_iters: 25
