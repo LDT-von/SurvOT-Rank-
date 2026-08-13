@@ -467,6 +467,24 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ist_keep_ratio", type=float, default=0.75)
     parser.add_argument("--ist_stability_beta", type=float, default=1.0)
     parser.add_argument("--ist_stability_strength", type=float, default=0.10)
+    parser.add_argument(
+        "--ist_stability_normalization",
+        choices=("raw_mass", "independence_lift"),
+        default="raw_mass",
+        help=(
+            "raw_mass reproduces v4.0; independence_lift removes deterministic "
+            "support-marginal rescaling before measuring edge stability"
+        ),
+    )
+    parser.add_argument(
+        "--ist_feedback_mode",
+        choices=("legacy_product", "importance_weighted_instability"),
+        default="legacy_product",
+        help=(
+            "legacy_product reproduces v4.0; importance_weighted_instability "
+            "penalizes only important edges that are intervention-unstable"
+        ),
+    )
     parser.add_argument("--ist_lambda_plan", type=float, default=0.05)
     parser.add_argument("--ist_lambda_attribution", type=float, default=0.05)
     parser.add_argument("--ist_lambda_risk", type=float, default=0.0)
@@ -504,6 +522,32 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--catet_rank_temperature", type=float, default=0.50)
     parser.add_argument("--catet_ipcw_max_weight", type=float, default=10.0)
     parser.add_argument("--catet_rank_max_pairs", type=int, default=4096)
+    # v2 (three_method_final_2026_08_13): cohort-anchored pre-routing.
+    parser.add_argument(
+        "--catet_cohort_routes",
+        type=int,
+        default=4,
+        help="v2 cohort routing slots — OT now operates on routes×routes.",
+    )
+    parser.add_argument(
+        "--catet_cohort_topk",
+        type=int,
+        default=2,
+        help="v2 top-K active routes per slot in cohort router.",
+    )
+    parser.add_argument(
+        "--catet_lambda_route",
+        type=float,
+        default=0.02,
+        help="v2 KL weight between wsi/omic cohort-routing soft assignments.",
+    )
+    parser.add_argument(
+        "--catet_use_archetype_prior",
+        type=int,
+        default=0,
+        choices=(0, 1),
+        help="v2 enable lazy archetype-derived per-stage OT bias.",
+    )
 
     # V60 OT Event Rank method.
     parser.add_argument("--v60_num_events", type=int, default=24)
@@ -519,6 +563,37 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--arc_beta_init_scale", type=float, default=1.5)
     parser.add_argument("--arc_lambda_recon", type=float, default=0.05)
     parser.add_argument("--arc_lambda_align", type=float, default=0.05)
+    # v2 (three_method_final_2026_08_13): balanced OT re-transport + hard gate.
+    parser.add_argument(
+        "--arc_lambda_ot",
+        type=float,
+        default=0.04,
+        help="v2 balanced Sinkhorn between wsi/omic archetype compositions.",
+    )
+    parser.add_argument(
+        "--arc_lambda_gate",
+        type=float,
+        default=0.01,
+        help="v2 gate budget loss keeps per-patient active archetype count near topk_active.",
+    )
+    parser.add_argument(
+        "--arc_topk_active",
+        type=int,
+        default=3,
+        help="v2 hard top-K active archetypes per patient composition.",
+    )
+    parser.add_argument(
+        "--arc_ot_eps",
+        type=float,
+        default=0.05,
+        help="v2 OT epsilon for the cross-modal re-transport Sinkhorn.",
+    )
+    parser.add_argument(
+        "--arc_ot_iters",
+        type=int,
+        default=25,
+        help="v2 Sinkhorn max iterations for cross-modal re-transport.",
+    )
     parser.add_argument("--arc_lambda_balance", type=float, default=0.01)
     parser.add_argument("--arc_lambda_volume", type=float, default=0.01)
     parser.add_argument("--arc_lambda_rank", type=float, default=0.10)
@@ -625,6 +700,25 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--capsa_identity_temperature", type=float, default=0.10)
     parser.add_argument("--capsa_anchor_cosine_margin", type=float, default=0.20)
     parser.add_argument("--capsa_anchor_scale", type=float, default=0.50)
+    # v2 (three_method_final_2026_08_13): cohort-archetype anchors.
+    parser.add_argument(
+        "--capsa_archetype_bank_size",
+        type=int,
+        default=256,
+        help="v2 cohort memory bank size — slot anchors are convex combinations of this bank.",
+    )
+    parser.add_argument(
+        "--capsa_archetype_beta_init_scale",
+        type=float,
+        default=1.5,
+        help="v2 init scale for the Beta row-stochastic convex-combination logits.",
+    )
+    parser.add_argument(
+        "--capsa_lambda_archetypal_recon",
+        type=float,
+        default=0.02,
+        help="v2 reconstruction loss: archetypes should reconstruct patient state.",
+    )
 
     # V70 Patient-Specific Prognostic Circuits (PSPC-Surv).
     parser.add_argument("--pspc_max_modules", type=int, default=16)
