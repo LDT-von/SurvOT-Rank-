@@ -1,0 +1,69 @@
+name: archetypal_risk_composition_hnsc
+description: ArcSurv cohort-level prognostic archetype composition on a shared histology-omics simplex.
+
+data:
+  study: hnsc
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: archetypal_risk_composition
+  specific_simple: archetypal_risk_composition_hnsc
+  results_dir: results/archetypal_risk_composition
+  max_epochs: 20
+  # batch 4 时每步平均只有 1-3 对可比的未删失样本，rank 损失基本是噪声
+  # （同 docs/LOSS_BLACKLIST.md 的机制）。提到 8 以获得有效排序信号。
+  batch_size: 8
+  grad_clip_norm: 1.0
+  early_stop_patience: 0
+  fit_bins_on_train: true
+  binning_mode: global_qcut
+  event_stratified_batches: true
+  seed: 3
+  lr: 0.0005
+  opt: adam
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  # Paper-facing default: retain censored likelihood. The local idea screen
+  # also tested alpha_surv=1.0, but that event-only setting is not formal.
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+slot:
+  slot_num_wsi: 8
+  slot_num_omics: 8
+  slot_iters: 5
+  temperature: 0.01
+  topk_ratio: 0.25
+  top_k_method: parallel_topk_st
+
+model:
+  arc_num_archetypes: 6
+  arc_bank_size: 256
+  arc_temperature: 0.25
+  arc_beta_init_scale: 1.5
+  arc_lambda_recon: 0.05
+  arc_lambda_align: 0.05
+  arc_lambda_balance: 0.01
+  arc_lambda_volume: 0.01
+  arc_lambda_rank: 0.10
+  arc_rank_margin: 0.0
+  arc_rank_max_pairs: 4096
+  # 前 5 轮只训 NLL + rank，第 6-15 轮线性拉起四项结构损失；
+  # 原型库在 warmup 期间持续更新后冻结（原实现只在 epoch 0 建库）。
+  arc_warmup_epochs: 5
+  arc_ramp_epochs: 10
+  arc_bank_update_epochs: -1
