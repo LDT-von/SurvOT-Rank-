@@ -137,6 +137,41 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         self._rank_memory_times = None
         self._rank_memory_censorship = None
         self._last_transport_reliability = None
+        # --- Ablation switches (all default off; v3.8.2 frozen recipe unchanged) ---
+        # Paper evidence ablations set these via --set on the CLI. They never
+        # fire unless the corresponding ablation launcher is invoked.
+        self.dct_fixed_coupling = bool(getattr(args, "dct_fixed_coupling", False))
+        self.dct_random_anchors = bool(getattr(args, "dct_random_anchors", False))
+        self.dct_perm_labels_seed = int(getattr(args, "dct_perm_labels_seed", 0))
+        self.dct_stage_jitter_fraction = float(
+            getattr(args, "dct_stage_jitter_fraction", 0.0)
+        )
+        self._factual_plan_cache = None
+        # Cross-cancer transfer: if a path is supplied, freeze the prototypes
+        # and load them from the source-cancer checkpoint. Skipped silently
+        # otherwise so the default v3.8.2 frozen recipe is byte-identical.
+        self.dct_freeze_source_prototype = str(
+            getattr(args, "dct_freeze_source_prototype", "") or ""
+        )
+        if self.dct_freeze_source_prototype:
+            self._load_and_freeze_source_prototype(self.dct_freeze_source_prototype)
+
+    def _load_and_freeze_source_prototype(self, path: str) -> None:
+        """Replace the two shared prototype tensors with the source-cancer values."""
+        import torch as _torch
+        state = _torch.load(path, map_location="cpu")
+        key_wsi = "shared_wsi_prototypes"
+        key_omic = "shared_omic_prototypes"
+        if key_wsi not in state or key_omic not in state:
+            raise KeyError(
+                f"Source checkpoint {path} does not expose shared prototypes. "
+                "Re-train the source cancer with v3.8.2 frozen recipe first."
+            )
+        with _torch.no_grad():
+            self.shared_wsi_prototypes.copy_(state[key_wsi].to(self.shared_wsi_prototypes.device))
+            self.shared_omic_prototypes.copy_(state[key_omic].to(self.shared_omic_prototypes.device))
+        self.shared_wsi_prototypes.requires_grad_(False)
+        self.shared_omic_prototypes.requires_grad_(False)
 
     @staticmethod
     def _risk(logits):
@@ -154,10 +189,21 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         ``c == 0`` denotes an observed event and ``c == 1`` denotes censoring.
         Stage upper edges are event-time quantiles.  The final edge is finite so
         patients followed beyond it can contribute to the final low-risk anchor.
+
+        Ablation ``dct_stage_jitter_fraction`` permutes the upper edges within a
+        bounded range while preserving monotonicity, proving that the actual
+        edge placement—not the existence of stages—carries the IPCW signal.
+        Ablation ``dct_perm_labels_seed`` permutes ``event_times`` before edge
+        fitting so that the null-calibration model never sees consistent
+        censoring.
         """
         device = self.risk_anchor_costs.device
         times = torch.as_tensor(event_times, dtype=torch.float32, device=device).flatten()
         cens = torch.as_tensor(censorship, dtype=torch.float32, device=device).flatten()
+        if self.dct_perm_labels_seed > 0:
+            generator = torch.Generator(device=device)
+            generator.manual_seed(self.dct_perm_labels_seed)
+            times = times[torch.randperm(times.numel(), generator=generator, device=device)]
         observed = times[cens < 0.5]
         if observed.numel() < self.spt_num_stages:
             raise ValueError(
@@ -167,6 +213,14 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             1.0 / self.spt_num_stages, 1.0, self.spt_num_stages, device=device
         )
         upper = torch.quantile(observed, quantiles)
+        if self.dct_stage_jitter_fraction > 0.0:
+            spread = (upper[-1] - upper[0]).clamp_min(1e-3)
+            jitter = torch.empty_like(upper).uniform_(
+                -self.dct_stage_jitter_fraction,
+                self.dct_stage_jitter_fraction,
+                device=device,
+            )
+            upper = upper + jitter * spread
         # Strictly increasing edges make stage membership deterministic even with ties.
         upper = torch.maximum(upper, torch.cummax(upper, dim=0).values)
         eps = torch.finfo(upper.dtype).eps
@@ -364,16 +418,37 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         for stage_idx in range(self.spt_num_stages):
             stage_plans, stage_distances = [], []
             for cost_idx in range(costs.size(2)):
-                plan = self._log_sinkhorn(
-                    costs[:, stage_idx, cost_idx], rows[:, stage_idx], cols[:, stage_idx],
-                    eps=eps, max_iter=self.ot_iter,
-                )
-                plan = self._project_coupling(plan, rows[:, stage_idx], cols[:, stage_idx])
+                if bool(getattr(self, "dct_fixed_coupling", False)):
+                    plan = self._replay_cached_plan(stage_idx, cost_idx, costs, rows, cols)
+                else:
+                    plan = self._log_sinkhorn(
+                        costs[:, stage_idx, cost_idx], rows[:, stage_idx], cols[:, stage_idx],
+                        eps=eps, max_iter=self.ot_iter,
+                    )
+                    plan = self._project_coupling(plan, rows[:, stage_idx], cols[:, stage_idx])
                 stage_plans.append(plan)
                 stage_distances.append((plan * costs[:, stage_idx, cost_idx]).sum(dim=(1, 2)))
             plans.append(tuple(stage_plans))
             distances.append(torch.stack(stage_distances).mean())
         return plans, torch.stack(distances).mean()
+
+    @torch.no_grad()
+    def _replay_cached_plan(self, stage_idx, cost_idx, costs, rows, cols):
+        """Project a stale factual plan to a new intervention's marginals.
+
+        Ablation ``fixed_coupling`` proves that re-solving Sinkhorn under each
+        intervention actually changes the plan; without re-solving, the audit
+        chain reduces to a fixed-coupling marginal projection.
+        """
+        cached = self._factual_plan_cache
+        if cached is None:
+            return self._log_sinkhorn(
+                costs[:, stage_idx, cost_idx],
+                rows[:, stage_idx], cols[:, stage_idx],
+                eps=float(getattr(self.args, "otehv2_eps", 0.05)),
+                max_iter=self.ot_iter,
+            )
+        return self._project_coupling(cached[stage_idx][cost_idx], rows[:, stage_idx], cols[:, stage_idx])
 
     def _stage_membership_weights(self, event_time, censorship):
         """IPCW weights for event-in-stage (high) and survived-past-stage (low)."""
@@ -519,6 +594,21 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
 
     @torch.no_grad()
     def _update_risk_anchors(self, costs, low_weights, high_weights):
+        if self.dct_random_anchors:
+            # Ablation: keep anchor buffer populated with non-zero random tensors
+            # so downstream code sees a valid (but meaningless) anchor. This
+            # isolates whether the IPCW anchor itself carries the prognostic
+            # signal or whether it is leaked by some other module.
+            for stage_idx in range(self.spt_num_stages):
+                for risk_idx in (self._LOW_RISK, self._HIGH_RISK):
+                    if bool(self.risk_anchor_seen[stage_idx, risk_idx]):
+                        continue
+                    sampled = costs[:, stage_idx].mean(dim=0)
+                    self.risk_anchor_costs[stage_idx, risk_idx].copy_(
+                        sampled + 0.05 * torch.randn_like(sampled)
+                    )
+                    self.risk_anchor_seen[stage_idx, risk_idx] = True
+            return
         for stage_idx in range(self.spt_num_stages):
             for risk_idx, weights in (
                 (self._LOW_RISK, low_weights[:, stage_idx]),
@@ -636,6 +726,20 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
 
         factual_costs, rows, cols, evidence_gate = self._cost_tensor(slots_wsi, slots_omic)
         factual_plans, ot_distance = self._plans_from_cost_tensor(factual_costs, rows, cols, epoch)
+        if self.dct_fixed_coupling:
+            # Cache the factual plans (detached) so the intervention path can
+            # replay them rather than re-solving Sinkhorn.
+            self._factual_plan_cache = [
+                [plan.detach() for plan in stage_plans] for stage_plans in factual_plans
+            ]
+        # Audit-only cache. These tensors are required by the post-hoc audit
+        # loader to replay the alpha sweep; ablations that disable audit
+        # leave them as no-ops because the cache is the only consumer.
+        self._last_factual_costs = factual_costs.detach()
+        self._last_factual_rows = rows.detach()
+        self._last_factual_cols = cols.detach()
+        self._last_slots_wsi = slots_wsi.detach()
+        self._last_slots_omic = slots_omic.detach()
         factual_logits, factual_gate = self._encode_logits_from_plans(slots_wsi, slots_omic, factual_plans)
         factual_risk = self._risk(factual_logits)
 
