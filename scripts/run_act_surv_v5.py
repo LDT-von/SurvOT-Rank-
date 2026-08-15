@@ -70,6 +70,8 @@ DATA_ROOT = DEFAULT_DATA_ROOT  # mutable; main() may overwrite via --data-root
 
 # Frozen v5 recipe — do not add cancer-specific tuning here.
 FINAL_OVERRIDES: dict[str, object] = {
+    "data_root_dir": "/data1/TCGA-UNI2-h-features",
+    "data_path": "survot_rank/research/legacy/slotspe_runtime/dataset_csv",
     "survot_method": "archetypal_transport_composition_v5",
     "max_epochs": 50,
     "fit_bins_on_train": True,
@@ -104,14 +106,18 @@ class Job:
     config: Path
     result_dir: Path
     cmd: list[str]
+    env_extra: dict[str, str] | None = None
 
     def submit(self, dry_run: bool = False):
         if dry_run:
             print(f"[dry-run] {' '.join(shlex.quote(str(c)) for c in self.cmd)}")
             return 0
         env = dict(os.environ)
+        if self.env_extra:
+            env.update(self.env_extra)
+        lock = None
         try:
-            acquire_run_lock(self.result_dir)
+            lock = acquire_run_lock(self.result_dir / ".run.lock", label=f"act_surv_v5_{self.cancer}_fold{self.fold}")
             print(f"Running: {self.cancer} fold {self.fold}")
             proc = subprocess.run(self.cmd, env=env)
             return proc.returncode
@@ -119,7 +125,7 @@ class Job:
             print(f"SKIP (active run): {exc}", file=sys.stderr)
             return 0
         finally:
-            release_run_lock(self.result_dir)
+            release_run_lock(lock)
 
 
 def build_jobs(
@@ -155,11 +161,24 @@ def build_jobs(
             result_dir = RESULT_ROOT / cancer / f"fold{fold}"
             result_dir.mkdir(parents=True, exist_ok=True)
 
-            fold_overrides = {**overrides, "fold": fold}
+            fold_overrides = {
+                **overrides,
+                "k_start": fold,
+                "k_end": fold + 1,
+                "study": cancer,
+                "specific_simple": f"act_surv_v5_{cancer}_fold{fold}",
+            }
+            if "max_epochs" in fold_overrides and fold_overrides["max_epochs"] > 2:
+                # Logging pipe for long jobs
+                pass
             args = _override_args(fold_overrides)
             cmd = [
                 sys.executable,
-                str(REPO_ROOT / "survot_rank" / "training" / "train_runner.py"),
+                "-m",
+                "survot_rank.cli",
+                "train",
+                "--config",
+                config.as_posix(),
                 *args,
             ]
             jobs.append(Job(
@@ -168,6 +187,7 @@ def build_jobs(
                 config=config,
                 result_dir=result_dir,
                 cmd=cmd,
+                env_extra={"PYTHONPATH": str(REPO_ROOT)},
             ))
 
     return jobs
@@ -203,7 +223,7 @@ def main():
     cancers = [c.strip() for c in args.cancers.split(",")]
     folds = args.folds
 
-    overrides = {**FINAL_OVERRIDES, "result_dir": args.result_root}
+    overrides = {**FINAL_OVERRIDES, "results_dir": args.result_root}
     jobs = build_jobs(cancers, folds, overrides, dry_run=args.dry_run)
 
     print(f"Total jobs: {len(jobs)}")
