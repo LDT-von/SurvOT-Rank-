@@ -1214,6 +1214,21 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 
 范围 BLCA/KIRC/SKCM × fold 1/2/4 = 36 任务，对照 frozen DCT v3.8.2 fixed_full。晋级规则（全满足）：宏平均 best ≥ +0.005、≥2/3 癌种提升、无癌种降 >0.005、SKCM ≥ +0.005、last-5 不降。
 
+#### 闸门判定进展（2026-08-14，暂停于 25/36 折）
+
+对照基线 fixed_full（fold 1/2/4）：**BLCA 0.7209 / KIRC 0.8125 / SKCM 0.6596**，宏平均 0.7310。
+
+| 变体 | 完成 | BLCA | KIRC | SKCM | 宏平均 Δ | 判定 |
+|---|---|:---:|:---:|:---:|:---:|---|
+| `patches4096` | 9/9 | 0.6990 (−0.0219) | 0.8219 (+0.0094) | 0.6566 (−0.0030) | −0.0052 | ❌ 不晋级 |
+| `grad_accum4` | 9/9 | 0.6961 (−0.0248) | 0.7949 (−0.0176) | 0.6710 (+0.0114) | −0.0103 | ❌ 不晋级 |
+| `slot_iters5` | 7/9 | 0.7022 (−0.0187) | 0.8033 (−0.0092) | 仅 F1=0.6155 | — | 🔄 待补 SKCM |
+| `lr2e4` | 0/9 | — | — | — | — | ⏳ 未开始 |
+
+> 已完成的 patches、grad_accum 均未过 +0.005 宏平均门槛（grad_accum 还在 KIRC 上倒退
+> 0.0176），确认不晋级；slot_iters 的 BLCA/KIRC 也已偏负。剩余 slot_iters SKCM fold2/4
+> 与 lr2e4 全部 9 折待跑。
+
 ### 下一队列（2026-08-06，✅ 已完成）
 
 使用 `scripts/run_priority_experiment_queue.py --stages next`，严格串行运行 **4 个任务**：
@@ -1411,6 +1426,26 @@ BLCA、SKCM、HNSC、LUSC、KIRC、UCEC 跑五折；BLCA 已有 fold1/2/4 会自
 | ⬜ | v3.8 robust LUSC fold0 — direction 变体 (LUSC 100% 覆盖，可直接跑) |
 | ⬜ | v3.8 robust 全癌种 5-fold — split 修复后 |
 | ⬜ | BRCA v3.3/v3.6/v3.7 重跑 — UNI v1 覆盖 100%，split 按 1046 人重建后可直接跑 |
+
+### UNI v1 四癌种队列（2026-08-14 新增，⏳ 待运行）
+
+> **背景**：BRCA/LUAD/COADREAD/STAD 的 UNI2-h 特征覆盖不足（BRCA 775/1045 等），
+> 等补齐特征前先用 **UNI v1（1024-d）** 按当前 `5fold_uni` 划分跑 **DCT v3.8.2 fixed-full**，
+> 让这四个癌种立刻有可比结果。**该队列与 UNI2-h `5fold_uni2h` 结果严禁混表。**
+
+| 癌种 | UNI v1 特征数 | split 纳入 | 备注 |
+|:---:|:---:|:---:|---|
+| BRCA | 1131 | 1045 | 100% 覆盖 |
+| COADREAD | 581 | 570 | 100% 覆盖 |
+| STAD | 391 | 362 | 100% 覆盖 |
+| LUAD | 1052 | **457** | 剔除 `TCGA-55-8207`（无 UNI v1 特征，5 折全部出现）|
+
+- 队列：**DCT v3.8.2 fixed-full 单方法 × 4 cancers × 5 folds = 20 jobs**
+- 入口：`scripts/run_dct_v382_uni_v1_4cancer.py {prepare|doctor|smoke|run}`
+- 冻结配方与 UNI2-h fixed_full 完全一致，仅数据协议不同：`wsi_encoder=uni`、
+  `encoding_dim=1024`、`data_root_dir=/data/CPathPatchFeature`、`which_splits=5fold_uni`
+- 输出目录：`results/dct_v3.8.2/uni_v1_5fold/fixed_full/{cancer}/`
+- 状态：`prepare` 已完成（生成 `5fold_uni`），`doctor` 全 OK，**等待门控队列完成后启动**
 
 ### 已知问题
 
