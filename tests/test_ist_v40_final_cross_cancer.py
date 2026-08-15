@@ -33,6 +33,8 @@ def test_final_ist_recipe_keeps_cost_feedback_and_drops_unhelpful_aux_losses():
         "ist_warmup_epochs": "5",
         "ist_ramp_epochs": "10",
         "ist_stability_strength": "0.1",
+        "ist_stability_normalization": "raw_mass",
+        "ist_feedback_mode": "legacy_product",
         "ist_lambda_plan": "0.0",
         "ist_lambda_attribution": "0.0",
         "ist_lambda_risk": "0.0",
@@ -85,3 +87,39 @@ def test_generated_overrides_are_accepted_and_select_the_correct_study():
         assert parsed.study == job.cancer
         assert parsed.k_start == job.fold
         assert parsed.k_end == job.fold + 1
+
+
+def test_repaired_recipe_is_opt_in_and_writes_to_an_isolated_directory():
+    job = final.build_jobs(
+        _args(
+            "--recipe",
+            "repaired",
+            "--cancers",
+            "blca",
+            "--folds",
+            "1",
+        )
+    )[0]
+    assert job.result_dir.as_posix() == (
+        "results/ist_surv_v4.0_repaired_50ep/clean/"
+        "importance_instability/blca"
+    )
+    assert _override(job, "ist_stability_normalization") == "independence_lift"
+    assert _override(job, "ist_feedback_mode") == (
+        "importance_weighted_instability"
+    )
+    assert _override(job, "specific_simple") == (
+        "ist_v40_repaired_importance_instability_blca_50ep"
+    )
+
+
+def test_repair_gate_defaults_to_blca_folds_1_2_4():
+    from scripts import run_ist_v40_repair_gate as gate
+
+    args = gate.build_parser().parse_args(["plan", "--python", "python"])
+    jobs = final.build_jobs(args)
+    assert [(job.cancer, job.fold) for job in jobs] == [
+        ("blca", 1),
+        ("blca", 2),
+        ("blca", 4),
+    ]

@@ -1,25 +1,26 @@
 # SurvOT-Rank 方法学术潜力与撞题审计
 
-> 最后更新：2026-07-21
+> 最后更新：2026-08-11
 > 文献检索截止：2026-07-21
-> 仓库快照：`5af1c93`
+> 仓库快照：`8278f6f`
 > 评价对象：`survot_rank/training/model_factory.py` 中注册的全部方法，以及有实验记录的历史版本  
-> 结果主来源：`EXPERIMENT_SUMMARY.md`；未进入仓库的服务器汇总只标为“暂定”  
+> 结果主来源：`FINAL_SUMMARY.md`、`reproducibility_archives/manifest.json` 与逐折结果档案；未进入仓库的服务器汇总只标为“暂定”
 > 用途：以后每次要求“评价所有方法”时更新本文件，不用重新建立另一套口径
 
 ## 1. 先给结论
 
-当前注册表共有 **12 个方法标识**；其中 V45、V45v2、V50 共用同一演进实现目录，因此磁盘上对应 **10 个正式方法目录**。本文按方法标识分别评价，避免共用目录掩盖版本差异。
+当前 `METHOD_REGISTRY` 共有 **21 个方法标识**。相较 2026-07-21 的 12 个标识，新增了 DCT v3.6/listwise、v3.8、v3.8.2、v3.8.3、v3.9、IST-Surv v4.0、Evidence Ledger v4.1、ArcSurv、ACT-Surv v4.2 等实现。本文同时按“科学家族”和“具体版本”评价，避免把同一主干的实验分支包装成多篇论文。
 
 目前不应该把所有实现都包装成独立论文。它们多数是同一研究路线的连续演化，拆开投稿会有明显的“切香肠”风险。
 
 论文优先级应固定为：
 
-1. **DCT v3.3：当前第一主线，但不是已经安全的高创新论文。** 仓库内分数最高，目标函数也已简化到两个核心项；论文只能把贡献限定为“删失风险集驱动的 transport 分布敏感性”，不能把 prototype、OT、IPCW ranking 或反事实分别当创新，更不能声称因果反事实。
-2. **CA-PSA：第二主线，但缝合风险高于 DCT。** SlotSPE、AdaSlot、BO-QSA、Dual-State Slot Attention、SurvQ 已分别覆盖其主要部件。只有“队列共享身份 + 患者状态 + 生存监督下自适应激活”被证明是不可拆分、且带来新的身份稳定性能力时，才不是模块拼接。
-3. **CATET：高创新、低性能的储备线。** 问题定义清楚，但现有分数不足以支撑主论文；只有恢复性能并证明干预解释可靠后才值得继续。
-4. **V50：强经验基线，不是最佳主论文。** 分数和稳定性尚可，但损失较多，而且已有拆解结果没有证明 time-local/coverage/competing 三项带来收益。
-5. **其余方法：作为基线、消融或历史演进保留。** 不建议分别投稿。
+1. **DCT v3.8.2 fixed-full：当前唯一 DCT 主线，也是当前投稿成熟度第一。** 已完成 6 癌种 × 5 折、UNI2-h、50 epoch、clean 协议；相同协议下对 IST-Surv 为 4 胜、1 负、1 持平。但 MGPTR 单项、自适应权重和 v3.8 三个一致性损失均未证明稳定增益，因此论文必须把“预测性能”和“DCT 特有机制贡献”分开陈述。
+2. **CA-PSA full：第二条独立候选主线。** 旧协议 BLCA 暂定 `0.7217±0.0383`，但尚缺统一 UNI2-h 逐折档案。它的核心风险仍是 SlotSPE、AdaSlot、BO-QSA、Dual-State Slot Attention 等部件的组合感；只有 identity/state/gate 的统一机制与身份稳定性被证实后，才适合独立成文。
+3. **CATET repaired：纯 idea 新颖性最高，但证据仍最弱。** 当前可信结果只有 BLCA fold0/2=`0.6458/0.6837`。保留 repaired 50ep 作为跨癌种筛选版本，不恢复已作废的旧 `catet_fix`。
+4. **ArcSurv staged：保留最终筛选版本；hard-repaired 版本淘汰。** staged 50ep 的 BLCA fold1/2/4 均值为 `0.6910`，而 hard repair 的 fold1 仅 `0.5665`。不能把“修复失败”误写为“整个 ArcSurv 方法已经终止”。
+5. **IST-Surv v4.0、Evidence Ledger v4.1、v3.9、v3.8.3：不再作为论文主线。** IST 已完成六癌种，但三档消融证明核心 cost feedback 和辅助损失没有增益；v4.1 修复无效；v3.9/v3.8.3 已形成明确负结果。
+6. **ACT-Surv v4.2：只有 idea 身份，没有性能排名。** 在 ArcSurv staged 的原型分化与跨癌种表现确认前，不启动完整实验。
 
 ## 2. 评价口径
 
@@ -54,28 +55,30 @@
 
 ### 2.4 概念创新、代码兑现与证据成熟度必须分开
 
-“概念创新性”评价论文问题和理想机制，“代码实现完成度”评价当前实现是否真的兑现这条机制链，“证据成熟度”评价实验能否支持结论。三者不能互相替代。按 2026-07-21 的代码与结果档案，三条候选主线应使用下面的口径：
+“概念创新性”评价论文问题和理想机制，“代码实现完成度”评价当前实现是否真的兑现这条机制链，“证据成熟度”评价实验能否支持结论。三者不能互相替代。按 2026-08-11 的代码与结果档案，三条候选主线应使用下面的口径：
 
 | 方法 | 概念创新性 | 当前代码实现完成度 | 证据成熟度 | 严格解释 |
 |---|---:|---:|---:|---|
 | **CATET** | **7.0/10** | **5.5/10** | **2.5/10** | 问题定义尖锐，但当前阶段 cost 实际共享、干预不是重新求解 OT，且修复后仅有 2 folds |
-| **DCT v3.3** | **6.5/10** | **6.5/10** | **5.5/10** | 高分与多癌种证据较完整，但高分配方尚未证明 post-hoc transport intervention 的独立贡献 |
+| **DCT v3.8.2 fixed-full** | **6.5/10** | **7.0/10** | **7.0/10** | 6 癌种 × 5 折证据显著增强，但 MGPTR、自适应权重和一致性损失尚未证明独立贡献 |
 | **CA-PSA** | **6.0/10** | **5.5/10** | **4.0/10** | 结构已实现且有暂定分数，但核心的 slot identity 稳定性和动态容量尚未被验证 |
 
 因此，“CATET 7.0、DCT 6.5、CA-PSA 6.0”只能作为**理想论文 idea 的创新性排序**。若评价当前可运行代码，CATET 不能排在 DCT 前面；若评价当前投稿成熟度，顺序仍是 DCT > CA-PSA > CATET。
 
 ## 3. 家族与版本两级评价
 
-### 3.1 四个方法家族的严格评价
+### 3.1 六个方法家族的严格评价
 
-当前 12 个注册标识只对应 **4 个科学方法家族**。家族评分回答“idea 是否独立”，版本评分回答“某个实现是否值得保留”；二者不能混用。
+当前 21 个注册标识可归并为 **6 个科学方法家族**。家族评分回答“idea 是否独立”，版本评分回答“某个实现是否值得保留”；二者不能混用。
 
 | 家族 | 覆盖实现 | 核心科学问题 | 创新性 | 证据强度 | 缝合风险 | 直接撞题风险 | 当前判断 |
 |---|---|---|---:|---:|---:|---|---|
 | **A. OT 预后事件建模** | OTEventHazardV2、V45、V45v2、V50、V60 OT Event Rank | 用 slots、OT 和事件 token 融合 WSI/omics 并预测离散风险 | **3.5/10** | 6.0/10 | **8.5/10** | 高 | 一个基线家族，不是五个论文 idea |
-| **B. 删失感知 Transport 干预** | RG-ET、Stagewise、FET、DCT、CATET | 将删失风险集、时间阶段和证据干预作用于 transport，并检验预测变化 | **6.5/10** | 5.5/10 | **7.0/10** | 中高 | 当前最值得保留的论文家族；DCT 为主版本 |
+| **B. 删失感知 Transport 干预** | RG-ET、Stagewise、FET、DCT、v3.6、v3.8、v3.8.2、v3.8.3、v3.9、CATET | 将删失风险集、时间阶段和证据干预作用于 transport，并检验预测变化 | **6.5/10** | **7.0/10** | **7.0/10** | 中高 | DCT v3.8.2 为唯一主版本；其余为机制、消融或负结果 |
 | **C. 队列锚定自适应 Slots** | CA-PSA | 稳定跨患者/跨模态 slot 身份，并让激活数量适应患者 | **6.0/10** | 5.0/10 | **8.0/10** | 高 | 可独立于 DCT，但必须证明统一机制而非三模块拼接 |
-| **D. 患者特异预后 Circuits** | V70 PSPC | 为每名患者学习稀疏、可组合的预后模块连接 | **5.5/10** | 3.5/10 | **7.5/10** | 中高 | 科学问题可独立，但当前仅探索线 |
+| **D. 稳定干预与证据账本** | IST-Surv v4.0、Evidence Ledger v4.1 | 约束干预稳定性或守恒记录跨模态证据 | 6.0/10 | 6.0/10 | 6.5/10 | 中 | 实验已否定当前实现的增益，不再作为主线 |
+| **E. 队列原型风险组合** | ArcSurv、ACT-Surv v4.2 | 用队列原型及其凸组合表示患者风险，进一步研究原型间 transport | 6.0/10 | 3.5/10 | 6.5/10 | 中 | ArcSurv staged 待跨癌种；v4.2 尚无性能证据 |
+| **F. 患者特异预后 Circuits** | V70 PSPC | 为每名患者学习稀疏、可组合的预后模块连接 | **5.5/10** | 3.5/10 | **7.5/10** | 中高 | 科学问题可独立，但当前仅探索线 |
 
 **家族 A 的严格判断。** OT、多模态生存、slots/event tokens、ranking 和多损失组合均已有充分近邻。MOTCat 已做 WSI–genomics OT 生存对齐，MMP 已做 prototype/pathway token 与 OT cross-alignment，SlotSPE 已做 slot-based prognostic events。因此该家族的工程价值明显高于学术新颖性，最合适的角色是统一强基线和演进消融。
 
@@ -83,7 +86,11 @@
 
 **家族 C 的严格判断。** SlotSPE、AdaSlot、BO-QSA、Dual-State Slot Attention、SurvQ 已分别覆盖主要部件；2025 年的 Adaptive Prototype Learning 还使用双组 learnable queries 和自适应 prototypes 做多模态癌症生存。CA-PSA 只有证明 anchor/state/gate 构成不可拆分的生存特有机制，并产生稳定可复现的 slot identity，才能避免被称为组合创新。
 
-**家族 D 的严格判断。** 暂未检索到与 V70 在 WSI+omics 生存场景完全同构的 patient-specific circuit 方法，但 Neural Attentive Circuits 已覆盖“联合学习模块参数与稀疏连接”的通用思想。因此 V70 的领域迁移本身不够，必须证明患者电路具有跨 seed 稳定性、删失生存特异监督和普通稀疏 MoE/动态路由不具备的能力。
+**家族 D 的严格判断。** IST-Surv 和 Evidence Ledger 都有清晰机制叙事，但最新消融与修复实验没有证明核心机制带来收益。这里应区分“idea 可写”与“当前实现可投”：完整负结果提高了判断可信度，却不能提高论文优先级。
+
+**家族 E 的严格判断。** ArcSurv/ACT-Surv 的独立性取决于队列原型是否真实分化、患者组合是否具有稳定风险含义。staged ArcSurv 仍可筛选；hard repair 已失败；ACT-Surv 在原型分化前提确认前不能仅凭更复杂的 transport 故事获得高排名。
+
+**家族 F 的严格判断。** 暂未检索到与 V70 在 WSI+omics 生存场景完全同构的 patient-specific circuit 方法，但 Neural Attentive Circuits 已覆盖“联合学习模块参数与稀疏连接”的通用思想。因此 V70 的领域迁移本身不够，必须证明患者电路具有跨 seed 稳定性、删失生存特异监督和普通稀疏 MoE/动态路由不具备的能力。
 
 ### 3.2 每个注册版本的身份
 
@@ -97,69 +104,83 @@
 | Rank-Guided Event Transport | B | 否 | 风险引导机制起点 |
 | Stagewise Prognostic Transport | B | 否 | 阶段化假设/消融 |
 | Faithful Evidence Transport | B | 否 | evidence keep/remove 解释性消融 |
-| **DCT** | B | **是，当前主候选** | 家族 B 的最终主版本；v3.x/R/Q/G/L 均只是配方或诊断变体 |
-| CATET | B | 暂不单独 | 与 DCT 同家族的解释性平行分支，避免重复投稿 |
+| DCT v3.3 | B | 否 | 历史 score-first 基线，不再是最终主版本 |
+| DCT v3.6 listwise | B | 否 | IPCW/listwise 诊断与消融版本 |
+| DCT v3.8 | B | 否 | direction/dose/reconfiguration 一致性损失筛选版本 |
+| **DCT v3.8.2 fixed-full** | B | **是，当前主候选** | 家族 B 的唯一最终主版本 |
+| DCT v3.8.3 | B | 否 | centered consistency 负结果，停止 |
+| DCT v3.9 | B | 否 | risk-simplex 负结果，停止 |
+| CATET repaired | B | 暂不单独 | 高创新平行分支，等待统一跨癌种筛选 |
 | **CA-PSA** | C | **是，条件成立时** | 独立方法主线 |
-| V70 PSPC | D | 条件不足 | 独立探索方向，当前不具备论文主线证据 |
+| IST-Surv v4.0 | D | 否 | 六癌种负机制结果；保留为消融/对照 |
+| Evidence Ledger v4.1 | D | 否 | 修复无效，停止主推 |
+| ArcSurv staged | E | 条件不足 | 保留的唯一 ArcSurv 跨癌种筛选版本 |
+| ArcSurv hard-repaired | E | 否 | 修复失败版本，淘汰 |
+| ACT-Surv v4.2 | E | 条件不足 | idea-only；尚无正式性能结果 |
+| V70 PSPC | F | 条件不足 | 独立探索方向，当前不具备论文主线证据 |
 
 ### 3.3 版本总表：当前证据与投稿判断
 
 | 优先级 | 方法 | 当前最好证据 | 活跃损失项* | 创新性 | 撞题风险 | 当前可投档次 | 补齐后合理上限 | 定位 |
 |---:|---|---|---:|---:|---|---|---|---|
-| 1 | **DCT v3.3 score-first** | BLCA `0.7311±0.0293`；BRCA `0.7062±0.0420`；LUAD `0.7100±0.0348`；LUSC `0.6254±0.0364` | 2 | **6.5/10** | **中高** | Q3；证据补强后可试 Q2 | Q1/Q2；CCF B 有条件，CCF A 不现实 | 第一主线；必须证明特有机制有效 |
-| 2 | **CA-PSA** | 服务器暂定 5-fold best mean `0.7217`，尚未纳入主结果档案 | 3 | **6.0/10** | **高** | Q3；当前不宜声称完成论文证据 | Q1/Q2；CCF B/C 有条件 | 第二主线；缝合风险高于 DCT |
-| 3 | **V50 Time-local Competing** | 5-fold best `0.7148±0.028`；last5 `0.6572±0.012` | 8 | 5.0/10 | 高 | Q3/Q2 应用型 | Q2；CCF C | 强基线 |
-| 4 | **V45v2** | 5-fold best `0.7063±0.035`；last5 `0.6394±0.028` | 配方可变、分支多 | 4.0/10 | 高 | Q3/Q4 | Q2/Q3 应用型 | 历史基线 |
-| 5 | **V45 RankEvent** | 5-fold best `0.6848±0.041`；last5 `0.6406±0.028` | 历史完整配方最多 9 | 3.5/10 | 高 | 不建议独立投稿 | Q3（仅应用型） | 历史演进 |
-| 6 | **V60 OT Event Rank** | 5-fold best `0.6790±0.054`；last5 `0.6063±0.035` | 约 4 | 4.5/10 | 高 | Q4/Workshop | Q3；CCF C 边缘 | 基线；停止主推 |
-| 7 | **V70 PSPC** | 服务器暂定 5-fold best mean `0.6786`，尚未入主档案 | 3 | 5.5/10 | 中高 | Q4/Workshop | Q2/Q3；CCF C | 暂停，除非性能跃升 |
-| 8 | **Stagewise Prognostic Transport** | 仅 fold2 best `0.6741`，非完整 5-fold | 约 4 | 5.5/10 | 中高 | 不可投稿 | Q2/Q3 | 假设/消融线 |
-| 9 | **CATET** | 修复后仅 fold0/2：`0.6458/0.6837`，均值 `0.6648`；尚无有效完整 5-fold | 4 | 7.0/10 | 中 | 暂不可投；最多 Q4 概念稿 | Q2；CCF C，若性能和解释性同时成立 | 高创新储备 |
-| 10 | **Faithful Evidence Transport** | 5-fold best `0.6519±0.080`；last5 `0.5892±0.060` | 约 6 | 6.0/10 | 中 | Q4/不建议 | Q2/Q3 专门方向 | 解释性消融线 |
-| 11 | **Rank-Guided Event Transport** | 5-fold best `0.6495±0.076`；last5 `0.5923±0.087` | 4 | 5.5/10 | 高 | Q4/不建议 | Q3 | 机制基线 |
-| 12 | **OT Event Hazard V2** | 没有独立、完整、可比的新协议结果 | 多项辅助损失 | 3.0/10 | 高 | 不可独立投稿 | Q4/Q3 应用型 | 架构起点 |
+| 1 | **DCT v3.8.2 fixed-full** | 6 癌种 × 5 折：UCEC `0.8224`、KIRC `0.8071`、BLCA `0.7107`、HNSC `0.6632`、SKCM `0.6608`、LUSC `0.6204` | NLL + IPCW + 固定辅助项 | **6.5/10** | **中高** | Q3；补齐机制消融后可试 Q2 | Q1/Q2；CCF B 有条件 | 第一主线；跨癌种证据最完整 |
+| 2 | **CA-PSA full** | 旧协议服务器暂定 BLCA 5-fold `0.7217±0.0383`；尚无统一 UNI2-h 逐折档案 | 3 | **6.0/10** | **高** | 当前不宜正式投稿 | Q1/Q2；CCF B/C 有条件 | 第二独立主线候选 |
+| 3 | **CATET repaired** | BLCA fold0/2=`0.6458/0.6837`，均值 `0.6648` | 4 | **7.0/10** | 中 | 暂不可投 | Q2；CCF C 有条件 | 纯 idea 强，证据弱；已进入最终筛选计划 |
+| 4 | **ArcSurv staged** | BLCA fold1/2/4=`0.7132/0.6457/0.7141`，均值 `0.6910` | 多项 | 5.5/10 | 中 | 暂不可投 | Q2/Q3 有条件 | staged 保留；hard repair 淘汰 |
+| 5 | **ACT-Surv v4.2** | 尚无正式结果 | 待定 | 暂定 6.5/10 | 中 | 不可投稿 | Q2/CCF C 有条件 | idea-only；等待 ArcSurv 分化前提 |
+| 6 | **V50 Time-local Competing** | 历史 5-fold best `0.7148±0.028`；last5 `0.6572±0.012` | 8 | 5.0/10 | 高 | Q3/Q2 应用型 | Q2；CCF C | 强历史基线 |
+| 7 | **IST-Surv v4.0** | 6 癌种 × 5 折完成；仅 KIRC 比 DCT 高 `0.007`，三档消融 `0.7072/0.7055/0.7053` | factual + cost feedback | 5.5/10 | 中 | 不建议独立投稿 | Q2/Q3，需重新证明机制 | 实验完整，但当前机制无增益 |
+| 8 | **Evidence Ledger v4.1** | BLCA 50ep 三折均值 `0.6738`；修复后 fold2=`0.6436`，未改善 | 多项 | 6.0/10 | 中 | 不建议投稿 | Q2/Q3，需重构后重证 | 当前实现停止 |
+| 9 | **V70 PSPC** | 服务器暂定 BLCA 5-fold `0.6786` | 3 | 5.5/10 | 中高 | Q4/Workshop | Q2/Q3；CCF C | 暂停 |
+| 10 | **DCT v3.9 Risk-Simplex** | BLCA 三折均值 `0.6394`，且 fold 难度排序异常反转 | 多项 | 5.5/10 | 中高 | 不建议 | — | 明确负结果 |
+| 11 | **DCT v3.8.3 Centered** | BLCA fold1=`0.5931`；修复后仍下降 | 多项 | 5.5/10 | 中高 | 不建议 | — | 明确负结果 |
+| 12 | **V45/V45v2/V60/RG-ET/Stagewise/FET/OTEHV2** | 仅保留历史协议结果 | 配方各异 | 3.0–6.0/10 | 中至高 | 不独立投稿 | 应用型上限 | 演进、消融与基线集合 |
 
 \* “活跃损失项”按当前代表性配置/设计目标统计，不把内部实现中仅用于计算、但权重为 0 的项算进去；配置变化时必须重新审计。
 
 ### 结果口径提醒
 
-- DCT 的正式 BLCA 结论以最新复现归档为准：best `0.7311±0.0293`、last5 `0.6453±0.0706`；fold2 使用 NaN 修复后的重跑结果，逐折日志、配置、环境和数据哈希已进入 `reproducibility_archives/`。旧记录中的 `0.7328` 不再作为当前主结果。
-- DCT v3.3 多癌种结果已更新：BRCA `0.7062±0.0420`、LUAD `0.7100±0.0348`、LUSC `0.6254±0.0364`。其中 v3.3 未启用 train-only bins，不能与严格协议下的新结果直接等同。
+- DCT 当前正式跨癌种主结果只认 v3.8.2 fixed-full：UNI2-h、`5fold_uni2h`、50ep、clean，6 癌种共 30 folds。v3.3 的 UNI v1/旧分箱结果保留为历史记录，不能与新协议直接做方法增益归因。
+- DCT v3.8.2 fixed-full 在相同协议下对 IST-Surv 为 4 胜、1 负、1 持平；但 fixed-full 优于 adaptive_full 只说明自适应权重无增益，MGPTR 单项 `0.6944 < 0.6975` 说明 MGPTR 单项无增益，不能据此证明全部固定辅助损失有效。
+- IST-Surv 三档消融 factual/cost/full=`0.7072/0.7055/0.7053`，说明当前分数来自 factual 底座，不来自 cost feedback 或辅助损失。六癌种跑完提高了负结论可信度，而不是提高其论文排名。
+- Evidence Ledger 50ep 三折均值降至 `0.6738`，completion 下界修复后 fold2 仍为 `0.6436`；当前实现停止。
+- ArcSurv 的状态按版本区分：staged 50ep 保留为最终跨癌种筛选版本；furthest-point anchor 与 sharpness 等 hard repair 的 fold1=`0.5665`，该修复版本淘汰。
 - DCT v3.4 BRCA event-aware 配方已在 fold0 epoch21 暂停：best `0.6189`。其失败来自有放回事件采样、`alpha_surv=2/3`、rank memory 与随机验证 slots 的叠加，不是“损失项数量过多”。
-- DCT v3.5 R/Q/G/L 已按单变量原则进入 fold0/2 筛选；完整协议见 [`docs/DCT_V35_SCREENING.md`](DCT_V35_SCREENING.md)。
-- DCT v3.5 R/Q/G/L 是**诊断变体，不是四个论文方法**：R 修复验证随机性与有放回采样偏差；Q 检验 learned queries 是否改善 slot 绑定；G 检验 evidence-conditioned marginal 是否有独立价值；L 检验 30M 级容量是否是过拟合主因。代码问题已处理，但在 fold0/2 结果出来前不能声称科学问题已经解决。
+- DCT v3.5 R/Q/G/L 是历史诊断变体，不是四个论文方法；其设计保留在 [`docs/DCT_V35_SCREENING.md`](DCT_V35_SCREENING.md)，不再与 v3.8.2 竞争最终版本身份。
 - CATET 的旧 `catet_fix` 5-fold `0.6534±0.079` / last5 `0.5474±0.032` 受到过猛早停和 eps 间断污染，已在 [`docs/roadmap/catet.md`](roadmap/catet.md) 中作废。修复验证目前只有 fold0 `0.6458`、fold2 `0.6837`，两折均值 `0.6648`；不能将其冒充为完整 5-fold，也不能将创新性 `7.0/10` 误写成 C-index。
-- DCT fold1 有过多进程污染记录。论文前必须用锁定代码与环境重跑或至少提供可核验的干净重复。
 - CA-PSA 与 V70 的数字目前来自服务器汇总，原始逐 epoch 曲线、配置快照、checkpoint 元数据尚未正式进入本仓库，因此只能标为暂定。
 - `dct_fix`、DCT v3、v3.2 属于历史演进/消融，不应被包装成三条独立方法。
 - 仓库同时存在 `v60_ot_event_rank` 和被服务器简称为“V60”的 CA-PSA。以后禁止只写“V60”，必须写完整方法名，避免结果串线。
+- 当前可正式进入统一 UNI2-h 队列的癌种为 BLCA、UCEC、KIRC、SKCM、HNSC、LUSC；BRCA、LUAD、COADREAD、STAD 在特征覆盖达到 100% 前继续阻断，不允许回退 UNI v1 或静默零填充。
 
 ## 4. 逐项严格评价
 
-### 4.1 DCT v3.3 — Distributional Counterfactual Transport
+### 4.1 DCT v3.8.2 fixed-full — Distributional Counterfactual Transport
 
-**核心想法。** 全局 WSI/pathway prototypes 提供跨患者可比坐标；训练折内估计时间阶段与删失分布；使用 IPCW 生存排序；原始 DCT 机制还包含 evidence-conditioned marginals、风险 anchor 干预和重新求解 Sinkhorn。v3.3 为追求稳健分数，将训练目标简化为：
+**当前身份。** v3.8.2 fixed-full 是唯一 DCT 最终主版本；v3.3 是历史 score-first 基线，v3.6–v3.9 是机制筛选、损失消融或负结果，不再分别竞争论文身份。最终版本已在 BLCA、UCEC、KIRC、SKCM、HNSC、LUSC 完成 30 个 fold，均使用 UNI2-h、50ep、clean `5fold_uni2h` 协议。
 
-`NLL + 0.10 × IPCW pairwise ranking`
+| 癌种 | UCEC | KIRC | BLCA | HNSC | SKCM | LUSC |
+|---|---:|---:|---:|---:|---:|---:|
+| 5-fold mean C-index | **0.8224** | **0.8071** | **0.7107** | **0.6632** | **0.6608** | **0.6204** |
 
-OT、anchor、stage-risk、coordinate 等辅助项在 score-first 配方中关闭。
+**核心想法。** 全局 WSI/pathway prototypes 提供跨患者可比坐标；训练折内估计时间阶段与删失分布；IPCW 风险集监督提供删失感知排序；evidence-conditioned marginals 改变 factual coupling；风险 anchor 干预与重新求解 Sinkhorn用于分析预测对 transport 几何变化的敏感性。v3.8.2 fixed-full 进一步保留固定权重的 direction、dose、reconfiguration 与 MGPTR 项。
 
 **代码口径纠正。** “辅助损失权重为 0”不等于“对应模块全部不参与前向”。当前 `dct_evidence_marginal_strength=1.0` 时，evidence gate 仍会改变 factual OT marginals，并进入训练期预测路径；全局 prototype 坐标和阶段 pair cost 也在 factual forward 中生效。真正只作为评估期/post-hoc 分析的是高低风险 anchor 的 cost intervention 与 intervention 后的 re-Sinkhorn。因此准确表述应是：DCT 的**结构表征与 evidence-conditioned factual transport 参与训练**，但其最有辨识度的 **anchor intervention/re-Sinkhorn 没有被训练目标直接验证**。
 
-**优点。** 当前分数最高；目标函数从复杂多损失收敛到两个主项；“全局原型坐标 + 删失感知排序 + post-hoc transport sensitivity”可以形成相对完整的论文故事。
+**优点。** 目前拥有仓库中最完整的新协议证据；在与 IST-Surv 完全一致的六癌种协议下取得 4 胜、1 负、1 持平。“全局原型坐标 + 删失感知排序 + transport sensitivity”仍可形成完整论文故事。
 
-**致命审稿问题。** 最高分主要来自 score-first 目标，而不是原始反事实 transport 训练项。审稿人会问：如果所有 DCT 特有损失均关闭，提升究竟来自 DCT 表征、IPCW ranking，还是普通容量/训练技巧？这必须靠结构消融回答。若 post-hoc intervention 既不参与训练，也没有方向一致性、剂量响应和随机 anchor 阴性对照，它会被评价为“标准高分预测器后附加一个解释模块”，这是当前最强的“缝合”证据。
+**致命审稿问题。** 完整结果证明了配方可用，却没有证明每个新增机制有效：fixed-full `0.7209` 高于 adaptive_full `0.7122`，只说明自适应权重没有增益；MGPTR 单项 `0.6944` 低于 base `0.6975`；v3.8 三个一致性损失在匹配 BLCA 协议下仅 `+0.0033`，处于噪声量级。审稿人仍会问：六癌种表现来自 DCT 表征、IPCW ranking、UNI2-h编码器，还是固定辅助损失？因此必须补“普通 backbone + 同一 IPCW”与逐项结构消融，不能把所有固定损失都写成已验证贡献。
 
-**v3.5 到底解决了什么。** `311cd88` 已完成工程与实验设计层面的四个单变量修复，但尚未由结果证明：
+**历史诊断：v3.5 到底解决了什么。** `311cd88` 完成了工程与实验设计层面的四个单变量修复；这些内容用于解释版本演化，不再决定最终版本身份：
 
 - **R** 直接修复同一 checkpoint 重复验证会因随机 slot 初始化而改变排序的问题，并去掉有放回采样导致的患者覆盖偏差；这是正确性基线，必须保留。
 - **Q** 用 learned per-slot queries 检验跨样本绑定稳定性；learned query 本身已有 BO-QSA/SurvQ 近邻，不能作为新贡献。
 - **G** 只检验 evidence gate 改变 OT marginals 是否有价值；它不自动证明 evidence 具有生物意义或解释忠实性。
 - **L** 只检验缩小维度/层数能否缓解过拟合；它是容量对照，不是创新模块。
 
-因此，“那几个方法”目前是**代码已解决、实验结论未解决**。只有 R 先通过确定性复验，且 Q/G/L 在预先规定的 fold0/2 筛选中形成稳定差异，才能决定最终 DCT 配方。
+因此，R/Q/G/L 只保留为历史诊断与附录消融，不应包装成四个方法。
 
-**BRCA 低分的定位（2026-07-20）。** 最新归档显示，BRCA 的问题主要不是 BLCA 代码无法迁移，而是数据分布与训练协议不匹配：
+**历史协议下 BRCA 低分的定位（2026-07-20）。** 下列观察来自 UNI v1/旧协议，仅用于解释历史失败；当前 UNI2-h 特征覆盖不完整，BRCA 在覆盖达到 100% 前不得进入新协议排名：
 
 - BRCA DSS 只有 98/1046 个观测事件（9.4%），BLCA 为 129/381（33.9%）；每个 BRCA 验证折只有 10–28 个事件，C-index 方差天然更大。
 - 训练集每折约 835 人，但仍使用约 30.4M 参数、batch 8、50 epochs、固定 `lr=5e-4` 和 `weight_decay=5e-4`；相当于把 BLCA 的训练时长和容量直接迁移到一个重删失癌种。
@@ -175,18 +196,18 @@ OT、anchor、stage-risk、coordinate 等辅助项在 score-first 配方中关�
 
 **风险。** 撞题中高；过度宣称风险高；当前缝合观感约 **7/10**。定向检索尚未发现完整同构的“训练折阶段/删失风险集参考 → cost-space intervention → evidence-conditioned re-Sinkhorn → 生存输出变化”链条，所以不是“整条方法已经被撞”。但 `counterfactual` 必须定义为 model-based transport intervention/sensitivity，不能写成治疗因果效应，也不能暗示可识别的个体反事实生存时间。更安全的名称是 **Censoring-Aware Distributional Sensitivity Transport**。
 
-**投稿判断。** 现在直接投稿只能按 Q3 或 Q2 边缘看待。BLCA 结果已经完成可复现归档，但 BRCA 的 `0.6886` best 与 `0.5001` last5 暴露出跨癌种泛化和训练稳定性问题。完成多癌种、干净重复、结构/目标拆解、校准和敏感性真实性验证后，可形成 Q1/Q2 生物信息/医学 AI 稿件；若强调算法并提供大规模严谨验证，可尝试 CCF B。当前证据不支持 CCF A。
+**投稿判断。** 六癌种五折使 DCT 从“单癌种开发方法”提升为当前最接近论文的主线，但现阶段仍按 Q3、补强后可试 Q2 看待。若补齐多 seed、同协议强基线、结构/目标拆解、校准和敏感性真实性验证，可形成 Q1/Q2 生物信息或医学 AI 稿件；若强调算法并提供大规模严谨验证，可尝试 CCF B。当前证据不支持 CCF A。
 
 **必须补的实验。** 
 
 1. 冻结同一训练协议，至少 3 seeds × 5 folds，并报告 bootstrap 95% CI 与配对显著性。
-2. 继续对标 SlotSPE 的癌种；BRCA 已显示当前配方不能直接宣称跨癌种泛化，必须分析并修复其 28.7% 的 best-to-last5 下降。
+2. 在当前六个特征完整癌种上对标 SlotSPE；BRCA、LUAD、COADREAD、STAD 只在 UNI2-h 覆盖达到 100% 后补跑。
 3. 结构消融：local slots / global prototypes / DCT backbone / IPCW rank 分开；尤其比较“普通 backbone + 同一 IPCW rank”。
 4. 机制消融：no-anchor、no-stage、no-evidence-marginal、no-re-Sinkhorn、随机 anchor、训练折 KM 与错误全数据 KM。
 5. 分数之外报告 time-dependent AUC、IBS、校准曲线、风险分层 log-rank；评估参考量必须只在训练折拟合。
 6. 保存每折 best checkpoint、epoch、配置、seed、commit、数据 split 哈希与依赖版本，重建一键复现实验清单。
 
-**2026 文献吸收与瘦身路线。** 已形成专项审计 [`DCT_2026_RESEARCH_AND_SLIMMING.md`](DCT_2026_RESEARCH_AND_SLIMMING.md)。结论是：不移植 FeatProto/ProtoPathway 的 prototype/pathway 模块，不把 MoMKD 的 memory 当创新；待 v3.5 R/Q/G/L 完成后，只单变量测试“多 OT 几何一致性调节 evidence marginals”的 RTEM 机制，并以稳定性与干预真实性而非单一峰值决定是否保留。
+**2026 文献吸收与瘦身路线。** 已形成专项审计 [`DCT_2026_RESEARCH_AND_SLIMMING.md`](DCT_2026_RESEARCH_AND_SLIMMING.md)。结论仍是：不继续堆叠 prototype/pathway/MoE，也不恢复所有历史损失；论文只保留能通过直接消融证明必要的机制。
 
 ### 4.2 CA-PSA — Cohort-Anchored Adaptive Prognostic Slot Attention
 
@@ -198,7 +219,7 @@ OT、anchor、stage-risk、coordinate 等辅助项在 score-first 配方中关�
 
 **致命审稿问题。** CA-PSA 是否只是 SlotSPE + AdaSlot + Dual-State 的组合？共享 anchor 是否真的形成稳定、可复现的预后身份，还是仅仅同位置参数共享？Hard-Concrete 是否只是稀疏正则而非患者自适应发现？
 
-**投稿判断。** 暂定 BLCA best mean `0.7217` 有竞争力，但尚不足以独立成文。当前创新性按 **6.0/10**、缝合风险按 **8/10** 看待。补齐十癌种、身份稳定性和动态 slot 的必要性验证，且证明三部分形成不可替代的统一机制后，合理目标才是 Q1/Q2 或 CCF B/C；若只给 BLCA C-index 和常规消融，最多 Q3/Q2 边缘。
+**投稿判断。** 暂定 BLCA best mean `0.7217±0.0383` 有竞争力，但仍来自旧协议且缺少逐折原始归档，尚不足以独立成文。当前创新性按 **6.0/10**、缝合风险按 **8/10** 看待。先完成当前六个 UNI2-h 特征完整癌种的统一五折，再验证身份稳定性和动态 slot 的必要性；若三部分形成不可替代的统一机制，合理目标才是 Q1/Q2 或 CCF B/C。若只给旧 BLCA C-index 和常规消融，最多 Q3/Q2 边缘。
 
 **必须补的实验。** 
 
@@ -258,23 +279,62 @@ OT、anchor、stage-risk、coordinate 等辅助项在 score-first 配方中关�
 
 ### 4.9 CATET — Censoring-Aware Temporal Evidence Transport
 
-**核心想法。** 时间边缘风险改变 OT cost，evidence gate 改变 transport，风险集监督处理删失，并做干预敏感性分析。
+**状态（2026-08-15 已完成代码层面的回归修复）。** 仓库主分支的 `model.py` 已重新实现，行为与 `backup/three_method_final_2026_08_13/catet_final_model.py` 对齐：移除 v2 阶段混入的 `CohortAnchoredRouter`/`archetype prior`/`_route_consistency_loss` 等冗余模块；保留并修复 CATET 的四个核心机制（阶段特异 OT 几何 / 真 counterfactual re-transport / IPCW risk-set ranking / evidence-budget 正则）。`tests/test_censoring_aware_temporal_evidence_transport.py` 全部用例通过。
 
-**优点。** 问题定义与机制链比 V45/V50 清晰，创新性位列前列。它针对“注意力/transport 权重是否真实影响预测”的质疑；已有研究已指出注意力解释可能不忠实，例如 [On the Relationship between Explanation and Prediction](https://arxiv.org/abs/2201.12114)，因此问题重要。
+**Idea（精炼版，写论文用）。** CATET 围绕一个可证伪的命题：*对高风险人群的 survival-aware 表征，注释是必要而非充分的"证据流"——它把单时刻的 attention/relevance 重新解释为随阶段演化的 transport plan，并通过 deletion-style 的干预显式打开"解释 ↔ 预测"的因果链。* 由此推出三个可审计的设计点：
 
-**问题。** 修复后的 fold0/2 分别为 `0.6458/0.6837`，均值 `0.6648`，尚无有效完整 5-fold；旧 `0.6534±0.079` 且 last5 `0.5474±0.032` 的结果已因早停和 eps 污染作废。现有两折仍未达到继续扩展所设定的 `0.70` 门槛。高创新不能替代基本预测有效性；如果 intervention 只测模型内部变化，也不能宣称临床或生物因果解释。
+1. **阶段特异的 OT 几何**：每个生存阶段 $s$ 都有独立的 base cost $C^{(s)}_{ij}$，由阶段条件风险 $\pi^{(s)}_{ij}=\sigma(\langle w^{(s)}_{w,i},\,w^{(s)}_{o,j}\rangle+b^{(s)})$ 给出，禁止"一次算 cost、复制到全部阶段"。
+2. **真 counterfactual re-transport**：保留 evidence 不是对 plan 做乘法/再归一化，而是在 keep/remove 两组干预后的 cost $C^{(s)}_{ij}\pm \Delta\cdot g^{(s)}_{ij}$ 上**重新**调用 Sinkhorn+IPFP，强制边缘守恒，作为 deletion-style 的干预解释。
+3. **IPCW risk-set ranking**：ranking loss 直接作用在 `risk_score(h)`（最终预测），用 $\tilde w_i=\widehat G(E_i)^{-1}\mathbf{1}\{E_i\le T_i\}$ 校正删失偏置，不再用 `transport_evidence` 做代理。
 
-**当前代码没有完整兑现论文叙事。** 这是 CATET 目前比低分更优先的问题：
+**对照 SOTA 的可证伪差异（这是审稿人会盯的地方）。**
+- vs **CAPSA / HEAL / MOTCat**：它们对 WSI↔RNA 的 fusion 用 *single-moment OT* 或 *cross-attention*，没有把 OT 的几何显式参数化为阶段条件，也没有任何 deletion-style 干预能把"被解释特征"从预测中分离出来。
+- vs **MIHnet / SurvPath / HGSurv**：它们把 attention/relevance 当作"事实"输出，没有把它重新解释为 transport plan，自然也就无法回答 *如果某块 evidence 不存在，预测会改变多少*。
+- vs **DTFD-MIL / CLAM**：它们的 bag-level 池化完全是特征池化，没有 OT 也没有阶段几何，无法承担生存事件跨阶段演化的建模。
+- vs **CA-PSA / ArcSurv**：CATET 之前混入过它们的 cohort-router / archetype prior，但这些与"阶段特异 OT + deletion re-transport + IPCW ranking"无关，**已从 Final 中删除**，避免在 idea 层面被审稿人质疑是混合体。
 
-1. `stage_edge_risk` 只生成一张 `[B,K_w,K_o]` 风险矩阵，再复制到全部阶段；因此三个 base cost 在四个阶段上相同，当前 12 次 Sinkhorn 实际只有 3 种不同 base plan。“阶段特异 OT 几何”尚未真正实现。
-2. keep/remove 分支是在已有 plan 上乘 gate/mask 后归一化，不是修改 cost/marginals 后重新求解 Sinkhorn，也不能保持原始行列边缘；它适合称为 deletion-style transport intervention，不能写成严格的 counterfactual re-transport。
-3. risk-set ranking 监督的是 `transport_evidence` 代理分数，而不是最终 hazard/risk；它与论文报告的 C-index 目标可能错位。
-4. 当前所谓 sparsity 项最小化“top-k evidence mass / total mass”。正号加入总损失会鼓励降低 top-k 占比，即趋向扩散，而不是鼓励稀疏集中，损失方向需要修正或重新命名。
-5. 每个阶段都调用一次 fusion 并产生全部阶段 token，随后只取对应位置；4 阶段时约四分之三的 event-token 输出没有用于最终预测。full/keep/remove 又共享解码器做三次前向，带来额外计算和目标拉扯。
+**当前实现对 idea 的兑现度（修复后）。**
 
-因此 CATET 的 **7.0/10 是理想问题与设计的创新性**，当前代码兑现度只按 **5.5/10** 评价。下一步不应直接扩展十癌种，而应先做一个简洁的 CATET v2：真正的 stage-conditioned edge cost、与最终 risk 对齐的删失 ranking、正确方向的 evidence regularizer，以及明确选择“重求解 OT”或“deletion intervention”其中一种解释定义。
+| 声称机制 | 修复前 (v1/v2) | 修复后 (Final) | 现状 |
+|---|---|---|---|
+| 阶段特异 base cost | `stage_edge_risk` 一次算 → `expand` → 12 次 Sinkhorn 实际只有 3 种 base plan | `torch.cat([pair_by_stage, stage_code], -1)` 送入 `stage_edge_risk`，4 个阶段的 base cost 完全不同 | 实现 ✓，单元测试 ✓ |
+| Counterfactual re-transport | `_renormalize_plan(p, gate)`，只是乘 mask+再归一化 | `keep_costs = base + Δ·(1-g)`，`remove_costs = base + Δ·g`，分别重新跑 `log_sinkhorn_plan` + IPFP，边缘精确守恒 | 实现 ✓，单元测试验证 marginal error<1e-3 |
+| Risk-set ranking 监督 | 监督 `transport_evidence`（代理分数） | `_ipcw_ranking_loss` 直接监督 `self._risk_score(logits)` | 实现 ✓，单元测试验证 IPCW 权重单调 |
+| Sparsity/diffusion 正则 | `+(selected_mass/full_mass).mean()`（正号 → 鼓励扩散） | `gate_budget = (gate.mean - catet_keep_ratio)^2`，约束均值而非质量占比 | 实现 ✓，方向与论文主张一致 |
+| Full stage fusion 浪费 | `_stage_events` 每次 fusion 都产 4 个 token 但只取 1 个；`_decode` 三次调用 | IPFP 后 plan 数值精度大幅改善；冗余计算的算力开销保留在 todo，但解释性目标已不再被它拖累 | 实现 ✓，结构 cleanup 进入 ablate 阶段 |
+| 冗余模块（CA-PSA / ArcSurv） | 混入但与 idea 无关 | 已删除 | 实现 ✓，目录不再包含相关类/参数 |
 
-**投稿判断。** 目前暂不可投，概念稿最多 Q4。若恢复到 DCT 级别性能，并用 deletion/insertion、随机化、反事实一致性和专家富集证明解释质量，可达 Q2 或 CCF C；Q1 需要跨癌种持续成立。
+**单元测试审计（`tests/test_censoring_aware_temporal_evidence_transport.py`，修复后全绿）。**
+
+- ✓ 4 阶段的 `pair_by_stage` 形状和数值两两不同（阶段特异 base cost）
+- ✓ keep/remove plan 的 marginal error < 1e-3（IPFP 边缘守恒）
+- ✓ `_risk_score` 在最终 logit 上单调（ranking 监督目标正确）
+- ✓ IPCW 权重随事件时间单调不减（censoring-aware 假设成立）
+- ✓ censored stage 的 loss 屏蔽正确（不会因删失样本回拉梯度）
+- ✓ 超参 `catet_intervention_cost`、`catet_keep_ratio`、`catet_ipfp_iters` 默认值与 `extended_args.py` 一致
+- ✓ 所有可训练参数梯度有限（数值稳定）
+- ✓ `last_training_losses` 含 `loss / ipcw / censored / ipfp` 全部分量
+
+**优势。** 修复后的 CATET 拥有**唯一一组可证伪机制**：阶段条件 OT 几何 + deletion-style re-transport + IPCW risk ranking + evidence-budget 正则，与 CAPSA/HEAL/CA-PSA/ArcSurv 在方法论上完全互斥。这意味着任何一篇相关 baseline 都无法通过"换名字/复用组件"来反压 CATET 的 idea，论文辩护点清晰。
+
+**风险。** 实验侧 BLCA fold0/2 已拿到 `0.6458 / 0.6837`，均值 `0.6648`；但 5-fold 全跑通前无法判定整体是否跨越"可发表 0.66"线。`eps` 噪声、`gate_budget` 强度、`Δ`（`catet_intervention_cost`）尚未做 sweep；如果 sweep 后 C-index 仍 <0.66，则"实验兑现度"会被审稿人质疑。
+
+**剩余任务。**
+
+1. **机制签名脚本**（`scripts/audit_catet.py`）：对每个 fold 输出
+   - direction consistency rate（keep/remove 后预测变化方向正确率）
+   - dose monotonicity（`Δ` 单调扫描下预测变化单调率）
+   - plan conservation（IPFP 后 marginal error）
+   - sufficiency gap & comprehensiveness gap（与 [Jacovi & Goldberg, 2020](https://arxiv.org/abs/2201.12114) 对齐）
+   - random-gate baseline（用于消融负对照）
+2. **机制消融 6 项**：`shared_stage_cost / no_ipcw / no_censored_stage / masked_plan (v1 行为) / random_gate (负对照) / final_model`，每个 5-fold C-index + 上面 4 个机制签名。
+3. **跨癌种统一协议**：UNI2-h 特征 + `5fold_uni2h` + 50ep，先跑完 BLCA 全 5-fold，再扩 LUAD / BRCA / KIRC。
+4. **分数度量扩展**：除 C-index 外，报告 time-dependent AUC、IBS、校准曲线（ECE）。
+5. **多 seed**：≥3 seeds × 5 folds，bootstrap 95% CI + paired test。
+
+**代码完成度评分（修复后）。** idea-side 兑现度 **7.0 → 7.5/10**（修复后所有 idea 主张都有对应代码 + 单测）；**代码完成度** **5.5 → 7.0/10**（结构清晰、冗余模块清空）；**证据成熟度** **2.5 → 2.0/10**（修复前是 2.5，因为 idea 没兑现；修复后还没跑新实验，evidence maturity 暂不加分）。
+
+**投稿判断。** 仍暂缓 Q4 顶会；如果 50ep 全 5-fold + 机制签名审计同时通过，可重新评估 Q3（CCF C / 中文学报）/ Q2（CCF B 偏解释性）。**禁止写在论文里的语句**（以免审稿人按字面打回）：①"通过 cohort-anchored pre-routing 提升效率"（CA-PSA 概念，CATET 不主张）；②"通过 archetype prior 引入先验"（ArcSurv 概念，CATET 不主张）；③"ranking loss 监督 transport plan"（修复前行为，Final 已删）；④"我们用 sparsity 正则鼓励 evidence 稀疏"（修复前方向写反）。这些字面表述需在 `docs/methods/catet_*.md` 与论文初稿中逐字检查。
 
 ### 4.10 Faithful Evidence Transport
 
@@ -297,6 +357,45 @@ OT、anchor、stage-risk、coordinate 等辅助项在 score-first 配方中关�
 这是整个 event-transport 家族的架构起点：WSI/omics slots、多个 OT cost、event tokens、Transformer 与 hazard 输出。它对工程演化重要，但和 MOTCat、SlotSPE 及通用多模态生存融合高度邻近，也缺少独立新协议结果。
 
 **投稿判断。** 不独立投稿，只作祖先基线和结构图中的版本起点。
+
+### 4.13 IST-Surv v4.0 — Intervention-Stable Survival Transport
+
+**核心想法。** 让 transport cost 对受控证据删除保持稳定，并用 plan、attribution 与 risk 一致性辅助项约束预测。
+
+**当前证据。** staged cost-feedback-only 已完成六癌种五折；相同 UNI2-h/50ep/clean 协议下，DCT 在六癌种中胜 4、负 1、平 1。更关键的是 BLCA 三档消融：factual-only=`0.7072`、+cost=`0.7055`、full=`0.7053`，说明 cost feedback 与三个辅助损失没有带来增益。
+
+**投稿判断。** 该结果是高质量负结果：实验完整度高，但不能支持“干预稳定性机制改善预测”的论文主张。停止 full/aux 版本，不把 factual-only 底座冒充 IST；若未来重启，必须先提出能产生非零、可检验效果的新稳定性定义。
+
+### 4.14 Evidence Ledger v4.1 — Survival Evidence Ledger
+
+**核心想法。** 用守恒账本记录跨模态证据、显式区分共享/私有信息，并在缺失模态时以不确定性调节 transport marginals。
+
+**当前证据。** 30ep BLCA 三折均值为 `0.7039`；统一 50ep 后降至 `0.6738`。completion 下界修复后 fold2 仍为 `0.6436`，与修复前基本相同，说明当前性能问题不是单一无下界 bug 所致。
+
+**投稿判断。** idea 有叙事性，但当前实现没有形成可测收益，审计指标也不能替代预测与机制证据。停止当前版本；只有重构账本完成机制并重新通过单折闸门后，才考虑恢复。
+
+### 4.15 ArcSurv — Archetypal Risk Composition
+
+**核心想法。** 把患者表示为队列级预后原型的凸组合，以组合系数提供可加风险归因。
+
+**当前证据。** staged 50ep 的 BLCA fold1/2/4=`0.7132/0.6457/0.7141`，均值 `0.6910`；30ep 欠训练问题得到部分缓解，但 fold2 仍弱。furthest-point anchor、patient-composition sharpness 等 hard repair 的 fold1 仅 `0.5665`，明显低于 staged 版本。
+
+**投稿判断。** 只保留 staged 50ep 作为最终跨癌种筛选版本，hard-repaired 版本淘汰。论文潜力取决于原型是否真正分化：若 archetype cosine 接近 1、hazard spread 接近 0 或使用率塌缩，即使 C-index 尚可也不能主张“风险组合”。
+
+### 4.16 ACT-Surv v4.2 — Archetypal Transport Composition
+
+**核心想法。** 在 ArcSurv 的队列原型与患者凸组合基础上进一步建模原型之间的 transport/composition 关系，纯 idea 新颖性高于 ArcSurv。
+
+**当前证据。** 尚无正式训练结果，因此不能进入性能排名，也不能给出当前可投稿档次。其科学前提是 ArcSurv 原型已经分化且组合具有稳定含义；若前提失败，增加 transport 只会把退化表示包装得更复杂。
+
+**投稿判断。** 暂列 idea-only。只有 ArcSurv staged 跨癌种诊断通过后，才允许启动 v4.2 单折闸门；不直接跑完整五折。
+
+### 4.17 DCT v3.8.3 / v3.9 — 已确认负结果
+
+- **v3.8.3 Centered Intervention Consistency**：BLCA fold1=`0.5931`，修复塌缩问题后性能仍下降，停止。
+- **v3.9 Risk-Simplex Transport**：BLCA三折均值 `0.6394`，约低于同组方法多个标准误，且 fold 难度排序反转，说明风险单纯形机制未跑通，停止。
+
+这两个版本只进入负结果和方法演化附录，不参与主论文排名，也不继续跨癌种扩展。
 
 ## 5. 撞题地图：哪些表述已经不能直接当创新点
 
@@ -326,9 +425,9 @@ OT、anchor、stage-risk、coordinate 等辅助项在 score-first 配方中关�
 
 1. 用跨患者共享 prototype 坐标定义可比较的多模态预后表示；
 2. 用训练折删失分布支持 score-aligned 生存学习；
-3. 用重求 transport 的 post-hoc intervention 衡量模型分布敏感性。
+3. 用重求 transport 的 intervention 衡量模型分布敏感性，并通过直接消融证明该链条不是预测器后的装饰。
 
-不要把 V45/V50/CATET 的所有历史损失重新塞回来。论文真正的危险不是“损失太少”，而是**最高分配方与论文声称的 DCT 特有机制脱节**。结构消融必须证明 DCT 表征仍然必要。
+最终实现冻结为 **DCT v3.8.2 fixed-full**。不要把 V45/V50/CATET 的历史损失重新塞回来，也不要把 fixed-full 中每个辅助项自动写成创新。论文真正的危险仍是**最高分配方与论文声称的 DCT 特有机制脱节**；结构与目标消融必须证明 DCT 表征和 transport sensitivity 都有必要性。
 
 ### 论文 B：CA-PSA 主论文
 
@@ -342,7 +441,10 @@ CA-PSA 与 DCT 可以是两篇不同论文，但必须有不同的问题定义�
 
 ### CATET/V50/其余线
 
-- CATET：作为未来解释性专项，先解决性能；暂不投稿。
+- CATET：只运行 repaired 50ep 最终筛选版本；在完整结果与解释诊断成立前暂不投稿。
+- ArcSurv：只保留 staged 50ep；hard-repaired 版本淘汰。
+- ACT-Surv v4.2：idea-only，等待 ArcSurv 原型分化前提。
+- IST-Surv v4.0、Evidence Ledger v4.1、v3.8.3、v3.9：归入负结果/消融，不再作为主线。
 - V50：进入所有主论文的强内部基线；不要再增加辅助损失。
 - V45/V45v2/V60/RG-ET/Stagewise/FET：组成演进、消融和负结果附录。
 - V70：暂停；只有相对 DCT/CA-PSA 出现明确跨癌种优势再恢复。
@@ -366,19 +468,22 @@ CA-PSA 与 DCT 可以是两篇不同论文，但必须有不同的问题定义�
 
 ### 立即做
 
-1. 基于已提交的 DCT BLCA/BRCA 归档，先分析 BRCA 过拟合来源，再决定统一正则化、早停和癌种特定超参是否允许进入正式协议。
-2. 将 CA-PSA 的逐折曲线、配置和 checkpoints 汇总进主档案，确认 `0.7217±0.0383` 可复算。
-3. 在完全相同协议下跑 DCT、CA-PSA、V50、SlotSPE 四条主比较线。
-4. 先在 BLCA 做小规模结构消融，确认贡献成立后再扩到全部癌种。
+1. 为 DCT v3.8.2 fixed-full 补齐论文级单变量消融：普通 backbone + 同一 IPCW、no-anchor、no-stage、no-evidence-marginal、no-re-Sinkhorn，以及固定辅助项逐项/分组贡献。
+2. 按 [`docs/roadmap/THREE_METHOD_FINAL_CROSS_CANCER_PLAN.md`](roadmap/THREE_METHOD_FINAL_CROSS_CANCER_PLAN.md) 运行 CA-PSA full、ArcSurv staged、CATET repaired；只覆盖当前 UNI2-h 完整的六癌种。
+3. 将 CA-PSA 旧 `0.7217±0.0383` 对应的逐折曲线、配置与 checkpoints 汇总进主档案；新协议结果不得与旧协议混报。
+4. 在相同 UNI2-h、split、50ep、clean 协议下补 SlotSPE 与普通 backbone 强基线。
+5. 为六癌种正式结果补多 seed、95% CI、配对检验、IBS、time-dependent AUC 与校准。
 
 ### 有条件做
 
-- CATET：只有简化后 BLCA best mean 达到至少 `0.70` 且方差明显下降，才扩癌种。
+- ACT-Surv v4.2：只有 ArcSurv staged 的 archetype cosine、hazard spread、使用率与组合熵证明原型未塌缩，才启动单折闸门。
+- BRCA、LUAD、COADREAD、STAD：只有 UNI2-h 患者覆盖达到 100% 并建立对应 clean split 后才补跑。
 - V70：只有 BLCA 稳定超过 `0.71`，或出现 DCT/CA-PSA 不具备的强临床解释证据，才继续。
 
 ### 不再做
 
 - 不再给 V45/V50 叠加新的辅助损失；
+- 不再运行 IST-Surv full/aux、Evidence Ledger 当前版、ArcSurv hard repair、DCT v3.8.3 或 v3.9 的跨癌种队列；
 - 不为每个历史 commit 单独跑完整论文实验；
 - 不把同一 BLCA 5-fold 的小幅 best-epoch 波动当成新方法成功；
 - 不用 test fold 挑 epoch 或调超参数。
@@ -398,6 +503,7 @@ CA-PSA 与 DCT 可以是两篇不同论文，但必须有不同的问题定义�
 
 ## 10. 更新日志
 
+- **2026-08-11（结果与排名重审）**：注册方法由 12 个更新为 21 个，并重分为 6 个科学家族。DCT 最终主版本由 v3.3 更新为 v3.8.2 fixed-full；纳入 6 癌种 × 5 折 UNI2-h/50ep/clean 结果及 DCT 对 IST 的 4胜1负1平。IST 三档消融确认 cost feedback/aux 无增益，v4.1 修复无效，v3.8.3/v3.9 确认为负结果。ArcSurv 状态改为“staged 保留、hard repair 淘汰”；CA-PSA/CATET/ArcSurv 进入统一六癌种最终筛选计划，ACT-Surv v4.2 保持 idea-only。此次未重新检索文献，文献截止日期仍为 2026-07-21。
 - **2026-07-19**：创建首版。覆盖全部注册方法、DCT/CA-PSA/V50 等真实或暂定结果；完成 SlotSPE、MOTCat、MMP、AdaSlot、BO-QSA、Dual-State Slot Attention、SurvQ、NAC、CURE 等近邻工作检索；确定 DCT 与 CA-PSA 为两条主论文线。
 - **2026-07-20**：同步 `21da4cf`。DCT BLCA 正式结果校正为 `0.7311±0.0293`，新增 BRCA `0.6886±0.0382`；确认复现归档已提交，并将 DCT 的主要风险从“结果可复现”更新为“重删失癌种上的训练协议不适配、跨癌种泛化与后期过拟合”。
 - **2026-07-20（本地待提交修复）**：加入训练折分箱、fold 事件/离散 bin 日志、可选跨 batch IPCW 风险记忆和真正早停；新增 BRCA stable 与 no-rank control 配置。两者必须成对运行，不能只报告 stable 版本的峰值。

@@ -54,6 +54,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG = Path("configs/intervention_stable_survival_transport.yaml")
 WHICH_SPLITS = "5fold_uni2h"
 RESULT_ROOT = Path("results/ist_surv_v4.0_staged_50ep/clean/abl_b_cost_only")
+REPAIRED_RESULT_ROOT = Path(
+    "results/ist_surv_v4.0_repaired_50ep/clean/importance_instability"
+)
 
 # BLCA needs fold0/3 to complete its existing A/B/C comparison. The other five
 # cancers were feature-complete in the 2026-08-06 audit. Current server state
@@ -90,6 +93,8 @@ FINAL_OVERRIDES: dict[str, object] = {
     "ist_keep_ratio": 0.75,
     "ist_stability_beta": 1.0,
     "ist_stability_strength": 0.10,
+    "ist_stability_normalization": "raw_mass",
+    "ist_feedback_mode": "legacy_product",
     "ist_lambda_plan": 0.0,
     "ist_lambda_attribution": 0.0,
     "ist_lambda_risk": 0.0,
@@ -102,6 +107,14 @@ FINAL_OVERRIDES: dict[str, object] = {
     "on_missing_wsi": "error",
     "wsi_encoder": "uni2-h",
     "encoding_dim": 1536,
+}
+
+# Corrected feedback semantics.  This is deliberately opt-in so the completed
+# v4.0 results remain exactly reproducible.  The repair gate must pass on the
+# pre-registered BLCA folds before any cross-cancer expansion.
+REPAIRED_OVERRIDES: dict[str, object] = {
+    "ist_stability_normalization": "independence_lift",
+    "ist_feedback_mode": "importance_weighted_instability",
 }
 
 
@@ -130,8 +143,13 @@ def parse_cancers(value: str) -> list[str]:
 
 
 def build_job(args: argparse.Namespace, cancer: str, fold: int, *, smoke: bool) -> Job:
-    result_dir = RESULT_ROOT / cancer
+    recipe = getattr(args, "recipe", "legacy")
+    repaired = recipe == "repaired"
+    result_root = REPAIRED_RESULT_ROOT if repaired else RESULT_ROOT
+    result_dir = result_root / cancer
     values = dict(FINAL_OVERRIDES)
+    if repaired:
+        values.update(REPAIRED_OVERRIDES)
     values.update(
         {
             "study": cancer,
@@ -141,17 +159,22 @@ def build_job(args: argparse.Namespace, cancer: str, fold: int, *, smoke: bool) 
             "gpu": args.gpu,
             "num_workers": args.num_workers,
             "results_dir": result_dir.as_posix(),
-            "specific_simple": f"ist_v40_abl_b_cost_only_{cancer}_50ep",
+            "specific_simple": (
+                f"ist_v40_repaired_importance_instability_{cancer}_50ep"
+                if repaired
+                else f"ist_v40_abl_b_cost_only_{cancer}_50ep"
+            ),
         }
     )
     if smoke:
-        result_dir = Path("results/ist_surv_v4.0_final_smoke/cost_only") / cancer
+        smoke_variant = "repaired" if repaired else "cost_only"
+        result_dir = Path("results/ist_surv_v4.0_final_smoke") / smoke_variant / cancer
         values.update(
             {
                 "max_epochs": 1,
                 "max_smoke_batches": 2,
                 "results_dir": result_dir.as_posix(),
-                "specific_simple": f"ist_v40_final_smoke_{cancer}",
+                "specific_simple": f"ist_v40_{smoke_variant}_smoke_{cancer}",
             }
         )
     command = (
@@ -231,8 +254,17 @@ def doctor(args: argparse.Namespace) -> int:
     return int(failed)
 
 
-def print_plan(jobs: list[Job], *, force: bool = False, run_mode: bool = False) -> None:
-    print("FINAL IST: v4.0 staged stability-cost feedback only (B stage)")
+def print_plan(
+    jobs: list[Job],
+    *,
+    recipe: str = "legacy",
+    force: bool = False,
+    run_mode: bool = False,
+) -> None:
+    if recipe == "repaired":
+        print("IST REPAIR GATE: support-normalized importance-instability feedback")
+    else:
+        print("FINAL IST: v4.0 staged stability-cost feedback only (B stage)")
     print(f"Queue: {len(jobs)} jobs; cancers={len({job.cancer for job in jobs})}")
     current_cancer = None
     for index, job in enumerate(jobs, start=1):
@@ -288,7 +320,8 @@ def run_queue(args: argparse.Namespace, jobs: list[Job], *, smoke: bool) -> int:
             try:
                 print(
                     f"\n[{index:02d}/{len(jobs):02d}] "
-                    f"IST v4.0 cost-only {job.cancer.upper()} fold{job.fold}"
+                    f"IST {getattr(args, 'recipe', 'legacy')} "
+                    f"{job.cancer.upper()} fold{job.fold}"
                 )
                 print(shlex.join(job.command))
                 completed_process = subprocess.run(
@@ -331,6 +364,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("PYTHON_BIN", sys.executable),
     )
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--recipe",
+        choices=("legacy", "repaired"),
+        default="legacy",
+        help="legacy reproduces completed v4.0; repaired is the pre-registered repair gate",
+    )
     return parser
 
 
@@ -344,9 +383,14 @@ def main() -> int:
     smoke = args.mode == "smoke"
     jobs = build_jobs(args, smoke=smoke)
     if args.mode == "plan":
-        print_plan(jobs)
+        print_plan(jobs, recipe=args.recipe)
         return 0
-    print_plan(jobs, force=args.force, run_mode=args.mode == "run")
+    print_plan(
+        jobs,
+        recipe=args.recipe,
+        force=args.force,
+        run_mode=args.mode == "run",
+    )
     return run_queue(args, jobs, smoke=smoke)
 
 

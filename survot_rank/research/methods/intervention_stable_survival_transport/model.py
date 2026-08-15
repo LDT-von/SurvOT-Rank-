@@ -178,6 +178,12 @@ class InterventionStableSurvivalTransport(nn.Module):
         self.ist_stability_strength = float(
             getattr(args, "ist_stability_strength", 0.10)
         )
+        self.ist_stability_normalization = str(
+            getattr(args, "ist_stability_normalization", "raw_mass")
+        )
+        self.ist_feedback_mode = str(
+            getattr(args, "ist_feedback_mode", "legacy_product")
+        )
         self.ist_lambda_plan = float(getattr(args, "ist_lambda_plan", 0.05))
         self.ist_lambda_attribution = float(
             getattr(args, "ist_lambda_attribution", 0.05)
@@ -254,6 +260,22 @@ class InterventionStableSurvivalTransport(nn.Module):
         ):
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} must be non-negative")
+        if self.ist_stability_normalization not in {
+            "raw_mass",
+            "independence_lift",
+        }:
+            raise ValueError(
+                "ist_stability_normalization must be raw_mass or "
+                "independence_lift"
+            )
+        if self.ist_feedback_mode not in {
+            "legacy_product",
+            "importance_weighted_instability",
+        }:
+            raise ValueError(
+                "ist_feedback_mode must be legacy_product or "
+                "importance_weighted_instability"
+            )
 
     def _init_omics_encoder(self) -> None:
         rna_format = self.args.rna_format
@@ -414,13 +436,45 @@ class InterventionStableSurvivalTransport(nn.Module):
         factual_plan: torch.Tensor,
         intervention_plans: list[torch.Tensor],
         intervention_masks: list[tuple[torch.Tensor, torch.Tensor]],
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        plan_values = [factual_plan]
-        availability = [factual_plan > 0]
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        factual_row_mask = factual_plan.sum(dim=2) > 0
+        factual_col_mask = factual_plan.sum(dim=1) > 0
+
+        def comparable_plan(
+            plan: torch.Tensor,
+            row_mask: torch.Tensor,
+            col_mask: torch.Tensor,
+        ) -> torch.Tensor:
+            if self.ist_stability_normalization == "raw_mass":
+                return plan
+            # A support intervention necessarily changes the uniform OT
+            # marginals.  Raw edge mass therefore changes even for a
+            # preference-free coupling.  Divide by the independent coupling
+            # a*b so stability measures association lift rather than this
+            # deterministic marginal rescaling.
+            row_mass = row_mask.to(dtype=plan.dtype)
+            row_mass = row_mass / row_mass.sum(dim=1, keepdim=True).clamp_min(
+                1.0
+            )
+            col_mass = col_mask.to(dtype=plan.dtype)
+            col_mass = col_mass / col_mass.sum(dim=1, keepdim=True).clamp_min(
+                1.0
+            )
+            independent = row_mass.unsqueeze(2) * col_mass.unsqueeze(1)
+            visible = row_mask.unsqueeze(2) & col_mask.unsqueeze(1)
+            lift = plan / independent.clamp_min(1e-12)
+            return lift.masked_fill(~visible, 0.0)
+
+        plan_values = [
+            comparable_plan(factual_plan, factual_row_mask, factual_col_mask)
+        ]
+        availability = [
+            factual_row_mask.unsqueeze(2) & factual_col_mask.unsqueeze(1)
+        ]
         for plan, (row_mask, col_mask) in zip(
             intervention_plans, intervention_masks
         ):
-            plan_values.append(plan)
+            plan_values.append(comparable_plan(plan, row_mask, col_mask))
             availability.append(row_mask.unsqueeze(2) & col_mask.unsqueeze(1))
         plans = torch.stack(plan_values, dim=0)
         visible = torch.stack(availability, dim=0)
@@ -433,11 +487,30 @@ class InterventionStableSurvivalTransport(nn.Module):
         reliability = torch.exp(
             -self.ist_stability_beta * coefficient_variation
         ).clamp(min=1e-4, max=1.0)
-        relative_mass = mean / mean.amax(dim=(1, 2), keepdim=True).clamp_min(
-            1e-12
-        )
-        score = (relative_mass * reliability).clamp(min=1e-4, max=1.0)
-        return score, reliability, variance
+        # Importance is deliberately derived from the factual transport mass,
+        # not from the support-normalized association signal above.
+        importance = factual_plan / factual_plan.amax(
+            dim=(1, 2), keepdim=True
+        ).clamp_min(1e-12)
+        score = (importance * reliability).clamp(min=1e-4, max=1.0)
+        return score, reliability, variance, importance
+
+    def _feedback_penalty(
+        self,
+        stability_score: torch.Tensor,
+        reliability: torch.Tensor,
+        importance: torch.Tensor,
+    ) -> torch.Tensor:
+        if self.ist_feedback_mode == "legacy_product":
+            # Exact v4.0 behavior retained for result reproducibility.
+            return -stability_score.clamp_min(1e-8).log()
+        # Penalize only transport edges that are both important in the factual
+        # plan and unstable under support interventions.  The legacy product
+        # expanded to -log(importance)-log(reliability), so low-mass edges were
+        # heavily penalized even when perfectly stable and the mechanism became
+        # plan sharpening rather than stability feedback.
+        instability = -reliability.clamp_min(1e-8).log()
+        return importance * instability
 
     def _edge_values(
         self,
@@ -596,19 +669,26 @@ class InterventionStableSurvivalTransport(nn.Module):
         factual_plan = all_plans[:, 0]
         intervention_plan_tensor = all_plans[:, 1:]
         intervention_plans = list(intervention_plan_tensor.unbind(dim=1))
-        stability_score, reliability, stability_variance = (
+        stability_score, reliability, stability_variance, transport_importance = (
             self._stable_edge_score(
                 factual_plan,
                 intervention_plans,
                 intervention_masks,
             )
         )
+        feedback_penalty = self._feedback_penalty(
+            stability_score,
+            reliability,
+            transport_importance,
+        )
         stable_cost = factual_cost + (
             cost_feedback_scale * self.ist_stability_strength
-        ) * (-stability_score.clamp_min(1e-8).log())
+        ) * feedback_penalty
         stable_plan, stable_rows, stable_cols = self._solve(
             stable_cost, row_valid, col_valid
         )
+        stable_plan_shift = (stable_plan - factual_plan).abs().sum(dim=(1, 2))
+        stable_cost_shift = (stable_cost - factual_cost).abs()
 
         edge_values = self._edge_values(x_wsi, x_omics, factual_cost)
         logits, stage_contribution = self._logits_from_plan(
@@ -652,6 +732,11 @@ class InterventionStableSurvivalTransport(nn.Module):
             "ist_completeness_error": completeness_error.mean().detach(),
             "ist_marginal_error": marginal_error.mean().detach(),
             "ist_reliability": reliability.mean().detach(),
+            "ist_reliability_std": reliability.std().detach(),
+            "ist_feedback_penalty_mean": feedback_penalty.mean().detach(),
+            "ist_feedback_penalty_max": feedback_penalty.amax().detach(),
+            "ist_stable_cost_shift": stable_cost_shift.mean().detach(),
+            "ist_stable_plan_shift": stable_plan_shift.mean().detach(),
             "ist_sinkhorn_batches": logits.new_tensor(2.0).detach(),
             "ist_finite": torch.stack(
                 [
@@ -677,8 +762,11 @@ class InterventionStableSurvivalTransport(nn.Module):
             "transport_stability_score": stability_score.detach(),
             "transport_reliability": reliability.detach(),
             "transport_stability_variance": stability_variance.detach(),
+            "transport_importance": transport_importance.detach(),
+            "transport_feedback_penalty": feedback_penalty.detach(),
             "stable_cost": stable_cost.detach(),
             "stable_plan": stable_plan.detach(),
+            "stable_plan_shift": stable_plan_shift.detach(),
             "row_marginals": stable_rows.detach(),
             "col_marginals": stable_cols.detach(),
             "edge_values": edge_values.detach().permute(0, 3, 1, 2),

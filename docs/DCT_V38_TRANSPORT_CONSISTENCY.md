@@ -178,3 +178,11 @@ fold0/fold2 只能筛选。完整 \(2^3\) 因子消融包括：
 5. 通过后才运行 BLCA/BRCA 完整五折，再考虑 LUAD/LUSC。
 
 不满足时保留 v3.3/v3.7，不继续增加结构损失。
+
+## Minimal sibling recipe
+
+`dct_v382_minimal_transport`（详见 `docs/DCT_V382_MGPTR.md` 的 minimal 节，类名 `DCTV382MonotoneDoseResponse`）
+只保留 `IPCW rank + direction`，把 dose / reconfiguration / MGPTR /
+adaptive 全部置零。它使用与本文件相同的 direction 数学形式，但跳过其他
+两项独立消融已显示无显著增益的项，从而把"单调剂量响应"作为可单独归因
+的科学 claim 来论证。
