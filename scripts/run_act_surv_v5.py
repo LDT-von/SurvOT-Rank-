@@ -66,6 +66,7 @@ DEFAULT_CANCERS = ("blca", "kirc", "ucec", "hnsc", "lusc", "skcm")
 DEFAULT_FOLDS = (0, 1, 2, 3, 4)
 RESULT_ROOT = Path("results/act_surv_v5")
 WHICH_SPLITS = "5fold_uni2h"
+DATA_ROOT = DEFAULT_DATA_ROOT  # mutable; main() may overwrite via --data-root
 
 # Frozen v5 recipe — do not add cancer-specific tuning here.
 FINAL_OVERRIDES: dict[str, object] = {
@@ -128,7 +129,8 @@ def build_jobs(
     dry_run: bool = False,
 ) -> list[Job]:
     """Build one Job per (cancer, fold) pair."""
-    verify_child_cuda()
+    if not dry_run:
+        verify_child_cuda(sys.executable, dict(os.environ))
     jobs: list[Job] = []
 
     for cancer in cancers:
@@ -136,11 +138,13 @@ def build_jobs(
             raise ValueError(f"Unsupported cancer: {cancer}. Choose from {SUPPORTED_CANCERS}")
 
         # ── Verify data ──────────────────────────────────────────────────
-        feat_dir = Path(DATA_ROOT) / cancer
-        csv_dir = Path(DATASET_CSV_ROOT) / WHICH_SPLITS / cancer
-        inspect_feature_directory(feat_dir, cancer)
-        inspect_split_directory(csv_dir, cancer)
-        split_folds = parse_folds(csv_dir)
+        csv_dir = Path(DATASET_CSV_ROOT) / "splits" / WHICH_SPLITS / cancer
+        inspect_feature_directory(DATA_ROOT, cancer)
+        inspect_split_directory(cancer, which_splits=WHICH_SPLITS)
+        split_folds = sorted([
+            int(p.name.split("_")[1].split(".")[0])
+            for p in csv_dir.glob("fold_*.csv")
+        ])
 
         for fold in folds:
             if fold not in split_folds:
@@ -152,10 +156,10 @@ def build_jobs(
             result_dir.mkdir(parents=True, exist_ok=True)
 
             fold_overrides = {**overrides, "fold": fold}
-            args = _override_args(config, fold_overrides)
+            args = _override_args(fold_overrides)
             cmd = [
                 sys.executable,
-                str(REPO_ROOT / "survot_rank" / "training" / "train.py"),
+                str(REPO_ROOT / "survot_rank" / "training" / "train_runner.py"),
                 *args,
             ]
             jobs.append(Job(
@@ -169,9 +173,6 @@ def build_jobs(
     return jobs
 
 
-DATA_ROOT = DEFAULT_DATA_ROOT
-
-
 def main():
     parser = argparse.ArgumentParser(description="Run ACT-Surv v5")
     parser.add_argument(
@@ -183,7 +184,7 @@ def main():
         help="Fold indices (default: 0 1 2 3 4)",
     )
     parser.add_argument(
-        "--data-root", default=DATA_ROOT,
+        "--data-root", default=DEFAULT_DATA_ROOT,
         help="Override data root",
     )
     parser.add_argument(
