@@ -155,7 +155,7 @@ def _ipcw_ranking_loss(
     pair_weight = (w_i + w_j).clamp_min(1e-8)
     margin_tensor = margin * torch.ones_like(r_i)
     diff = r_i - r_j
-    soft = torch.sigmoid(diff / temperature.clamp_min(1e-8))
+    soft = torch.sigmoid(diff / max(float(temperature), 1e-8))
     return (pair_weight * F.relu(margin_tensor - diff)).mean()
 
 

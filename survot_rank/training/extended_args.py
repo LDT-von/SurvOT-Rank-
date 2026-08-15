@@ -735,6 +735,17 @@ def build_base_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pspc_lambda_node_sparse", type=float, default=0.01)
     parser.add_argument("--pspc_lambda_edge_sparse", type=float, default=0.005)
 
+    # ACT-Surv v5 (archetypal_transport_composition_v5) — minimal-rewrite flags.
+    parser.add_argument("--act5_num_archetypes", type=int, default=6)
+    parser.add_argument("--act5_epsilon", type=float, default=0.10)
+    parser.add_argument("--act5_hazard_scale", type=float, default=1.0)
+    parser.add_argument("--act5_warmup_epochs", type=int, default=5)
+    parser.add_argument("--act5_lambda_balance", type=float, default=0.01)
+    parser.add_argument("--act5_lambda_rank", type=float, default=0.10)
+    parser.add_argument("--act5_rank_margin", type=float, default=0.02)
+    parser.add_argument("--act5_rank_temperature", type=float, default=0.50)
+    parser.add_argument("--act5_rank_max_pairs", type=int, default=4096)
+
     return parser
 
 
