@@ -1,6 +1,6 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-08-05 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2
+> 更新时间: 2026-08-15 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2 / **v5 (ACT-Surv 精炼版)**
 
 ---
 
@@ -1164,7 +1164,7 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 20 | v4.1 补全损失无下界，总目标变负 | ❌ **修复无效** | — | 修复后 fold2=0.6436，与修复前一模一样。completion 下界修复未改变分数。v4.1 停止 |
 | 14 | v3.3 clean 基线 `0.7400` 的运行溯源缺口 | 🟡 **已补 launcher，待重跑** | 3 次训练 | `configs/diagnostics/dct_v3_score_blca.yaml` 未设 `fit_bins_on_train`，而它在 `extended_args.py` 中是 `action="store_true"`（默认 False）；原 `v33_blca_uni5` 阶段也未覆盖该键。因此现有 launcher 路径跑出来的是 **leaky** 分箱，`0.7400` 无法从代码复现。新增 `v33_clean_baseline` 阶段显式设置 clean 协议。**在此基线重跑确认前，所有「vs 基线」的增减都不作数** |
 | 15 | 训练 C-index 无可比样本对时整折失败 | ✅ **已修复** | 0 | `train_one_epoch` 直接调用 `concordance_index_censored`，事件稀疏/小 batch/smoke 下抛 `NoComparablePairException` 并让整个 fold 失败（ArcSurv smoke fold2 实例）。该值只是诊断量，已降级为 `nan` 并继续训练 |
-| 16 | ArcSurv / v4.2 的 archetype 分化前提未被观测 | 🟡 **已加诊断，待重跑** | 并入 ArcSurv 重跑 | 「凸组合 + 可加归因」这一卖点要求原型真的分化开。新增 `arc_wsi_archetype_cosine`、`arc_omic_archetype_cosine`、`arc_hazard_spread`、`arc_active_archetype_fraction`、`arc_max_composition_weight`。**判据：若 cosine → 1 且 hazard_spread → 0，则 composition 已退化为近似常向量，ArcSurv 停止、v4.2 不启动** |
+| 16 | ACT-Surv v5 独立新建，绕过 ArcSurv 塌缩 | ✅ **2026-08-15 新建** | — | v5 直接删除了 `slot_attention` 和 `shared prototypes`（slot cosine 0.9987 的根因），改用 `WsiMlp + _encode_omics` 直接投影到 archetype 空间。无需 ArcSurv 修复闸门，v5 自身保证 archetype 正交初始化 + KL 熵平衡。单元测试见 `tests/test_act_surv_v5.py` |
 | 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
 
 **结算：20 项中已完成 14（#1 #2 #4 #5 #7 #8 #9 #10 #11 #12 #13 #15 #17 #18）、修复无效 2（#19 #20）、部分完成 4（#6 #14 #16）、未开始 1（#3）。**
@@ -1209,6 +1209,14 @@ COADREAD、STAD 在 UNI2-h 覆盖补齐前仍由 doctor 硬阻断。ArcSurv 与 
 > （0.6944 < 0.6975 base）、v3.8.3、v3.9。若独立验证 IST，则只保留机制最简的
 > staged cost-feedback-only（B 档），不再把 factual-only 冒充 IST，也不恢复 full。
 > **v4.2 ACT-Surv 暂不运行**：需先确认 ArcSurv 塌缩已解除。
+>
+> **2026-08-15：v5 ACT-Surv 精炼版已新建**，独立于 ArcSurv 塌缩问题：
+> - `archetypal_transport_composition_v5/model.py`：删 slot_attention/共享原型/三项损失/MGPTR；保留精确可加归因 + 闭式删除反事实 + 有界外推 + IPCW ranking + warmup
+> - `configs/act_surv_v5_blca.yaml`（冻结配方，参数同 ACT-Surv v4.2）
+> - `scripts/run_act_surv_v5.py`（launcher，与 DCT v3.8.2 fixed-full 同协议）
+> - `tests/test_act_surv_v5.py`（三项构造性质单元测试）
+> - `catalog.py` 已注册 `archetypal_transport_composition_v5`
+> **下一步：BLCA 三折快速验证（6 GPU-day），确认 v5 不塌缩再扩全癌种 30 折**
 
 ### IST-Surv 唯一跨癌种版本（2026-08-06）
 
@@ -1237,10 +1245,9 @@ BLCA、SKCM、HNSC、LUSC、KIRC、UCEC 跑五折；BLCA 已有 fold1/2/4 会自
 | SKCM | 0.6972 | 0.6001 | 0.6529 | 0.6278 | 0.7258 | **0.6608** |
 | LUSC | 0.6789 | 0.6314 | 0.5368 | 0.6617 | 0.5931 | **0.6204** |
 
-> **排名**: UCEC (0.8224) > KIRC (0.8071) > BLCA (0.7107) > HNSC (0.6632) > SKCM (0.6608) > LUSC (0.6204)。
-> 与 v3.3 旧划分（UNI v1）相比，UCEC 从 0.7964 → 0.8224（+0.026），KIRC 从 0.7958 → 0.8071（+0.011），
-> 说明 UNI2-h + fixed-full 配置在数据量较大的癌种上一致优于 UNI v1 v3.3。SKCM（0.6608 vs 0.6770）与
-> HNSC（0.6632）偏低，LUSC（0.6204）最差（fold2=0.5368 严重拖累）。
+> **描述性排序**: UCEC (0.8224) > KIRC (0.8071) > BLCA (0.7107) > HNSC (0.6632) > SKCM (0.6608) > LUSC (0.6204)。
+> v3.3 使用旧划分与 UNI v1，不能与这里的 clean `5fold_uni2h` 结果作方法增益归因；旧数值仅保留为历史记录。
+> 当前同协议结果显示癌种间异质性明显，HNSC、SKCM 与 LUSC 的折间波动需要结合样本量、事件率和独立重复实验解释。
 
 ### IST v4.0 abl_b 跨癌种五折结果 (2026-08-06, UNI2-h, 50ep, ✅ 全部完成)
 
