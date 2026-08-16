@@ -53,6 +53,10 @@ model:
   ist_keep_ratio: 0.75
   ist_stability_beta: 1.0
   ist_stability_strength: 0.10
+  # Frozen v4.0 results use raw_mass + legacy_product. Repair-gate launchers
+  # override both values without changing this reproducibility config.
+  ist_stability_normalization: raw_mass
+  ist_feedback_mode: legacy_product
   # BLCA A/B/C ablation found no benefit from the auxiliary losses. The one
   # retained IST mechanism is intervention stability fed back into OT cost.
   ist_lambda_plan: 0.0

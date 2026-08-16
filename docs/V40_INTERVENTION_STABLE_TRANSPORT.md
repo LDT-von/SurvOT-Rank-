@@ -179,6 +179,43 @@ python scripts/run_recent_transport_5fold.py plan
 它覆盖 v3.6-TCL、v3.7-UNI2H、v3.8 transport consistency 和 v4.0
 IST-Surv，均只选 BLCA、BRCA folds 0–4，并继续使用各自独立结果目录。
 
+## 2026-08-11：反馈语义修复闸门
+
+完成的 v4.0 结果必须继续用 `raw_mass + legacy_product` 复现。审计发现旧
+`-log(relative_mass * reliability)` 会把低运输质量本身变成大额 cost 惩罚；
+在随机 cost 数值探针中，mass 项平均约为 reliability 项的 347 倍，因此旧 B
+档主要表现为 plan sharpening，而不是纯粹的稳定性回写。同时，支持遮蔽会改变
+均匀边际，直接比较 raw plan mass 会把确定性的边际缩放计入“不稳定”。
+
+修复模式使用：
+
+- `ist_stability_normalization=independence_lift`：每个视图先用其独立耦合
+  `a*b` 归一化 transport mass，再比较关系 lift；
+- `ist_feedback_mode=importance_weighted_instability`：回写量改为
+  `factual_importance * -log(reliability)`，只惩罚重要且不稳定的边。
+
+该模式不是新的默认版本，也不得直接扩跑六癌种。预注册入口为：
+
+```bash
+python scripts/run_ist_v40_repair_gate.py plan
+python scripts/run_ist_v40_repair_gate.py doctor
+python scripts/run_ist_v40_repair_gate.py smoke
+python scripts/run_ist_v40_repair_gate.py run
+```
+
+默认只跑 BLCA folds 1/2/4。仅当三折均值至少达到 factual A 的
+`0.7072 + 0.005 = 0.7122`，且至少 2/3 折改善，才补 BLCA folds 0/3，随后把
+SKCM/HNSC/LUSC/KIRC/UCEC 作为锁定后的跨癌种验证；否则停止 IST 论文线。
+
+训练完成后执行以下命令自动生成逐折对照表并给出 `PASS`/`STOP` 裁决：
+
+```bash
+python scripts/summarize_ist_v40_repair_gate.py
+```
+
+裁决使用与现有 A 档一致的逐折 best validation C-index，同时附带 best3 和
+last5 供稳定性审计；不得在看到结果后更换门槛或选择口径。
+
 ## 7. 病例解释导出
 
 ```bash

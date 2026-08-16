@@ -159,6 +159,15 @@ METHOD_SPECS = (
         aliases=("dct_v382", "dct_v3_8_2"),
     ),
     MethodSpec(
+        "dct_v382_minimal_transport",
+        "DCT v3.8.2 Monotone Dose-Response (minimal)",
+        "dct",
+        "candidate",
+        "dct_v382_minimal_transport",
+        "DCTV382MonotoneDoseResponse",
+        aliases=("dct_v382_minimal", "dct_minimal", "dct_v3_8_2_minimal", "dct_monotone"),
+    ),
+    MethodSpec(
         "dct_v383_intervention_consistency_centered",
         "DCT v3.8.3 Centered Intervention Consistency",
         "dct",

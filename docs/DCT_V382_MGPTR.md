@@ -43,6 +43,20 @@ B_t=\sum_{i\in\mathcal A_t}\lambda_i^{(0)},
 
 自适应权重只使用训练折梯度学习。它能为BLCA和BRCA形成不同权重，但不等于直接优化验证C-index；最终仍然必须通过固定权重对照和独立验证折判断效果。
 
+## Minimal sibling recipe
+
+`dct_v382_minimal_transport`（新，类名 `DCTV382MonotoneDoseResponse`）只保留 `IPCW rank` 与 `direction`，把
+MGPTR / adaptive / dose / reconfiguration 在 `__init__` 中强制归零。它是
+回答"单调剂量响应"这一核心科学问题的**最小必要组件集**，与本 fixed-full
+对照可在 BLCA 5 折上量化 MGPTR/adaptive/dose/TCR 的边际贡献。
+
+```bash
+python scripts/run_dct_v382_minimal_cross_cancer.py plan \
+  --cancers blca,kirc,ucec --folds 0,1,2,3,4
+```
+
+最小配方的 C-index 与 fixed-full 的差值即这些被剥离项的总体边际贡献。
+
 ## MGPTR
 
 事实路径在每个生存阶段产生cosine、euclidean、dot三种Sinkhorn coupling。融合头可能掩盖其中某一种没有预后信息的问题。MGPTR要求每种几何单独预测患者生存分布：

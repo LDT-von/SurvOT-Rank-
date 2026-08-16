@@ -1,0 +1,62 @@
+name: act_surv_v5_1_blca
+description: >
+  v5.1 ACT-Surv — Path 1 提分实验。
+  与 v5 唯一区别：去掉 IPCW ranking loss（λ_rank 从 0.10 → 0.00），
+  仅保留 NLL（框架层）+ KL entropy balance（λ_balance=0.05，从 0.01 提升）。
+  假设：所有 OT 顶刊（OTSurv, MOTCat, SurvPath）都用 NLL only，
+  IPCW ranking 与 NLL 双计数，去掉 ranking 后 BLCA 应从 0.6727 提升至 0.69+。
+
+data:
+  study: blca
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  wsi_encoder: uni
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: archetypal_transport_composition_v5
+  specific_simple: act_surv_v5_1_blca
+  results_dir: results/act_surv_v5_1/blca
+  max_epochs: 50
+  batch_size: 8
+  grad_clip_norm: 1.0
+  early_stop_patience: 0
+  fit_bins_on_train: true
+  binning_mode: global_qcut
+  event_stratified_batches: true
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+model:
+  wsi_projection_dim: 256
+
+  # ── ACT-Surv v5 core（与 v5 一致）────────────────────────────────
+  act5_num_archetypes: 6
+  act5_epsilon: 0.10
+  act5_hazard_scale: 1.0
+  act5_warmup_epochs: 5
+
+  # ── v5.1 关键改动：去掉 ranking loss，KL 平衡增强 5× ─────────────
+  act5_lambda_balance: 0.05
+  act5_lambda_rank: 0.00      # ⭐ 与 v5 的 0.10 不同（去掉 IPCW ranking）
+  act5_rank_margin: 0.02      # 保留默认（loss 系数为 0 不参与）
+  act5_rank_temperature: 0.50 # 保留默认
+  act5_rank_max_pairs: 4096   # 保留默认

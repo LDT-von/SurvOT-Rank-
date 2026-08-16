@@ -41,6 +41,8 @@ def make_args(**overrides):
         "ist_keep_ratio": 0.70,
         "ist_stability_beta": 1.0,
         "ist_stability_strength": 0.10,
+        "ist_stability_normalization": "raw_mass",
+        "ist_feedback_mode": "legacy_product",
         "ist_lambda_plan": 0.05,
         "ist_lambda_attribution": 0.05,
         "ist_lambda_risk": 0.0,
@@ -171,6 +173,49 @@ def test_v40_vectorized_mask_views_match_sequential_sinkhorn():
         assert torch.allclose(batched_plans[:, index], plan, atol=1e-7)
         assert torch.equal(batched_rows[:, index], rows)
         assert torch.equal(batched_cols[:, index], cols)
+
+
+def test_v40_repaired_stability_removes_support_mass_rescaling():
+    model = InterventionStableSurvivalTransport(
+        make_args(
+            ist_stability_normalization="independence_lift",
+            ist_feedback_mode="importance_weighted_instability",
+            ist_keep_ratio=0.75,
+            ist_sinkhorn_iters=80,
+        )
+    ).eval()
+    row_valid = torch.ones(1, 16, dtype=torch.bool)
+    col_valid = torch.ones(1, 8, dtype=torch.bool)
+    masks = model._intervention_masks(row_valid, col_valid)
+    cost = torch.zeros(1, 16, 8)
+    plans, _, _ = model._solve_mask_views(
+        cost, [(row_valid, col_valid), *masks]
+    )
+    factual = plans[:, 0]
+    interventions = list(plans[:, 1:].unbind(dim=1))
+    score, reliability, _, importance = model._stable_edge_score(
+        factual, interventions, masks
+    )
+    penalty = model._feedback_penalty(score, reliability, importance)
+
+    valid = row_valid.unsqueeze(2) & col_valid.unsqueeze(1)
+    assert torch.allclose(reliability[valid], torch.ones_like(reliability[valid]), atol=1e-5)
+    assert torch.allclose(penalty[valid], torch.zeros_like(penalty[valid]), atol=1e-5)
+
+
+def test_v40_repaired_feedback_does_not_penalize_stable_low_mass_edges():
+    model = InterventionStableSurvivalTransport(
+        make_args(
+            ist_feedback_mode="importance_weighted_instability",
+        )
+    )
+    importance = torch.tensor([[[1.0, 0.01]]])
+    reliability = torch.ones_like(importance)
+    legacy_score = (importance * reliability).clamp_min(1e-4)
+    repaired = model._feedback_penalty(
+        legacy_score, reliability, importance
+    )
+    assert torch.equal(repaired, torch.zeros_like(repaired))
 
 
 def test_v40_eval_is_deterministic_and_deletion_reoptimises_transport():
