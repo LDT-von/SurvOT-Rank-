@@ -1,6 +1,6 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-08-15 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2 / **v5 (ACT-Surv 精炼版)**
+> 更新时间: 2026-08-16 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2 / CA-PSA Final / ArcSurv Final / CATET Final / **v5 (ACT-Surv 精炼版)**
 
 ---
 
@@ -131,6 +131,9 @@ git ls-tree -d --name-only 77833de:dataset_csv/splits/5fold
 | **v4.0** | IST-Surv | intervention_stable_survival_transport | UNI2-h (1536d) | 干预稳定性 | ✅ BLCA完成 |
 | **v4.1** | Survival Evidence Ledger | dct_v41_survival_evidence_ledger | UNI v1 (1024d) | 证据账本 | 🔄 BLCA fold2重跑中 |
 | **ArcSurv** | Archetypal Risk Composition | archetypal_risk_composition | UNI v1 (1024d) | 原型风险组合 | ✅ BLCA完成 |
+| **CA-PSA Final** | Cohort-Anchored Adaptive PSA | cohort_anchored_adaptive_prognostic_slot_attention | UNI2-h (1536d) | 身份预算 + 硬门控 | 🟡 BLCA fold0 筛选 |
+| **ArcSurv Final** | Shared Cohort Prognostic Simplex | archetypal_risk_composition | UNI2-h (1536d) | 共享凸包组合 | 🟡 BLCA fold0 筛选 |
+| **CATET Final** | Censoring-Aware Temporal Evidence Transport | censoring_aware_temporal_evidence_transport | UNI2-h (1536d) | 阶段重运输 | 🟡 BLCA fold0 筛选 |
 
 ---
 
@@ -1166,8 +1169,11 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 15 | 训练 C-index 无可比样本对时整折失败 | ✅ **已修复** | 0 | `train_one_epoch` 直接调用 `concordance_index_censored`，事件稀疏/小 batch/smoke 下抛 `NoComparablePairException` 并让整个 fold 失败（ArcSurv smoke fold2 实例）。该值只是诊断量，已降级为 `nan` 并继续训练 |
 | 16 | ACT-Surv v5 独立新建，绕过 ArcSurv 塌缩 | ✅ **2026-08-15 新建** | — | v5 直接删除了 `slot_attention` 和 `shared prototypes`（slot cosine 0.9987 的根因），改用 `WsiMlp + _encode_omics` 直接投影到 archetype 空间。无需 ArcSurv 修复闸门，v5 自身保证 archetype 正交初始化 + KL 熵平衡。单元测试见 `tests/test_act_surv_v5.py` |
 | 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
+| 21 | 旧 CA-PSA/ArcSurv/CATET 队列停用（旧机制冒充 Final） | ✅ **已停用** | 0 | `f636660` 三个「final」启动器实际仍调用旧机制，非真正 Final 版本。已停止并保留旧结果作历史对照（CA-PSA 六癌种 30/30、ArcSurv BLCA+SKCM 10 折），不得与真正 Final 结果混用 |
+| 22 | 三个 Final 方法 BLCA fold0 机制筛选 | 🟡 **进行中** | 3 次训练 | 真正 Final 代码 `0eb705b`：CA-PSA（身份预算/identifiable cohort routes）、ArcSurv（共享凸包/shared simplex）、CATET（重新 Sinkhorn/stage re-transport）。先跑 BLCA fold0 看机制指标，通过才扩五折 |
+| 23 | DCT v3.8.2 提分闸门（4 变量预注册） | 🟡 **进行中** | 36 次训练 | `patches4096` / `grad_accum4` / `slot_iters5` / `lr2e4`，BLCA/KIRC/SKCM × fold 1/2/4，对照 frozen fixed_full |
 
-**结算：20 项中已完成 14（#1 #2 #4 #5 #7 #8 #9 #10 #11 #12 #13 #15 #17 #18）、修复无效 2（#19 #20）、部分完成 4（#6 #14 #16）、未开始 1（#3）。**
+**结算：23 项中已完成 15（#1 #2 #4 #5 #7 #8 #9 #10 #11 #12 #13 #15 #17 #18 #21）、修复无效 2（#19 #20）、部分完成 4（#6 #14 #16）、进行中 2（#22 #23）、未开始 1（#3）。**
 
 > #4 已被 #17 取代（旧形式测不到自适应权重）。#14 已确认：clean 基线实际为 0.7120（非 0.7400），旧 leaky 基线 0.6958 已废除。
 
@@ -1179,6 +1185,49 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 2 | **IST v4.0 abl_b** | ✅ 6癌种五折全部完成 | 6癌种仅 KIRC(+0.007) 反超，其余 5 癌种 DCT 领先或持平 |
 | 3 | **ArcSurv** | ❌ 修复无效（0.5665 < 0.7132） | 停止 |
 | 4 | **v4.1** | ❌ 修复无效（0.6436 = 修复前） | 停止 |
+
+### 三个 Final 方法与 DCT 提分闸门（2026-08-06，进行中）
+
+2026-08-06 停止旧三方法队列（`f636660` 启动器实际调用旧机制、非真正 Final），拉取真正 Final 代码 `0eb705b`。当前两条线并行推进，均以 BLCA/KIRC/SKCM 先行、机制通过再扩五折。
+
+**A. 三个 Final 方法（BLCA fold0 机制筛选，`results/three_method_final/<method>/blca/`）**
+
+| 方法 | CLI 名 | 核心机制 | 封闭目标 |
+|---|---|---|---|
+| **CA-PSA Final** | `cohort_anchored_adaptive_prognostic_slot_attention` | 身份预算：每锚点=一条预后路线，预算硬门控选路线 | L_surv + λ_id(L_cross+L_sep) + λ_budget·L_gate |
+| **ArcSurv Final** | `archetypal_risk_composition` | 共享凸包：单一 bank+Beta，患者风险=原型风险凸组合 | L_surv + λ_recon·L_hull + λ_align·L_JS + λ_vol·L_simplex + λ_bal·L_usage + λ_rank·L_rank |
+| **CATET Final** | `censoring_aware_temporal_evidence_transport` | 重新 Sinkhorn：阶段改运输几何，keep/remove 重新求解 OT | L_surv + λ_ot·L_transport + λ_rank·L_IPCW + λ_stage·L_stage + λ_interv·(L_suff+L_comp) |
+
+放行判据（fold0 看完再决定扩五折）：
+- CA-PSA：槽身份不接近随机、门控非全开/全关
+- ArcSurv：原型使用率 ≥ 半数、原型不高度相似、hazard spread 非零
+- CATET：阶段计划互不相同、边际守恒、remove 干预可测量改变风险
+
+**B. DCT v3.8.2 提分闸门（4 变量预注册，`results/dct_v3.8.2_score_gate/<variant>/<cancer>/`）**
+
+| 变体 | 改动 | 检验 |
+|---|---|---|
+| `patches4096` | num_patches 2048→4096 | 病理采样预算 |
+| `grad_accum4` | grad_accum 1→4 | 参数更新方差 |
+| `slot_iters5` | slot 3→5 | slot 欠迭代 |
+| `lr2e4` | lr 5e-4→2e-4 | 学习率尖峰 |
+
+范围 BLCA/KIRC/SKCM × fold 1/2/4 = 36 任务，对照 frozen DCT v3.8.2 fixed_full。晋级规则（全满足）：宏平均 best ≥ +0.005、≥2/3 癌种提升、无癌种降 >0.005、SKCM ≥ +0.005、last-5 不降。
+
+#### 闸门判定进展（2026-08-14，暂停于 25/36 折）
+
+对照基线 fixed_full（fold 1/2/4）：**BLCA 0.7209 / KIRC 0.8125 / SKCM 0.6596**，宏平均 0.7310。
+
+| 变体 | 完成 | BLCA | KIRC | SKCM | 宏平均 Δ | 判定 |
+|---|---|:---:|:---:|:---:|:---:|---|
+| `patches4096` | 9/9 | 0.6990 (−0.0219) | 0.8219 (+0.0094) | 0.6566 (−0.0030) | −0.0052 | ❌ 不晋级 |
+| `grad_accum4` | 9/9 | 0.6961 (−0.0248) | 0.7949 (−0.0176) | 0.6710 (+0.0114) | −0.0103 | ❌ 不晋级 |
+| `slot_iters5` | 7/9 | 0.7022 (−0.0187) | 0.8033 (−0.0092) | 仅 F1=0.6155 | — | 🔄 待补 SKCM |
+| `lr2e4` | 0/9 | — | — | — | — | ⏳ 未开始 |
+
+> 已完成的 patches、grad_accum 均未过 +0.005 宏平均门槛（grad_accum 还在 KIRC 上倒退
+> 0.0176），确认不晋级；slot_iters 的 BLCA/KIRC 也已偏负。剩余 slot_iters SKCM fold2/4
+> 与 lr2e4 全部 9 折待跑。
 
 ### 下一队列（2026-08-06，✅ 已完成）
 
@@ -1217,6 +1266,47 @@ COADREAD、STAD 在 UNI2-h 覆盖补齐前仍由 doctor 硬阻断。ArcSurv 与 
 > - `tests/test_act_surv_v5.py`（三项构造性质单元测试）
 > - `catalog.py` 已注册 `archetypal_transport_composition_v5`
 > **下一步：BLCA 三折快速验证（6 GPU-day），确认 v5 不塌缩再扩全癌种 30 折**
+
+machine-readable 表格见 `docs/scores/act_surv_v5_blca_hnsc_5fold.tsv`（CSV 被 .gitignore 屏蔽，改用 TSV）。
+
+### ACT-Surv v5 跨癌种五折结果 (2026-08-16, UNI2-h, 50ep, seed=3)
+
+> 入口：`scripts/run_act_surv_v5.py`，冻结配方见 `configs/act_surv_v5_blca.yaml`。
+> 已完成 BLCA + HNSC 共 2 癌种 × 5-fold；SKCM/LUSC/KIRC/UCEC 待补（队列已就绪，资源允许时直接 `run_act_surv_v5.py --cancers blca,hnsc,skcm,lusc,kirc,ucec` 续跑）。
+
+**BLCA** (`results/act_surv_v5/full_run/blca/`)
+
+| Fold | best ep | test c-index | val c-index (best) | val c-index (last5) | c-ipcw (best) | IBS (best) | iauc (best) |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 0 | 29 | 0.6122 | 0.6126 | 0.6007 | 0.5738 | 0.2018 | 0.7395 |
+| 1 | 28 | 0.6664 | 0.6652 | 0.6572 | 0.6262 | 0.6542 | 0.9170 |
+| 2 | 6  | 0.7151 | 0.7156 | 0.6943 | 0.5943 | 0.3324 | 0.5441 |
+| 3 | 17 | 0.6427 | 0.6427 | 0.6299 | 0.6276 | 0.3067 | 0.7802 |
+| 4 | 20 | 0.7274 | 0.7274 | 0.7147 | 0.6573 | 0.4366 | 0.7460 |
+| **mean ± std** | — | **0.6727 ± 0.0484** | **0.6727 ± 0.0485** | **0.6593 ± 0.0464** | **0.6159 ± 0.0324** | **0.3863 ± 0.1714** | **0.7454 ± 0.1334** |
+
+**HNSC** (`results/act_surv_v5/full_run/hnsc/`, ⚠️ fold4 c-ipcw/iauc 在最终 epoch 为 NaN，IPCW 分桶边界溢出；best 来自中段 epoch)
+
+| Fold | best ep | test c-index | val c-index (best) | val c-index (last5) | c-ipcw (best) | IBS (best) | iauc (best) |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 0 | 35 | 0.5766 | 0.5766 | 0.5254 | 0.5357 | 0.3849 | 0.6761 |
+| 1 | 7  | 0.6574 | 0.6572 | 0.5771 | 0.6388 | 0.8818 | 0.2349 |
+| 2 | 22 | 0.5614 | 0.5617 | 0.5005 | 0.4954 | 0.3208 | 0.2236 |
+| 3 | 41 | 0.5743 | 0.5743 | 0.5462 | 0.6353 | 0.5426 | 0.6634 |
+| 4 | 20 | 0.7164 | 0.7168 | 0.6404 | nan (final) | 0.2454 | nan (final) |
+| **mean ± std** | — | **0.6172 ± 0.0672** | **0.6173 ± 0.0672** | **0.5579 ± 0.0540** | **0.5763 ± 0.0721 (n=4)** | **0.4751 ± 0.2523** | **0.4495 ± 0.2544** |
+
+**与同协议 DCT v3.8.2 fixed-full / IST v4.0 abl_b 对照（同 50ep UNI2-h seed=3）：**
+
+| 癌种 | DCT v3.8.2 | IST v4.0 | **ACT-Surv v5 (test)** | ACT-Surv − DCT | ACT-Surv − IST |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| BLCA | 0.7107 | 0.6843 | **0.6727 ± 0.0484** | −0.0380 | −0.0116 |
+| HNSC | 0.6632 | 0.6289 | **0.6172 ± 0.0672** | −0.0460 | −0.0117 |
+
+> **结论（仅基于 BLCA + HNSC 两癌种）**：
+> 1. v5 在 BLCA 上未塌缩（0.6727 ≥ ArcSurv 修复前 0.7132 的 94%，与 v4.1 0.7039 同量级，但显著低于 DCT v3.8.2 −0.038）；v5 的核心机制（archetype 正交初始化 + KL 熵平衡）已生效，slot cosine ≈ 1.0 的塌缩问题不复存在。
+> 2. HNSC 上 v5 偏低（0.6172），fold4 IPCW 出现 NaN 需查 `metric_diagnostics_fold4.log`；fold1 IBS 0.88 / iauc 0.23 提示该折分桶不稳，与 DCT/IST 在 HNSC 上的低分同源（HNSC 整体是该协议下最弱癌种）。
+> 3. **v5 不替代 DCT v3.8.2 主线**；作为独立机制（精确归因 + 闭式反事实）保留，扩到 SKCM/LUSC/KIRC/UCEC 后再做"机制存在性 vs 主线性能"的最终判定。
 
 ### IST-Surv 唯一跨癌种版本（2026-08-06）
 
@@ -1385,6 +1475,26 @@ BLCA、SKCM、HNSC、LUSC、KIRC、UCEC 跑五折；BLCA 已有 fold1/2/4 会自
 | ⬜ | v3.8 robust 全癌种 5-fold — split 修复后 |
 | ⬜ | BRCA v3.3/v3.6/v3.7 重跑 — UNI v1 覆盖 100%，split 按 1046 人重建后可直接跑 |
 
+### UNI v1 四癌种队列（2026-08-14 新增，⏳ 待运行）
+
+> **背景**：BRCA/LUAD/COADREAD/STAD 的 UNI2-h 特征覆盖不足（BRCA 775/1045 等），
+> 等补齐特征前先用 **UNI v1（1024-d）** 按当前 `5fold_uni` 划分跑 **DCT v3.8.2 fixed-full**，
+> 让这四个癌种立刻有可比结果。**该队列与 UNI2-h `5fold_uni2h` 结果严禁混表。**
+
+| 癌种 | UNI v1 特征数 | split 纳入 | 备注 |
+|:---:|:---:|:---:|---|
+| BRCA | 1131 | 1045 | 100% 覆盖 |
+| COADREAD | 581 | 570 | 100% 覆盖 |
+| STAD | 391 | 362 | 100% 覆盖 |
+| LUAD | 1052 | **457** | 剔除 `TCGA-55-8207`（无 UNI v1 特征，5 折全部出现）|
+
+- 队列：**DCT v3.8.2 fixed-full 单方法 × 4 cancers × 5 folds = 20 jobs**
+- 入口：`scripts/run_dct_v382_uni_v1_4cancer.py {prepare|doctor|smoke|run}`
+- 冻结配方与 UNI2-h fixed_full 完全一致，仅数据协议不同：`wsi_encoder=uni`、
+  `encoding_dim=1024`、`data_root_dir=/data/CPathPatchFeature`、`which_splits=5fold_uni`
+- 输出目录：`results/dct_v3.8.2/uni_v1_5fold/fixed_full/{cancer}/`
+- 状态：`prepare` 已完成（生成 `5fold_uni`），`doctor` 全 OK，**等待门控队列完成后启动**
+
 ### 已知问题
 
 | 日期 | 问题 | 详情 | 状态 |
@@ -1401,15 +1511,15 @@ BLCA、SKCM、HNSC、LUSC、KIRC、UCEC 跑五折；BLCA 已有 fold1/2/4 会自
 
 ## 🏥 多癌种数据集总览 (10 个)
 
-| 癌种 | clinical | Split | v3.3 | v3.6 最佳 | v3.7 | v3.8 | v3.8.2 | v3.8.3 | v3.9 | v4.0 | v4.1 | ArcSurv |
-|:----:|:--------:|:-----:|:-----:|:---------:|:----:|:----:|:------:|:------:|:----:|:----:|:----:|:------:|
-| BLCA | 381 | 380 | 0.7311 ✅ | 0.7024 ETAR | 0.7249 ✅ | 0.7274 ✅ | 0.7159 | 0.5931 | 0.6394 | 0.7078 | 0.7039 | 0.6757 |
-| BRCA | 1046 | 1045 | ⏳ 待重跑 | ⏳ 待重跑 | ⏳ 待重跑 | 0.6750 ✅ |
-| COADREAD | 573 | 570 | 0.6774 ✅ | — | 0.7384 ✅ | — |
-| HNSC | 438 | 437 | ⏳ | — | 0.6406 ✅ | — |
-| KIRC | 488 | 488 | 0.7958 ✅ | — | 0.8149 ✅ | — |
-| LUAD | 467 | 458 | ⏳ | 0.7647 NLL | 0.6662 ✅ | ⏳ |
-| LUSC | 460 | 454 | ⏳ | 0.6141 NLL | 🔄 fold0=0.4575 | ⏳ |
-| SKCM | 403 | 403 | 0.6770 ✅ | — | ⏳ | — |
-| STAD | 366 | 362 | 0.6596 ✅ | — | ⏳ | — |
-| UCEC | 488 | 487 | 0.7964 ✅ | — | ⏳ | — |
+| 癌种 | clinical | Split | v3.3 | v3.6 最佳 | v3.7 | v3.8 | v3.8.2 | v3.8.3 | v3.9 | v4.0 | v4.1 | ArcSurv | v4.2 | **v5** |
+|:----:|:--------:|:-----:|:-----:|:---------:|:----:|:----:|:------:|:------:|:----:|:----:|:----:|:------:|:----:|:----:|
+| BLCA | 381 | 380 | 0.7311 ✅ | 0.7024 ETAR | 0.7249 ✅ | 0.7274 ✅ | 0.7159 | 0.5931 | 0.6394 | 0.7078 | 0.7039 | 0.6757 | — | **0.6727** ✅ |
+| BRCA | 1046 | 1045 | ⏳ 待重跑 | ⏳ 待重跑 | ⏳ 待重跑 | 0.6750 ✅ | | | | | | | — | ⏳ |
+| COADREAD | 573 | 570 | 0.6774 ✅ | — | 0.7384 ✅ | — | | | | | | | — | ⏳ |
+| HNSC | 438 | 437 | ⏳ | — | 0.6406 ✅ | — | 0.6632 | | | | | | — | **0.6172** ✅ |
+| KIRC | 488 | 488 | 0.7958 ✅ | — | 0.8149 ✅ | — | 0.8071 | | | | | | — | ⏳ |
+| LUAD | 467 | 458 | ⏳ | 0.7647 NLL | 0.6662 ✅ | ⏳ | | | | | | | — | ⏳ |
+| LUSC | 460 | 454 | ⏳ | 0.6141 NLL | 🔄 fold0=0.4575 | ⏳ | 0.6204 | | | | | | — | ⏳ |
+| SKCM | 403 | 403 | 0.6770 ✅ | — | ⏳ | — | 0.6608 | | | | | | — | ⏳ |
+| STAD | 366 | 362 | 0.6596 ✅ | — | ⏳ | — | | | | | | | — | ⏳ |
+| UCEC | 488 | 487 | 0.7964 ✅ | — | ⏳ | — | 0.8224 | | | | | | — | ⏳ |

@@ -313,20 +313,16 @@ class ArchetypalTransportCompositionV5(nn.Module):
 
     @torch.no_grad()
     def deletion_counterfactual(self, token_index: int):
-        """Plan-conditioned ablation: approximate effect of removing token i.
+        """Plan-conditioned ablation approximation.
 
         logit'_t = (logit_t − Σ_k P_{i,k} · h_{k,t}) / (1 − a_i)
 
-        This is an approximation (not exact) because:
-        - The softmax-over-archetypes assignment P_{i,k} is computed on the full token set.
-        - After removing token i, the remaining tokens' softmax denominators change
-          slightly (the normalization is over K archetypes, not N tokens, so in
-          practice this is very close).
-        - The composition α = Σ_i P_i has a different normalization base after masking.
+        Approximation: the softmax-over-archetypes assignment P_{i,k} is computed
+        on the full token set; after removing token i, the composition α has a
+        different normalization base. In practice the approximation is very close
+        (Spearman ρ ≈ 0.85 vs Sinkhorn re-run on synthetic data).
 
-        The approximation is typically very good (Spearman ρ > 0.85 on synthetic data)
-        and avoids re-running Sinkhorn for each deletion, giving O(1) per-token cost
-        vs O(N) for full re-computation.
+        Avoids re-running Sinkhorn for each deletion → O(1) per token vs O(N).
         """
         if self.last_explanations is None:
             raise RuntimeError("run a forward pass first")
