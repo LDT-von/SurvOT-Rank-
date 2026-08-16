@@ -213,6 +213,30 @@ def build_jobs(
     return jobs
 
 
+# Hyperparameters that come from the YAML config (variant-specific, e.g.
+# v5.1 sets act5_lambda_rank=0.00; v5.2 sets act5_rank_temperature=1.0).
+# These must NOT be force-overridden by FINAL_OVERRIDES — otherwise the
+# variant configs become silent no-ops. Only the v5 baseline may supply them.
+_V5_DEFAULT_HYPERS = {
+    k: v for k, v in FINAL_OVERRIDES.items()
+    if k.startswith("act5_") or k in {"alpha_surv"}
+}
+
+
+def overrides_for_variant(variant: str) -> dict[str, object]:
+    """Build the FINAL_OVERRIDES dict for the requested variant.
+
+    - `v5` baseline gets FINAL_OVERRIDES as-is (YAML matches defaults).
+    - `v5_1` / `v5_2` get FINAL_OVERRIDES MINUS the v5-default hyperparameters,
+      so the YAML's variant-specific values are honored.
+    """
+    base = {k: v for k, v in FINAL_OVERRIDES.items() if k not in _V5_DEFAULT_HYPERS}
+    if variant == "v5":
+        # Re-attach baseline hyperparam defaults (they may also be in YAML).
+        return {**base, **_V5_DEFAULT_HYPERS, "results_dir": "<placeholder>"}
+    return {**base, "results_dir": "<placeholder>"}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run ACT-Surv v5")
     parser.add_argument(
@@ -247,7 +271,8 @@ def main():
     cancers = [c.strip() for c in args.cancers.split(",")]
     folds = args.folds
 
-    overrides = {**FINAL_OVERRIDES, "results_dir": args.result_root}
+    overrides = overrides_for_variant(args.variant)
+    overrides["results_dir"] = args.result_root
     jobs = build_jobs(cancers, folds, overrides, dry_run=args.dry_run, variant=args.variant)
 
     print(f"Total jobs: {len(jobs)}")
