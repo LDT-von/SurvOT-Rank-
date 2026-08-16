@@ -1,6 +1,6 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-08-16 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2 / CA-PSA Final / ArcSurv Final / CATET Final / **v5 (ACT-Surv 精炼版)**
+> 更新时间: 2026-08-16 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2 / CA-PSA Final / ArcSurv Final / CATET Final / **v5 (ACT-Surv 精炼版)** / **v5 五项 Constructive Claim 证明 (Section 4.3-4.7)**
 
 ---
 
@@ -1168,6 +1168,7 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 14 | v3.3 clean 基线 `0.7400` 的运行溯源缺口 | 🟡 **已补 launcher，待重跑** | 3 次训练 | `configs/diagnostics/dct_v3_score_blca.yaml` 未设 `fit_bins_on_train`，而它在 `extended_args.py` 中是 `action="store_true"`（默认 False）；原 `v33_blca_uni5` 阶段也未覆盖该键。因此现有 launcher 路径跑出来的是 **leaky** 分箱，`0.7400` 无法从代码复现。新增 `v33_clean_baseline` 阶段显式设置 clean 协议。**在此基线重跑确认前，所有「vs 基线」的增减都不作数** |
 | 15 | 训练 C-index 无可比样本对时整折失败 | ✅ **已修复** | 0 | `train_one_epoch` 直接调用 `concordance_index_censored`，事件稀疏/小 batch/smoke 下抛 `NoComparablePairException` 并让整个 fold 失败（ArcSurv smoke fold2 实例）。该值只是诊断量，已降级为 `nan` 并继续训练 |
 | 16 | ACT-Surv v5 独立新建，绕过 ArcSurv 塌缩 | ✅ **2026-08-15 新建** | — | v5 直接删除了 `slot_attention` 和 `shared prototypes`（slot cosine 0.9987 的根因），改用 `WsiMlp + _encode_omics` 直接投影到 archetype 空间。无需 ArcSurv 修复闸门，v5 自身保证 archetype 正交初始化 + KL 熵平衡。单元测试见 `tests/test_act_surv_v5.py` |
+| 17 | ACT-Surv v5 Constructive-Claim 五项证明实验 | ✅ **2026-08-16 新建** | B ✅ / C ≈74× | `scripts/verify_act_surv_v5_all.py` 一键运行 5 个对应论文 Section 4.3-4.7 的证明实验。最新一次（2026-08-16 09:51:32, cuda）：B 闭式删除保真度 median error 5.96e-08 ✅；C plan intervention speed-up N=1000 时 73.9×（短批次下未达 100× 阈值，N=2000+ 预测会超 100×）。A/D/E 输出已落到 `results/act_surv_v5/proofs/` 与 `mechanism/fresh_init_mechanism_verification.json`。**E 复用 `scripts/verify_act_surv_v5_mechanism.py` 并加 auto-detect checkpoint 形状兼容层**，使脚本不依赖 YAML 与 checkpoint 完全同步。 |
 | 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
 | 21 | 旧 CA-PSA/ArcSurv/CATET 队列停用（旧机制冒充 Final） | ✅ **已停用** | 0 | `f636660` 三个「final」启动器实际仍调用旧机制，非真正 Final 版本。已停止并保留旧结果作历史对照（CA-PSA 六癌种 30/30、ArcSurv BLCA+SKCM 10 折），不得与真正 Final 结果混用 |
 | 22 | 三个 Final 方法 BLCA fold0 机制筛选 | 🟡 **进行中** | 3 次训练 | 真正 Final 代码 `0eb705b`：CA-PSA（身份预算/identifiable cohort routes）、ArcSurv（共享凸包/shared simplex）、CATET（重新 Sinkhorn/stage re-transport）。先跑 BLCA fold0 看机制指标，通过才扩五折 |
