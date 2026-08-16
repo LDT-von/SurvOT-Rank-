@@ -1,0 +1,43 @@
+{
+  "claim1_completeness": {
+    "claim": "Claim 1: Completeness residual < 1e-5",
+    "max_residual": 0.0,
+    "mean_residual": 0.0,
+    "num_samples": 64,
+    "passed": true,
+    "threshold": 1e-05
+  },
+  "claim2_closed_form": {
+    "claim": "Claim 2: Closed-form vs re-solve error < 0.001",
+    "max_error": 8.940696716308594e-08,
+    "mean_error": 3.4226104617118835e-08,
+    "num_tested": 192,
+    "passed": true,
+    "threshold": 0.001
+  },
+  "claim3_convex_hull": {
+    "claim": "Claim 3: Predictions in convex hull of K archetype curves",
+    "max_sum_error": 1.1920928955078125e-07,
+    "min_alpha": 0.07055281102657318,
+    "max_violation": 1.1920928955078125e-07,
+    "num_samples": 64,
+    "passed": true,
+    "threshold": 0.0001,
+    "interpretation": "If max_sum_error\u22480 and min_alpha\u22650 \u2192 convex hull claim holds"
+  },
+  "claim4_archetype": {
+    "claim": "Claim 4: K archetype hazard curves are genuinely distinct",
+    "min_pairwise_l1": 0.2524772882461548,
+    "mean_pairwise_l1": 0.4785543382167816,
+    "max_pairwise_l1": 0.7456761598587036,
+    "hazard_std_per_archetype": 0.10726239532232285,
+    "archetype_cosine_max": 3.119930624961853e-08,
+    "archetype_cosine_min": -3.632158041000366e-08,
+    "K": 6,
+    "num_classes": 4,
+    "passed": true,
+    "threshold_l1": 0.05,
+    "threshold_cosine": 0.9,
+    "interpretation": "Mean L1=0.4786 > 0.05: distinct, cosine_max=0.0000 < 0.9: distinct"
+  }
+}
