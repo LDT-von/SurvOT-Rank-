@@ -12,6 +12,10 @@ Usage:
     # Full BLCA 5-fold
     python scripts/run_act_surv_v5.py --cancers blca --folds 0 1 2 3 4
 
+    # v5.1 / v5.2 BLCA variants (BLCA-only tuning configs)
+    python scripts/run_act_surv_v5.py --cancers blca --variant v5_1 --folds 0 1 2 3 4
+    python scripts/run_act_surv_v5.py --cancers blca --variant v5_2 --folds 0 1 2 3 4
+
     # 6-cancer cross-cancer
     python scripts/run_act_surv_v5.py --cancers blca,kirc,ucec,hnsc,lusc,skcm
 
@@ -133,8 +137,14 @@ def build_jobs(
     folds: list[int],
     overrides: dict[str, object],
     dry_run: bool = False,
+    variant: str = "v5",
 ) -> list[Job]:
-    """Build one Job per (cancer, fold) pair."""
+    """Build one Job per (cancer, fold) pair.
+
+    variant: config-name suffix before `_blca.yaml`. Default `v5` (baseline).
+    Use `v5_1` for `act_surv_v5_1_blca.yaml` (no IPCW rank, KL balance x5),
+    `v5_2` for `act_surv_v5_2_blca.yaml` (v5.1 + temperature/margin/max_pairs sweep).
+    """
     if not dry_run:
         verify_child_cuda(sys.executable, dict(os.environ))
     jobs: list[Job] = []
@@ -157,7 +167,17 @@ def build_jobs(
                 print(f"WARN: fold {fold} not in {csv_dir}, skipping")
                 continue
 
-            config = REPO_ROOT / "configs" / "act_surv_v5_blca.yaml"
+            # Variant-aware config selection (only BLCA has v5.1/v5.2).
+            # File naming: act_surv_v5{blca}.yaml = baseline,
+            #               act_surv_v5_{1,2}_blca.yaml = v5.1/v5.2 (note underscore before digit)
+            if variant == "v5":
+                config = REPO_ROOT / "configs" / f"act_surv_v5_{cancer}.yaml"
+            else:
+                config = REPO_ROOT / "configs" / f"act_surv_v5_{variant.split('_', 1)[1]}_{cancer}.yaml"
+            if not config.exists():
+                # Fall back to baseline if a variant doesn't exist for this cancer
+                print(f"WARN: {config.name} missing, falling back to act_surv_v5_{cancer}.yaml")
+                config = REPO_ROOT / "configs" / f"act_surv_v5_{cancer}.yaml"
             result_dir = RESULT_ROOT / cancer / f"fold{fold}"
             result_dir.mkdir(parents=True, exist_ok=True)
 
@@ -215,6 +235,10 @@ def main():
         "--result-root", default=str(RESULT_ROOT),
         help="Override result root directory",
     )
+    parser.add_argument(
+        "--variant", default="v5", choices=["v5", "v5_1", "v5_2"],
+        help="Config variant: v5 (baseline), v5_1 (no IPCW rank, KL x5), v5_2 (v5.1 + sweep)",
+    )
     args = parser.parse_args()
 
     global DATA_ROOT
@@ -224,7 +248,7 @@ def main():
     folds = args.folds
 
     overrides = {**FINAL_OVERRIDES, "results_dir": args.result_root}
-    jobs = build_jobs(cancers, folds, overrides, dry_run=args.dry_run)
+    jobs = build_jobs(cancers, folds, overrides, dry_run=args.dry_run, variant=args.variant)
 
     print(f"Total jobs: {len(jobs)}")
     for j in jobs:

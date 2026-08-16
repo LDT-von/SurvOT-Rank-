@@ -91,28 +91,79 @@ def detect_dims(state: dict) -> dict:
 
 
 def build_dataloader(cancer: str, fold: int, batch_size: int):
-    try:
-        from tools.gen_splits_5fold import get_fold_dataset
-    except ModuleNotFoundError:
-        from survot_rank.research.legacy.slotspe_runtime.tools.gen_splits_5fold import (
-            get_fold_dataset,
-        )
+    """Build a real BLCA fold-0 validation DataLoader using SurvivalDatasetFactory.
 
-    split_dir = Path(DATASET_CSV_ROOT) / "5fold_uni2h" / cancer
-    ds = get_fold_dataset(
-        cancer=cancer,
-        fold=fold,
-        data_root=Path(DEFAULT_DATA_ROOT),
-        split_dir=split_dir,
+    Mirrors the pattern in `scripts/audit_dct_v382.py` which is the proven
+    way to construct a dataloader for a frozen v3.x/v5 model checkpoint.
+    """
+    from torch.utils.data import DataLoader
+
+    try:
+        from survot_rank.research.legacy.slotspe_runtime.dataset.dataset_survival import (
+            SurvivalDataset,
+            SurvivalDatasetFactory,
+        )
+        from survot_rank.training.train_runner import get_split
+    except ImportError as exc:
+        raise ImportError(
+            f"Could not import SurvivalDatasetFactory / get_split: {exc}"
+        ) from exc
+
+    data_root = Path(DATASET_CSV_ROOT)
+    factory = SurvivalDatasetFactory(
+        study=cancer,
+        data_path=data_root,
         rna_format="Pathways",
-        label_col="survival_months_dss",
         signature="combine",
+        n_bins=4,
+        label_col="survival_months_dss",
+        num_genes=None,
         num_patches=2048,
-        encoding_dim=1536,
-        wsi_encoder="uni2-h",
-        deterministic=False,
+        clinical_feature_cols=None,
+        binning_mode="global_qcut",
     )
-    return DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    # Restrict to RNA-overlapping cases (same as audit_dct_v382)
+    if factory.rna_format in ("Pathways", "RNASeq", "GeneEmbedding"):
+        rna_cases = set(factory.gene_data_df.columns)
+        factory.clinical_df = factory.clinical_df[
+            factory.clinical_df["case id"].isin(rna_cases)
+        ].reset_index(drop=True)
+
+    # Minimal namespace mirroring audit_dct_v382.py: get_split needs args-style attrs.
+    # `data_root_dir` must point at WSI feature root (uni2-h pt_files), while
+    # factory's data_path already points at DATASET_CSV_ROOT (clinical + RNA).
+    class _Parsed:
+        data_root_dir = str(Path(DEFAULT_DATA_ROOT))
+        wsi_encoder = "uni2-h"
+        on_missing_wsi = "zero"
+        encoding_dim = 1536
+        fit_bins_on_train = False
+        # used inside get_split via getattr defaults
+        binning_mode = "global_qcut"
+        # get_split reads these too
+        rna_format = "Pathways"
+        signature = "combine"
+        # event-stratified batching controls (defaults match train_runner)
+        use_event_batches = False
+        num_workers = 0
+        pin_memory = False
+
+    parsed = _Parsed()
+    # get_split reuses args.batch_size internally; mirror the user-requested value
+    parsed.batch_size = 1  # batch_size=1 needed for variable-length WSI patches
+    _train_data, val_data, _, _ = get_split(parsed, factory, fold)
+    # Use the dataset's canonical collate so variable-length WSI patches stack
+    # correctly. Fall back to default collate if not exported.
+    from survot_rank.research.legacy.slotspe_runtime.dataset.dataset_survival import (
+        _collate_pathways,
+    )
+    return DataLoader(
+        val_data,
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        collate_fn=_collate_pathways,
+    )
 
 
 def per_archetype_retrieval(
@@ -133,24 +184,53 @@ def per_archetype_retrieval(
     all_plans = []
     all_x_wsi = []
 
+    # `_process_data_and_forward` is the canonical helper that unpacks the
+    # 6-tuple batch (data_wsi, data_omics, y_disc, event_time, c, x_clinical)
+    # produced by `SurvivalDataset` and forwards the model. This is the same
+    # pattern used by `scripts/audit_dct_v382.py`.
+    from survot_rank.research.legacy.slotspe_runtime.utils.core_utils import (
+        _unpack_data,
+    )
+
     model.eval()
     with torch.no_grad():
         for bi, batch in enumerate(dataloader):
             if bi >= max_batches:
                 break
-            kwargs = {k: v.to(device) for k, v in batch.items() if torch.is_tensor(v)}
-            kwargs["cur_epoch"] = 0
-            _ = model(**kwargs)
-            plan = model.last_explanations["transport_plan"].detach().cpu().numpy()
-            x_wsi = kwargs["x_wsi"].detach().cpu().numpy()
+            try:
+                data_wsi, data_omics, _y, _et, _c, _xc = _unpack_data(batch, device, "Pathways")
+                # v5 model expects pathway omics as separate kwargs x_omic1..x_omicN
+                # (mirrors `_process_data_and_forward` for rna_format='Pathways').
+                # For RNASeq format it expects a single `x_omics` tensor.
+                if isinstance(data_omics, (list, tuple)):
+                    input_kwargs = {
+                        f"x_omic{i+1}": omic.float()
+                        for i, omic in enumerate(data_omics)
+                    }
+                else:
+                    input_kwargs = {"x_omics": data_omics.float()}
+                _ = model(
+                    x_wsi=data_wsi.float(),
+                    cur_epoch=0,
+                    wsi_missing=False,
+                    omic_missing=False,
+                    y=None,
+                    c=None,
+                    **input_kwargs,
+                )
+                plan = model.last_explanations["transport_plan"].detach().cpu().numpy()
+                x_wsi_np = data_wsi.detach().cpu().numpy()
+            except Exception as exc:
+                print(f"  WARN batch {bi} forward failed: {exc}", flush=True)
+                continue
             # Filter out all-zero patches (padding) to keep retrieval meaningful
-            nonzero = (x_wsi**2).sum(axis=-1) > 1e-6
+            nonzero = (x_wsi_np**2).sum(axis=-1) > 1e-6
             for b in range(plan.shape[0]):
                 mask = nonzero[b]
                 if mask.sum() == 0:
                     continue
                 all_plans.append(plan[b][mask])
-                all_x_wsi.append(x_wsi[b][mask])
+                all_x_wsi.append(x_wsi_np[b][mask])
 
     if not all_plans:
         return {"error": "no valid batches"}
