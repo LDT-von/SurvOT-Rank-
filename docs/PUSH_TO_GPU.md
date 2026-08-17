@@ -133,15 +133,82 @@ done
 
 ---
 
+### Step 7（新）: 1D Ablation — v5.3（仅去 ranking）→ v5.4（仅 KL×5）
+
+**背景**：v5.1 同时改了两件事（去 IPCW ranking + KL×5），从 0.6727→0.6954。1D ablation 拆分贡献。
+
+**实验设计**：
+
+| yaml | 唯一改动 | 其余 |
+|---|---|---|
+| `act_surv_v5_3_blca.yaml` | `lambda_rank: 0.10→0.00` | KL balance=0.01（不变）|
+| `act_surv_v5_4_blca.yaml` | `lambda_balance: 0.01→0.05` | ranking=0.10（不变）|
+
+**判定矩阵**（跑完看数字）：
+
+| v5.3 C | v5.4 C | 结论 |
+|---|---|---|
+| > v5 | > v5 | 两个改动都有效，最优配方 = v5.3 + v5.4 |
+| > v5 | ≤ v5 | KL×5 是唯一有效改动 |
+| ≤ v5 | > v5 | 去 ranking 是唯一有效改动 |
+| ≤ v5 | ≤ v5 | v5 baseline 仍是 SOTA，v5.1 提分靠随机 |
+
+**用 sequential wrapper 跑**：
+
+```bash
+# v5.3（~5 hour）+ v5.4（~5 hour）顺序执行，不并发
+bash scripts/run_v5_1d_sequential.sh
+# 日志在 logs/v5_3_blca_5fold.log 和 logs/v5_4_blca_5fold.log
+```
+
+**或者单独跑**（不用 wrapper）：
+
+```bash
+# v5.3: 仅去 IPCW ranking
+nohup python scripts/run_act_surv_v5.py \
+    --cancers blca --variant v5_3 --folds 0 1 2 3 4 \
+    > logs/v5_3_blca_5fold.log 2>&1 &
+
+# 等 v5.3 跑完，再跑 v5.4: 仅 KL×5
+nohup python scripts/run_act_surv_v5.py \
+    --cancers blca --variant v5_4 --folds 0 1 2 3 4 \
+    > logs/v5_4_blca_5fold.log 2>&1 &
+```
+
+**看结果**：
+
+```bash
+# 跑完后，scores 写进：
+# results/act_surv_v5_3/blca/5fold_results_final.tsv
+# results/act_surv_v5_4/blca/5fold_results_final.tsv
+
+# 快速提取 mean C-index
+python -c "
+import glob, re
+for v in ['v5_3', 'v5_4']:
+    files = glob.glob(f'results/act_surv_v5_3/blca/**/5fold_results_final.tsv')
+    if not files:
+        files = glob.glob(f'results/act_surv_v5_4/blca/**/5fold_results_final.tsv')
+    for f in files:
+        print(f'{v}: {open(f).read()[:200]}')
+"
+```
+
+**预期时间**：v5.3 + v5.4 各 ~5 小时（顺序跑），共 ~10 小时。
+
+---
+
 ## 跑完之后发我
 
 请把以下文件 push 回来：
 
 1. `docs/scores/act_surv_v5_1_blca_5fold.tsv`
 2. `docs/scores/act_surv_v5_2_blca_5fold.tsv`
-3. `results/act_surv_v5/proofs/act_surv_v5_proofs_<timestamp>.json`
-4. `results/act_surv_v5/proofs/act_surv_v5_per_patch_blca_fold0_<timestamp>.json`
-5. `results/act_surv_v5/proofs/figures_4_6_per_patch/per_archetype_top16_real_<timestamp>.png`
+3. `results/act_surv_v5/proofs/act_surv_v5_proofs_*.json`（A2 结果）
+4. `results/act_surv_v5_3/blca/**/5fold_results_final.tsv`（v5.3 1D ablation）
+5. `results/act_surv_v5_4/blca/**/5fold_results_final.tsv`（v5.4 1D ablation）
+6. `results/act_surv_v5/proofs/act_surv_v5_per_patch_blca_fold0_*.json`
+7. `results/act_surv_v5/proofs/figures_4_6_per_patch/per_archetype_top16_real_*.png`
 
 ---
 
@@ -152,3 +219,4 @@ done
 - [ ] 把 F 的图嵌入 §4.6（PNG 一回来就嵌）
 - [ ] 把台账 (`paper_drafts/ArcSurv/ArcSurv_主张与证据台账.md`) 的 §4 已核验段更新
 - [ ] 把 A2 的 |ΔC| 写进 §4.3（替代/补充 A 的 synthetic verdict）
+- [ ] 把 v5.3/v5.4 的 1D ablation 数字写进 §4.3（定位 ranking vs KL×5 各自贡献）

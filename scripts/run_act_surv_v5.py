@@ -16,6 +16,10 @@ Usage:
     python scripts/run_act_surv_v5.py --cancers blca --variant v5_1 --folds 0 1 2 3 4
     python scripts/run_act_surv_v5.py --cancers blca --variant v5_2 --folds 0 1 2 3 4
 
+    # v5.3 / v5.4 1D ablations (isolate ranking vs KL×5 contribution)
+    python scripts/run_act_surv_v5.py --cancers blca --variant v5_3 --folds 0 1 2 3 4
+    python scripts/run_act_surv_v5.py --cancers blca --variant v5_4 --folds 0 1 2 3 4
+
     # 6-cancer cross-cancer
     python scripts/run_act_surv_v5.py --cancers blca,kirc,ucec,hnsc,lusc,skcm
 
@@ -78,6 +82,8 @@ _VARIANT_RESULT_ROOT = {
     "v5": "results/act_surv_v5",
     "v5_1": "results/act_surv_v5_1",
     "v5_2": "results/act_surv_v5_2",
+    "v5_3": "results/act_surv_v5_3",
+    "v5_4": "results/act_surv_v5_4",
 }
 WHICH_SPLITS = "5fold_uni2h"
 DATA_ROOT = DEFAULT_DATA_ROOT  # mutable; main() may overwrite via --data-root
@@ -282,8 +288,14 @@ def main():
              "e.g. results/act_surv_v5_1 for --variant v5_1)",
     )
     parser.add_argument(
-        "--variant", default="v5", choices=["v5", "v5_1", "v5_2"],
-        help="Config variant: v5 (baseline), v5_1 (no IPCW rank, KL x5), v5_2 (v5.1 + sweep)",
+        "--variant", default="v5",
+        choices=["v5", "v5_1", "v5_2", "v5_3", "v5_4"],
+        help="Config variant: "
+              "v5 (baseline), "
+              "v5_1 (no IPCW ranking + KL×5 = single winning ablation), "
+              "v5_2 (v5.1 + 4 hidden tweaks), "
+              "v5_3 (1D ablation: no IPCW ranking only), "
+              "v5_4 (1D ablation: KL×5 only)",
     )
     args = parser.parse_args()
 
