@@ -1,0 +1,20 @@
+{
+  "timestamp": "20260817_060504",
+  "device": "cuda",
+  "experiments": {
+    "A2": {
+      "experiment": "A2_checkpoint",
+      "ckpt_path": "results/act_surv_v5_1/blca/0.0005_b8_survival_months_dss_Dim_256_e_50_g_Pathways_sig_combine_seed3_rW_8_rG_8_sp_act_surv_v5_blca_fold2/model_best_s2.pth",
+      "cancer": "blca",
+      "fold": 2,
+      "n_batches": 19,
+      "n_samples": 76,
+      "c_index_act": 0.508150646430579,
+      "c_index_mlp": 0.49971894322653176,
+      "delta_c_index": 0.00843170320404718,
+      "threshold_delta_c": 0.02,
+      "passed": true,
+      "verdict": "ACT-head (C=0.5082) and MLP-head (C=0.4997) give near-identical test C-index on fold 2 of blca (|\u0394C|=0.0084 < 0.02) \u2014 ACT is a near-free swap to MLP."
+    }
+  }
+}

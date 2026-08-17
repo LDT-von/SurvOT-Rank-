@@ -242,38 +242,215 @@ def _build_a2_val_loader(
     num_patches: int,
     batch_size: int,
 ):
-    """Build a real val DataLoader for A2 (BLCA fold-N)."""
-    from torch.utils.data import DataLoader
-    from survot_rank.research.legacy.slotspe_runtime.dataset.dataset_survival import (
-        SurvivalDatasetFactory,
-        SurvivalDataset,
-    )
+    """Build a real val DataLoader for A2 (BLCA fold-N) using available on-disk data.
 
-    dataset_csv_root = os.environ.get(
-        "DATASET_CSV_ROOT",
-        "survot_rank/research/legacy/slotspe_runtime/dataset_csv",
-    )
+    Uses:
+    - H5 WSI features: ``{data_root}/{cancer}/uni2-h/pt_files/{slide_id}.h5`` → key ``features``
+      (shape [1, N_patches, 1536]; slides per case are subsampled to num_patches then averaged)
+    - RNA data CSV:    ``{csv_root}/raw_rna_data_inter/{cancer}_rna_inter.csv``  (genes × cases)
+    - Signatures CSV:  ``{csv_root}/signatures/combine_signatures.csv``  (pathways × genes)
+    - Split CSV:       ``{csv_root}/splits/5fold_uni2h/{cancer}/fold_{fold}.csv``
+    - Split pickle:    ``results/act_surv_v5_1/{cancer}/.../split_{fold}_results_final.pkl``
+    - Model checkpoint: loaded from the same fold dir to detect ``omic_sizes`` automatically,
+      so the dataloader always produces tensors whose pathway dimensions match what the
+      model was trained on.
+    """
+    import pandas as pd  # noqa: E402
+    import h5py
+    import pickle
+    import re as _re
+    from torch.utils.data import DataLoader, Dataset
 
-    factory = SurvivalDatasetFactory(
-        study=cancer,
-        data_path=Path(data_root) / cancer,
-        rna_format=rna_format,
-        label_col="survival_months_os",
-        n_bins=4,
-        num_patches=num_patches,
-        which_splits="5fold_uni2h",
+    data_root = Path(data_root)
+    csv_root = Path(
+        os.environ.get(
+            "DATASET_CSV_ROOT",
+            "survot_rank/research/legacy/slotspe_runtime/dataset_csv",
+        )
     )
+    wsi_dir = data_root / cancer / "uni2-h" / "pt_files"
 
-    val_set = SurvivalDataset(
-        dataset_factory=factory,
-        wsi_path=os.path.join(data_root, cancer),
-        split_key="val",
-        fold=fold,
-        encoding_dim=encoding_dim,
-        on_missing_wsi="error",
+    # ── 1. Split CSV: val case IDs ────────────────────────────────────────
+    split_csv = csv_root / "splits" / "5fold_uni2h" / cancer / f"fold_{fold}.csv"
+    split_df = pd.read_csv(split_csv)
+    val_case_ids = split_df["val"].dropna().tolist()
+    print(f"[A2 val loader] {len(val_case_ids)} val cases for fold {fold}")
+
+    # ── 2. Load survival labels from split pickle ─────────────────────────
+    pkl_dir = Path(f"results/act_surv_v5_1/{cancer}")
+    if not pkl_dir.exists():
+        raise FileNotFoundError(f"Split pickle dir not found: {pkl_dir}")
+    fold_dirs = [
+        d for d in pkl_dir.iterdir()
+        if d.is_dir() and d.name.endswith(f"_fold{fold}")
+    ]
+    if not fold_dirs:
+        raise FileNotFoundError(
+            f"No checkpoint dir for {cancer} fold {fold} in {pkl_dir}"
+        )
+    fold_dir = fold_dirs[0]
+    split_pkl_path = fold_dir / f"split_{fold}_results_final.pkl"
+    if not split_pkl_path.exists():
+        raise FileNotFoundError(f"Split pickle not found: {split_pkl_path}")
+    with open(split_pkl_path, "rb") as f:
+        label_data: dict = pickle.load(f)
+    print(f"[A2 val loader] Loaded {len(label_data)} label entries from pickle")
+
+    # ── 3. Detect omic_sizes from the checkpoint in the fold dir ──────────
+    # Inference: sig_networks.{p}.0.0.weight shape = (proj_dim, pathway_gene_count)
+    # fold0 uses model_best_s0.pth, folds 1-4 use model_best_s{fold}.pth
+    ckpt_files = list(fold_dir.glob("model_best_s*.pth"))
+    if not ckpt_files:
+        raise FileNotFoundError(f"No model_best_s*.pth in {fold_dir}")
+    ckpt_path = ckpt_files[0]  # take the first match
+    omic_sizes: list[int]
+    if ckpt_path.exists():
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        state = (
+            ckpt.get("model_state_dict", ckpt.get("state_dict", ckpt))
+            if isinstance(ckpt, dict)
+            else ckpt
+        )
+        pathway_sizes: dict[int, int] = {}
+        for k, v in state.items():
+            m = _re.match(r"sig_networks\.(\d+)\.0\.0\.weight$", k)
+            if m and hasattr(v, "shape"):
+                pathway_sizes[int(m.group(1))] = int(v.shape[1])
+        omic_sizes = [pathway_sizes[i] for i in sorted(pathway_sizes)]
+        print(f"[A2 val loader] Detected {len(omic_sizes)} omic sizes from checkpoint; "
+              f"first 5: {omic_sizes[:5]}")
+    else:
+        raise FileNotFoundError(
+            f"Checkpoint not found at {ckpt_path}; cannot determine omic_sizes. "
+            "Ensure model_best_s*.pth exists in the fold dir."
+        )
+
+    # ── 4. Load RNA data & signatures ───────────────────────────────────────
+    rna_csv_path = csv_root / "raw_rna_data_inter" / f"{cancer}_rna_inter.csv"
+    if rna_csv_path.exists():
+        rna_df = pd.read_csv(rna_csv_path, index_col=0)
+        sig_df = pd.read_csv(csv_root / "signatures" / "combine_signatures.csv")
+        omic_names: list[list[str]] = []
+        for col in sig_df.columns:
+            genes = sig_df[col].dropna().tolist()
+            matched = [g for g in genes if g in rna_df.index]
+            if matched:
+                omic_names.append(matched)
+        # Trim to match checkpoint's pathway count
+        omic_names = omic_names[: len(omic_sizes)]
+        # Warn if any checkpoint pathway has no matched genes
+        for i in range(len(omic_names), len(omic_sizes)):
+            print(f"[A2 val loader] WARNING: pathway {i} has 0 matched genes (empty in {cancer})")
+        omics_available = True
+        print(f"[A2 val loader] Omics ON; {len(omic_names)}/{len(omic_sizes)} pathways with gene data")
+    else:
+        rna_df = None
+        omic_names = []
+        omics_available = False
+        print(f"[A2 val loader] Omics OFF (RNA CSV not found at {rna_csv_path}); running WSI-only")
+        omics_available = False
+        print(f"[A2 val loader] Omics OFF (RNA CSV not found at {rna_csv_path})")
+
+    # ── 5. Map val case IDs → slide IDs (H5 filenames) ─────────────────────
+    h5_files = {f.stem: f for f in wsi_dir.glob("*.h5")}
+    case_to_slides: dict[str, list[str]] = {cid: [] for cid in val_case_ids}
+    for h5_stem in h5_files:
+        # H5 stem format: TCGA-XX-XXXX-01Z-00-DX1.HASH
+        # Case ID in split CSV is the TCGA-{XX}-{XXXX} prefix (first 3 hyphen-segments)
+        parts = h5_stem.split("-")
+        if len(parts) >= 3:
+            case_prefix = "-".join(parts[:3])
+        else:
+            case_prefix = h5_stem.split(".")[0]
+        if case_prefix in case_to_slides:
+            case_to_slides[case_prefix].append(h5_stem)
+
+    val_cases_found = [cid for cid, slides in case_to_slides.items() if slides]
+    missing_wsi = [cid for cid, slides in case_to_slides.items() if not slides]
+    if missing_wsi:
+        print(f"[A2 val loader] Warning: {len(missing_wsi)}/{len(val_case_ids)} "
+              f"cases have no H5 WSI file")
+    print(f"[A2 val loader] {len(val_cases_found)} cases with WSI files found")
+
+    # ── 6. Dataset ────────────────────────────────────────────────────────
+    class _ValDataset(Dataset):
+        def __len__(self):
+            return len(val_cases_found)
+
+        def __getitem__(self, idx: int):
+            case_id = val_cases_found[idx]
+
+            # WSI: subsample each slide to num_patches, then average across slides
+            slide_stems = case_to_slides[case_id]
+            sampled_slides = []
+            for stem in slide_stems:
+                with h5py.File(wsi_dir / f"{stem}.h5", "r") as f:
+                    feat = f["features"][:]   # [1, N, 1536]
+                    feat = feat[0]           # [N, 1536]
+                if feat.shape[0] > num_patches:
+                    sel = np.linspace(0, feat.shape[0] - 1, num_patches, dtype=int)
+                    feat = feat[sel]
+                elif feat.shape[0] < num_patches:
+                    pad = np.zeros((num_patches - feat.shape[0], feat.shape[1]), dtype=np.float32)
+                    feat = np.vstack([feat, pad])
+                sampled_slides.append(feat)
+            # Average across slides — all now have shape [num_patches, 1536]
+            wsi_avg = np.stack(sampled_slides, axis=0).mean(axis=0)  # [T, 1536]
+            wsi_tensor = torch.from_numpy(wsi_avg.astype(np.float32))
+
+            # Project WSI to encoding_dim (identity if already correct dimension)
+            if encoding_dim != 1536:
+                proj = torch.zeros(1536, encoding_dim)
+                for i in range(min(encoding_dim, 1536)):
+                    proj[i, i] = 1.0
+                wsi_tensor = wsi_tensor @ proj
+
+            # Omics: per-pathway gene expression from pre-loaded RNA dataframe
+            omic_tensors = {}
+            if omics_available and rna_df is not None:
+                patient_rna = rna_df[case_id]
+                for p_idx, genes in enumerate(omic_names):
+                    vals = patient_rna[genes].values.astype(np.float32)
+                    omic_tensors[f"x_omic{p_idx + 1}"] = torch.from_numpy(vals)
+
+            # Labels
+            lbl = label_data.get(case_id, {})
+            event_time = lbl.get("time", 0.0)
+            c = lbl.get("censor", 0.0)
+
+            return {
+                "x_wsi": wsi_tensor,
+                "wsi_available": torch.tensor(True),
+                "omics_available": torch.tensor(omics_available),
+                "cur_epoch": 0,
+                "event_time": torch.tensor(event_time, dtype=torch.float32),
+                "c": torch.tensor(c, dtype=torch.float32),
+                **omic_tensors,
+            }
+
+    def _collate_fn(batch):
+        out = {}
+        for k in batch[0]:
+            if k == "x_wsi":
+                out[k] = torch.stack([b[k] for b in batch])
+            elif k in ("wsi_available", "omics_available", "cur_epoch", "event_time", "c"):
+                if isinstance(batch[0][k], torch.Tensor):
+                    out[k] = torch.stack([b[k] for b in batch])
+                else:
+                    out[k] = torch.tensor([b[k] for b in batch])
+            elif k.startswith("x_omic"):
+                out[k] = torch.stack([b[k] for b in batch])
+        return out
+
+    val_set = _ValDataset()
+
+    return DataLoader(
+        val_set,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+        collate_fn=_collate_fn,
     )
-
-    return DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0)
 
 
 def experiment_A2_checkpoint(args, device: str = "cuda") -> dict:
@@ -342,11 +519,24 @@ def experiment_A2_checkpoint(args, device: str = "cuda") -> dict:
     flat_cfg["survot_method"] = "archetypal_transport_composition_v5"
     for k, v in detected.items():
         flat_cfg[k] = v
-    if rna_format == "Pathways" and "omic_sizes" not in flat_cfg:
-        flat_cfg["omic_sizes"] = [128, 128, 128, 128]
+    if "omic_sizes" not in flat_cfg:
+        if rna_format == "Pathways":
+            flat_cfg["omic_sizes"] = [128, 128, 128, 128]
+        else:
+            # RNASeq: omic_sizes is not used by the model but must be
+            # present on args to avoid AttributeError in model.__init__.
+            flat_cfg["omic_sizes"] = None
     config_ns = argparse.Namespace(**flat_cfg)
+    # Explicitly ensure omic_sizes exists on the Namespace (even if None)
+    # so model.__init__'s "self.omic_sizes = args.omic_sizes" doesn't raise.
+    if not hasattr(config_ns, "omic_sizes"):
+        setattr(config_ns, "omic_sizes", None)
 
-    model = get_model("archetypal_transport_composition_v5", config_ns)
+    model = get_model(
+        "archetypal_transport_composition_v5",
+        config_ns,
+        omic_input_dim=flat_cfg.get("omic_input_dim"),
+    )
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     encoder_mismatch = [
         k for k in (missing + unexpected)

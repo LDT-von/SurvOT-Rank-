@@ -220,16 +220,23 @@ class ArchetypalTransportCompositionV5(nn.Module):
         x_wsi = kwargs["x_wsi"].float()
         device = x_wsi.device
         batch_size = x_wsi.size(0)
-        current_epoch = int(kwargs.get("cur_epoch", kwargs.get("epoch", 0)))
+        _cur_epoch = kwargs.get("cur_epoch", kwargs.get("epoch", 0))
+        if torch.is_tensor(_cur_epoch):
+            _cur_epoch = _cur_epoch.flatten()[0].item()
+        current_epoch = int(_cur_epoch)
 
         # Encode both modalities into token sequences
         wsi_tokens = self._encode_wsi(x_wsi)
-        omic_tokens = self._encode_omics(kwargs)
+        has_wsi = _availability(kwargs, "wsi_available", batch_size, device)
+        has_omic = _availability(kwargs, "omics_available", batch_size, device)
+        if has_omic.any():
+            omic_tokens = self._encode_omics(kwargs)
+        else:
+            # WSI-only mode: omics encoder not available on disk
+            omic_tokens = torch.zeros(batch_size, 0, self.proj_dim, device=device)
         num_wsi = wsi_tokens.size(1)
 
         # Availability / per-token masks
-        has_wsi = _availability(kwargs, "wsi_available", batch_size, device)
-        has_omic = _availability(kwargs, "omics_available", batch_size, device)
         wsi_mask = _slot_mask(kwargs, "wsi_slot_mask", batch_size, num_wsi, device) & has_wsi[:, None]
         omic_mask = _slot_mask(kwargs, "omics_slot_mask", batch_size, omic_tokens.size(1), device) & has_omic[:, None]
 
@@ -393,15 +400,19 @@ class ArchetypalTransportCompositionV5(nn.Module):
         rna_fmt = getattr(self.args, "rna_format", "Pathways")
         if rna_fmt == "Pathways":
             if self.omic_sizes is None:
-                raise ValueError("omic_sizes required for Pathway format")
-            self.num_pathways = len(self.omic_sizes)
-            self.sig_networks = nn.ModuleList([
-                nn.Sequential(
-                    SNN_Block(dim1=int(sz), dim2=dim),
-                    SNN_Block(dim1=dim, dim2=dim, dropout=0.25),
-                )
-                for sz in self.omic_sizes
-            ])
+                # WSI-only mode: omics not available on disk; build empty encoder.
+                # num_pathways = 0 ensures _encode_omics returns an empty tensor.
+                self.num_pathways = 0
+                self.sig_networks = nn.ModuleList()
+            else:
+                self.num_pathways = len(self.omic_sizes)
+                self.sig_networks = nn.ModuleList([
+                    nn.Sequential(
+                        SNN_Block(dim1=int(sz), dim2=dim),
+                        SNN_Block(dim1=dim, dim2=dim, dropout=0.25),
+                    )
+                    for sz in self.omic_sizes
+                ])
         elif rna_fmt == "GeneEmbedding":
             self.sig_networks = SNN_Block(dim1=768, dim2=dim)
         elif rna_fmt == "RNASeq":

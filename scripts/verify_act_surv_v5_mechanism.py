@@ -82,23 +82,31 @@ def detect_dims_from_state(state: dict) -> dict[str, int]:
         dims["wsi_projection_dim"] = int(state["wsi_mlp.2.weight"].shape[0])
     sig_keys = [k for k in state if k.startswith("sig_networks.")]
     if sig_keys:
-        max_idx = max(int(k.split(".")[1]) for k in sig_keys)
-        if max_idx >= 10:  # Pathways format has at most ~10 sub-networks
-            dims["rna_format"] = "RNASeq"
-            # Sum per-gene input widths to get the full concatenated input dim.
-            total = 0
-            for k in sorted(state.keys()):
-                if k.startswith("sig_networks.") and k.endswith(".0.0.weight"):
-                    total += int(state[k].shape[1])
-            dims["omic_input_dim"] = total
+        # Detect format by sub-module pattern, NOT by module count.
+        # RNASeq:  one SNN_Block → keys like "sig_networks.0.weight"
+        #          (proj_dim × omic_input_dim)
+        # Pathways: N SNN_Block pairs → keys like "sig_networks.{p}.0.0.weight"
+        #          (proj_dim × pathway_gene_count per pathway, where p = pathway idx)
+        # Match first-layer Linear weight keys: sig_networks.{p}.0.0.weight
+        import re
+        pathway_first_layer = {}
+        for k in sig_keys:
+            m = re.match(r"sig_networks\.(\d+)\.0\.0\.weight$", k)
+            if m:
+                pathway_idx = int(m.group(1))
+                pathway_first_layer[pathway_idx] = int(state[k].shape[1])
+        if pathway_first_layer:
+            # Pathways format: one SNN_Block per pathway
+            dims["rna_format"] = "Pathways"
+            dims["omic_sizes"] = [pathway_first_layer[i] for i in sorted(pathway_first_layer)]
         else:
-            omic_dims = []
-            for k in sorted(state.keys()):
-                if k.startswith("sig_networks.") and k.endswith(".0.0.weight"):
-                    omic_dims.append(int(state[k].shape[1]))
-            if omic_dims:
-                dims["omic_sizes"] = omic_dims
-                dims["rna_format"] = "Pathways"
+            # RNASeq format: single concatenated gene network
+            dims["rna_format"] = "RNASeq"
+            # Find the single gene-block weight: shape (proj_dim, omic_input_dim)
+            gene_key = next((k for k in sig_keys if k.endswith(".weight") and
+                             not any(x in k for x in [".0.", ".1.", ".2.", ".3."])), None)
+            if gene_key is not None:
+                dims["omic_input_dim"] = int(state[gene_key].shape[1])
     if "archetype_embedding" in state:
         dims["act5_num_archetypes"] = int(state["archetype_embedding"].shape[0])
     if "_logit_hazard_raw" in state:
