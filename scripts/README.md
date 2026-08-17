@@ -1,6 +1,6 @@
 # 运行脚本索引
 
-> 状态快照：2026-08-11。这里的文件包含正式队列、筛选、监控、汇总和历史兼容入口，不应再统一称为“短包装脚本”。
+> 状态快照：2026-08-17。这里的文件包含正式队列、筛选、监控、汇总和历史兼容入口，不应再统一称为“短包装脚本”。
 
 ## 首选入口
 
@@ -31,7 +31,9 @@ python -m survot_rank.cli train --config <config.yaml>
 
 ## 当前正式/工作入口
 
-- DCT v3.8.2 fixed-full：`run_dct_v382_final_cross_cancer.py`。
+- DCT v3.10 DCT-Reg 正式队列：`run_dct_v310_final_cross_cancer.py`。
+- DCT v3.10 配对消融与机制控制：`run_dct_v310_experiments.py`。
+- DCT v3.8.2 fixed-full：`run_dct_v382_final_cross_cancer.py`（历史对照）。
 - IST-Surv v4.0 冻结队列：`run_ist_v40_final_cross_cancer.py`。
 - CA-PSA / CATET / ArcSurv 的统一协议：
   [THREE_METHOD_FINAL_CROSS_CANCER_PLAN.md](../docs/roadmap/THREE_METHOD_FINAL_CROSS_CANCER_PLAN.md)。

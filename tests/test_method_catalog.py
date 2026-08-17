@@ -17,8 +17,8 @@ from survot_rank.training import model_factory
 
 
 def test_catalog_is_the_complete_factory_source_of_truth():
-    assert len(METHOD_SPECS) == len(METHOD_CATALOG) == len(METHOD_REGISTRY) == 21
-    assert len(METHOD_ALIASES) == 31
+    assert len(METHOD_SPECS) == len(METHOD_CATALOG) == len(METHOD_REGISTRY) == 24
+    assert len(METHOD_ALIASES) == 42
     assert model_factory.METHOD_REGISTRY is METHOD_REGISTRY
     assert model_factory.METHOD_ALIASES is METHOD_ALIASES
     assert model_factory.list_methods() == [spec.key for spec in METHOD_SPECS]

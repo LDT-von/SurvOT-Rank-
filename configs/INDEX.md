@@ -1,6 +1,6 @@
 # 配置文件索引
 
-> 状态快照：2026-08-11。当前共有 79 份 YAML。配置是“某次实验的参数实例”，不是新的方法注册名。
+> 状态快照：2026-08-17。配置是“某次实验的参数实例”，不是新的方法注册名。
 
 方法身份统一从以下命令查询：
 
@@ -22,7 +22,7 @@ python -m survot_rank.cli methods
 
 | 状态 | 方法 | 配置/入口 |
 |---|---|---|
-| Primary | DCT v3.8.2 fixed-full | 由 `scripts/run_dct_v382_final_cross_cancer.py` 在 DCT 基础配置上显式覆盖 |
+| Primary | DCT v3.10 DCT-Reg | `dct_v310_directional_regularized_transport.yaml`；单独 BLCA 配置为 `dct_v310_directional_regularized_transport_blca.yaml` |
 | Candidate | CA-PSA | `cohort_anchored_adaptive_prognostic_slot_attention_blca.yaml` |
 | Candidate | CATET | `censoring_aware_temporal_evidence_transport_blca.yaml` |
 | Candidate | ArcSurv | `archetypal_risk_composition_blca.yaml` |

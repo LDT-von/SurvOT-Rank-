@@ -45,8 +45,8 @@ python -m survot_rank.cli train --config configs/v45_blca.yaml --set seed=5 --se
 python -m survot_rank.cli ensemble --dirs results/seed3 results/seed5
 ```
 
-DCT v3.8.2 fixed-full is the current paper mainline, but its frozen protocol is
-assembled by the dedicated launcher rather than a standalone YAML. V45 and V60
+DCT v3.10 DCT-Reg is the current paper mainline. Its exact three-term objective
+is frozen by both the model class and the dedicated cross-cancer launcher. V45 and V60
 OT Event Rank remain useful config-driven references; they are not the current
 paper-priority label.
 

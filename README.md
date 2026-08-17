@@ -1,9 +1,9 @@
 ﻿# SurvOT-Rank
 
-SurvOT-Rank is a WSI-pathway survival research framework with 21 executable
+SurvOT-Rank is a WSI-pathway survival research framework with 24 executable
 method registrations and one shared training path. The current paper mainline
-is **DCT v3.8.2 fixed-full** /
-`dct_v382_prognostic_transport_reconstruction`. CA-PSA, CATET repaired and
+is **DCT v3.10 Directionally Regularized Transport (DCT-Reg)** /
+`dct_v310_directional_regularized_transport`. CA-PSA, CATET repaired and
 ArcSurv staged are formal candidates; IST-Surv v4.0 is currently behind a
 repair gate.
 
@@ -26,8 +26,11 @@ python -m survot_rank.cli methods
 # Check whether the expected project files exist
 python -m survot_rank.cli doctor
 
-# Current DCT v3.8.2 fixed-full protocol (read-only plan)
-python scripts/run_dct_v382_final_cross_cancer.py plan
+# Current DCT v3.10 DCT-Reg protocol (read-only plan)
+python scripts/run_dct_v310_final_cross_cancer.py plan
+
+# Matched DCT v3.10 objective ablations (read-only plan)
+python scripts/run_dct_v310_experiments.py plan
 
 # Compact reference: V60 OT Event Rank on BLCA
 python -m survot_rank.cli train --config configs/v60_ot_event_rank_blca.yaml

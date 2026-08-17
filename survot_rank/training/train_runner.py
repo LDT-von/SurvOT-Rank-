@@ -351,6 +351,14 @@ def get_split(args, dataset_factory, fold):
 # 璁粌 / 璇勪及寰幆
 # ============================================================
 
+def compose_batch_objective(loss_surv, auxiliary_loss, batch_size):
+    """Compose the shared mean survival loss and a method auxiliary loss."""
+
+    if int(batch_size) < 1:
+        raise ValueError(f"batch_size must be positive, received {batch_size!r}")
+    return loss_surv / int(batch_size) + auxiliary_loss
+
+
 def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, log_file):
     from tqdm import tqdm
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -390,9 +398,11 @@ def train_one_epoch(args, epoch, model, loader, optimizer, scheduler, loss_fn, l
             loss_surv = loss_fn(logits, event_time, c)
         else:
             loss_surv = loss_fn(logits, y_disc, event_time, c)
-        loss_surv = loss_surv / y_disc.shape[0]
-
-        batch_objective = loss_surv + slot_loss
+        batch_objective = compose_batch_objective(
+            loss_surv,
+            slot_loss,
+            y_disc.shape[0],
+        )
         loss = batch_objective / accumulation_steps
         loss.backward()
         if hasattr(model, "dct_lambda_listwise"):

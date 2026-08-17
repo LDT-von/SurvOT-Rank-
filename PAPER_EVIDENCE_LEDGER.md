@@ -1,19 +1,18 @@
-# DCT v3.8.2 paper evidence ledger
+# DCT v3.10 paper evidence ledger
 
-This ledger collects the C-index numbers and audit metrics produced by the paper-evidence ablation launchers and the audit loader. It is the canonical machine-readable snapshot for the v3.8.2 paper. Numbers are pulled from the raw ``split_<fold>_results_final.pkl`` files and the audit JSON outputs; if a cell is empty the run has not completed yet.
+This ledger collects the C-index numbers and audit metrics produced by the paper-evidence ablation launchers and the audit loader. It is the canonical snapshot for DCT v3.10. Numbers are pulled from raw ``split_<fold>_results_final.pkl`` files and audit JSON outputs; if a cell is empty the run has not completed yet.
 
 ## 0. Frozen-recipe inventory
 
 | Recipe | Method key | File | Aux-loss set |
 |---|---|---|---|
-| **v3.8.2 frozen-full (paper mainline)** | `dct_v382_prognostic_transport_reconstruction` | `configs/distributional_counterfactual_transport_<cancer>.yaml` | NLL + 0.10·IPCW + 0.05·direction + 0.03·dose + 0.02·reconfiguration + 0.05·MGPTR (fixed) |
-| **v3.8.2 minimal (new)** | `dct_v382_minimal_transport` | `configs/dct_v382_minimal_transport_<cancer>.yaml` | NLL + 0.10·IPCW + 0.05·direction (everything else forced to 0) |
+| **v3.10 DCT-Reg (paper mainline)** | `dct_v310_directional_regularized_transport` | `configs/dct_v310_directional_regularized_transport.yaml` | NLL + 0.10·IPCW + 0.05·direction |
+| v3.8.2 frozen-full (historical) | `dct_v382_prognostic_transport_reconstruction` | `configs/distributional_counterfactual_transport_<cancer>.yaml` | NLL + IPCW + direction + dose + reconfiguration + MGPTR |
+| v3.8.2 minimal (development precursor) | `dct_v382_minimal_transport` | `configs/dct_v382_minimal_transport_blca.yaml` | NLL + IPCW + direction |
 
-The minimal recipe is the smallest set of components that can answer the
-monotone dose-response claim.  It exists alongside the paper mainline so
-both recipes can be evaluated head-to-head and the contribution of the
-removed terms (MGPTR, dose, reconfiguration, adaptive weighting) can be
-isolated without rerunning the full fixed-full matrix.
+DCT v3.10 freezes the smallest selected objective under a new method identity.
+Historical results remain historical until the matched v3.10 experiment queue
+finishes.
 
 ## A. Score-first ablation C-index (3 cancers × fold 1)
 
@@ -31,18 +30,16 @@ _No audit results available yet. Run::
 | Pair | Target cancer | Fold | C-index (target) |
 |---|---|---:|---:|
 
-## D. Pass criteria (paper-facing)
+## D. Evaluation criteria (paper-facing)
 
-- Ablation 1 (`fixed_coupling`): C-index should drop ≥ 0.04 from fixed-full. Audit ``reconfiguration > margin`` should drop below 0.20.
-- Ablation 2 (`random_anchors`): C-index should drop ≥ 0.03 from fixed-full. Audit ``direction rate`` should fall back to chance (≤ 0.55).
-- Ablation 4 (`null_calibration`): audit metrics should match the random-signal baseline (direction ≈ 0.50, dose monotone ≈ chance).
-- Ablation 5 (`stage_randomization`): C-index should drop ≥ 0.02 if exact edge placement matters.
-- Cross-cancer transfer: target C-index ≥ 0.60 of source for the prototype to count as cross-cancer semantic.
+- Compare paired outer-fold differences with confidence intervals; do not use arbitrary post-hoc drop thresholds.
+- `fixed_coupling`, `noisy_batch_mean_anchors` and `permuted_reference` must weaken the held-out directional response if their corresponding mechanism is load-bearing.
+- Every re-solved or replayed coupling must satisfy the same marginal-error tolerance.
+- Shuffled/uniform feasible-plan audits must test whether the decoder functionally uses the coupling.
 
-## E. Minimal-recipe one-sentence claim
+## E. Frozen one-sentence claim
 
-> **DCT v3.8.2 minimal: IPCW ranking + direction loss alone guarantee that re-optimised Sinkhorn under high/low risk anchors moves the predicted survival risk in the requested direction, providing a monotone dose-response guarantee that the larger auxiliary-loss set does not improve upon.**
+> **DCT v3.10 actively regularizes the re-solved transport-risk response to be directionally consistent under training-fold prognostic cost interventions.**
 
-The claim is verifiable on the frozen recipe: the ``no_direction`` row of
-``run_dct_v382_paper_ablations.py`` should show a C-index drop of at least
-0.005 on BLCA folds 1/2/4 once the launcher completes.
+The claim remains pending until the matched objective and mechanism experiments
+in `docs/DCT_V310_DCT_REG.md` are completed.

@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Iterable
 
 
-CATALOG_UPDATED = "2026-08-11"
-PRIMARY_METHOD = "dct_v382_prognostic_transport_reconstruction"
+CATALOG_UPDATED = "2026-08-17"
+PRIMARY_METHOD = "dct_v310_directional_regularized_transport"
 METHOD_STATUSES = ("primary", "candidate", "repair", "research", "reference")
 STATUS_LABELS = {
     "primary": "current paper mainline",
@@ -153,7 +153,7 @@ METHOD_SPECS = (
         "dct_v382_prognostic_transport_reconstruction",
         "DCT v3.8.2 Prognostic Transport Reconstruction",
         "dct",
-        "primary",
+        "reference",
         "dct_v382_prognostic_transport_reconstruction",
         "DCTV382PrognosticTransportReconstruction",
         aliases=("dct_v382", "dct_v3_8_2"),
@@ -162,10 +162,19 @@ METHOD_SPECS = (
         "dct_v382_minimal_transport",
         "DCT v3.8.2 Monotone Dose-Response (minimal)",
         "dct",
-        "candidate",
+        "reference",
         "dct_v382_minimal_transport",
         "DCTV382MonotoneDoseResponse",
         aliases=("dct_v382_minimal", "dct_minimal", "dct_v3_8_2_minimal", "dct_monotone"),
+    ),
+    MethodSpec(
+        "dct_v310_directional_regularized_transport",
+        "DCT v3.10 Directionally Regularized Transport (DCT-Reg)",
+        "dct",
+        "primary",
+        "dct_v310_directional_regularized_transport",
+        "DCTV310DirectionalRegularizedTransport",
+        aliases=("dct_v310", "dct_v3_10", "dct_reg", "dct_directional_reg"),
     ),
     MethodSpec(
         "dct_v383_intervention_consistency_centered",

@@ -1,10 +1,10 @@
 # SurvOT-Rank 方法注册与状态索引
 
-> 状态快照：2026-08-11。这个文件只回答“方法叫什么、现在处于什么角色、从哪里进入”，不保存实验分数。
+> 状态快照：2026-08-17。这个文件只回答“方法叫什么、现在处于什么角色、从哪里进入”，不保存实验分数。
 
 ## 先看结论
 
-- **当前论文主线**：DCT v3.8.2 fixed-full，对应注册名 `dct_v382_prognostic_transport_reconstruction`。
+- **当前论文主线**：DCT v3.10 DCT-Reg，对应注册名 `dct_v310_directional_regularized_transport`。
 - **正式候选**：CA-PSA、CATET repaired、ArcSurv staged。
 - **修复闸门**：IST-Surv v4.0 正在进行 repair-gate 检查；旧机制结果不能代表修复版结论。
 - **基线/历史对照**：V60 OT Event Rank、V50、V45/PET、V31。
@@ -28,11 +28,13 @@ python -m survot_rank.cli methods --json
 代码中的唯一注册源是
 `survot_rank/research/methods/catalog.py`。训练参数的合法方法名、模型工厂注册表和数字别名均从这里生成，不再分别维护。
 
-## 21 个规范注册名
+## 24 个规范注册名
 
 | 状态 | 方法 | 规范注册名 | 常用别名 | 机制说明 |
 |---|---|---|---|---|
-| **Primary** | DCT v3.8.2 fixed-full | `dct_v382_prognostic_transport_reconstruction` | `dct_v382`, `dct_v3_8_2` | [DCT v3.8.2](DCT_V382_MGPTR.md) |
+| **Primary** | DCT v3.10 DCT-Reg | `dct_v310_directional_regularized_transport` | `dct_v310`, `dct_reg` | [DCT v3.10](DCT_V310_DCT_REG.md) |
+| **Reference** | DCT v3.8.2 fixed-full | `dct_v382_prognostic_transport_reconstruction` | `dct_v382`, `dct_v3_8_2` | [DCT v3.8.2](DCT_V382_MGPTR.md) |
+| **Reference** | DCT v3.8.2 minimal | `dct_v382_minimal_transport` | `dct_v382_minimal`, `dct_monotone` | [DCT v3.8.2](DCT_V382_MGPTR.md) |
 | **Candidate** | CA-PSA | `cohort_anchored_adaptive_prognostic_slot_attention` | `ca_psa`, `capsa` | [CA-PSA](methods/cohort_anchored_adaptive_prognostic_slot_attention.md) |
 | **Candidate** | CATET | `censoring_aware_temporal_evidence_transport` | — | [CATET](methods/catet_censoring_aware_temporal_evidence_transport.md) |
 | **Candidate** | ArcSurv | `archetypal_risk_composition` | `arcsurv`, `arc_surv` | [ArcSurv](methods/arcsurv_archetypal_risk_composition.md) |
@@ -52,6 +54,7 @@ python -m survot_rank.cli methods --json
 | Research | Stagewise Prognostic Transport | `stagewise_prognostic_transport` | — | [Stagewise PT](methods/stagewise_prognostic_transport.md) |
 | Research | Faithful Evidence Transport | `faithful_evidence_transport` | — | [FET](methods/faithful_evidence_transport.md) |
 | Research | ACT-Surv v4.2 | `archetypal_transport_composition` | `act_surv`, `actsurv`, `v42`, `dct_v42` | — |
+| Candidate | ACT-Surv v5 | `archetypal_transport_composition_v5` | `act_surv_v5`, `actv5`, `v5` | — |
 | Research | V70 PSPC-Surv | `v70_patient_specific_prognostic_circuits` | `70`, `pspc_surv`, `pspc` | [V70](methods/v70_patient_specific_prognostic_circuits.md) |
 
 ## 命名约定
