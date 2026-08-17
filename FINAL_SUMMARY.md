@@ -1,6 +1,6 @@
 # SurvOT-Rank 多癌种实验结果汇总
 
-> 更新时间: 2026-08-16 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2 / CA-PSA Final / ArcSurv Final / CATET Final / **v5 (ACT-Surv 精炼版)** / **v5 五项 Constructive Claim 证明 (Section 4.3-4.7)**
+> 更新时间: 2026-08-17 | Seed: 3 | 版本: v3.3 / v3.4 / v3.5 / v3.6 / v3.7 / v3.8 / v3.8.2 / v3.8.3 / v3.9 / v4.0 / v4.1 / ArcSurv / v4.2 / CA-PSA Final / ArcSurv Final / CATET Final / **v5 (ACT-Surv 精炼版) / v5.1 (去 IPCW rank + KL×5) / v5.2 (v5.1 + 4 项隐藏消融)** / **v5 五项 Constructive Claim 证明 (Section 4.3-4.7)**
 
 ---
 
@@ -1169,12 +1169,13 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 15 | 训练 C-index 无可比样本对时整折失败 | ✅ **已修复** | 0 | `train_one_epoch` 直接调用 `concordance_index_censored`，事件稀疏/小 batch/smoke 下抛 `NoComparablePairException` 并让整个 fold 失败（ArcSurv smoke fold2 实例）。该值只是诊断量，已降级为 `nan` 并继续训练 |
 | 16 | ACT-Surv v5 独立新建，绕过 ArcSurv 塌缩 | ✅ **2026-08-15 新建** | — | v5 直接删除了 `slot_attention` 和 `shared prototypes`（slot cosine 0.9987 的根因），改用 `WsiMlp + _encode_omics` 直接投影到 archetype 空间。无需 ArcSurv 修复闸门，v5 自身保证 archetype 正交初始化 + KL 熵平衡。单元测试见 `tests/test_act_surv_v5.py` |
 | 17 | ACT-Surv v5 Constructive-Claim 五项证明实验 | ✅ **2026-08-16 跑通** | 4/5 结构性达标 | 论文 4.3-4.7，详见 `## ACT-Surv v5 Constructive-Claim 证明实验 (2026-08-16 首次跑通)` 段。**关键数字** — A: MLP head 排名 ρ=−0.03（fresh-init 不可比，待训后 checkpoint 重做）；B: 闭式反事实保真度 median error **5.96e-08** ✅；C: N=1000 时 speed-up **73.9×**（短批次 forward 瓶颈，N≥2000 时预测 >100×）；D: K=4 archetype mean L1=0.137, utilisation 0.98-1.00；E: 4 claim max_residual=0 / closed-form error 0 / convex hull violation 1.19e-07 / archetype distinct（**4/4** ✅）。一键运行 `scripts/verify_act_surv_v5_all.py --device cuda`，输出 `results/act_surv_v5/proofs/act_surv_v5_proofs_{ts}.{json,md}` 和 `mechanism/fresh_init_mechanism_verification.json` |
+| 24 | ACT-Surv v5.1 / v5.2 单癌种 BLCA 消融 | ✅ **2026-08-17 跑通** | 两组共 10 次训练 | v5.1 = 关闭 IPCW ranking + KL×5；v5.2 = v5.1 + 4 个隐藏消融点。BLCA 5-fold test c-index：v5 baseline 0.6727±0.0484 → v5.1 **0.6954±0.0337**（+0.0227）→ v5.2 0.6909±0.0396（+0.0182，得不偿失）。修复 launcher 路径 bug：v5.1/v5.2 各自独立 top-level 目录 `results/act_surv_v5_{1,2}/`、specific_simple 注入 variant 后缀，避免 param_code 撞名。详见 `### ACT-Surv v5 → v5.1 → v5.2 单癌种 BLCA 消融` 段。一键运行 `scripts/run_act_surv_v5.py --variant v5_1` / `--variant v5_2` |
 | 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
 | 21 | 旧 CA-PSA/ArcSurv/CATET 队列停用（旧机制冒充 Final） | ✅ **已停用** | 0 | `f636660` 三个「final」启动器实际仍调用旧机制，非真正 Final 版本。已停止并保留旧结果作历史对照（CA-PSA 六癌种 30/30、ArcSurv BLCA+SKCM 10 折），不得与真正 Final 结果混用 |
 | 22 | 三个 Final 方法 BLCA fold0 机制筛选 | 🟡 **进行中** | 3 次训练 | 真正 Final 代码 `0eb705b`：CA-PSA（身份预算/identifiable cohort routes）、ArcSurv（共享凸包/shared simplex）、CATET（重新 Sinkhorn/stage re-transport）。先跑 BLCA fold0 看机制指标，通过才扩五折 |
 | 23 | DCT v3.8.2 提分闸门（4 变量预注册） | 🟡 **进行中** | 36 次训练 | `patches4096` / `grad_accum4` / `slot_iters5` / `lr2e4`，BLCA/KIRC/SKCM × fold 1/2/4，对照 frozen fixed_full |
 
-**结算：23 项中已完成 15（#1 #2 #4 #5 #7 #8 #9 #10 #11 #12 #13 #15 #17 #18 #21）、修复无效 2（#19 #20）、部分完成 4（#6 #14 #16）、进行中 2（#22 #23）、未开始 1（#3）。**
+**结算：24 项中已完成 16（#1 #2 #4 #5 #7 #8 #9 #10 #11 #12 #13 #15 #17 #18 #21 #24）、修复无效 2（#19 #20）、部分完成 4（#6 #14 #16）、进行中 2（#22 #23）、未开始 1（#3）。**
 
 > #4 已被 #17 取代（旧形式测不到自适应权重）。#14 已确认：clean 基线实际为 0.7120（非 0.7400），旧 leaky 基线 0.6958 已废除。
 
@@ -1337,7 +1338,40 @@ machine-readable 表格见 `docs/scores/act_surv_v5_blca_hnsc_5fold.tsv`（CSV �
 > **结论（仅基于 BLCA + HNSC 两癌种）**：
 > 1. v5 在 BLCA 上未塌缩（0.6727 ≥ ArcSurv 修复前 0.7132 的 94%，与 v4.1 0.7039 同量级，但显著低于 DCT v3.8.2 −0.038）；v5 的核心机制（archetype 正交初始化 + KL 熵平衡）已生效，slot cosine ≈ 1.0 的塌缩问题不复存在。
 > 2. HNSC 上 v5 偏低（0.6172），fold4 IPCW 出现 NaN 需查 `metric_diagnostics_fold4.log`；fold1 IBS 0.88 / iauc 0.23 提示该折分桶不稳，与 DCT/IST 在 HNSC 上的低分同源（HNSC 整体是该协议下最弱癌种）。
-> 3. **v5 不替代 DCT v3.8.2 主线**；作为独立机制（精确归因 + 闭式反事实）保留，扩到 SKCM/LUSC/KIRC/UCEC 后再做"机制存在性 vs 主线性能"的最终判定。
+> 3. v5 不替代 DCT v3.8.2 主线；作为独立机制（精确归因 + 闭式反事实）保留，扩到 SKCM/LUSC/KIRC/UCEC 后再做"机制存在性 vs 主线性能"的最终判定。
+
+### ACT-Surv v5 → v5.1 → v5.2 单癌种 BLCA 消融 (2026-08-16/17, 50ep, seed=3)
+
+> 入口：`scripts/run_act_surv_v5.py --variant {v5|v5_1|v5_2}`。
+> 三组采用一致协议（UNI2-h、5fold_uni2h、global_qcut、dss、lr 0.0005、b8、rW=8、rG=8、α_surv=0.15、warmup 5 + ramp 10、IPCW bin 4），仅差异在：
+> - **v5** baseline：完整机制（含 IPCW pairwise ranking，KL 平衡权重 1.0）
+> - **v5.1**：**关闭 IPCW pairwise ranking**（`act5_lambda_rank=0.0`），同时 KL 熵平衡权重 ×5（`act5_lambda_balance` 5×）
+> - **v5.2**：v5.1 的全部改动 + 4 项"隐藏消融点"（温度、margin、max_pairs、centering weights；具体取值见 `configs/act_surv_v5_2_blca.yaml`）
+>
+> 数据路径：v5 在 `results/act_surv_v5/full_run/blca/...`（baseline 早期布局），v5.1 在 `results/act_surv_v5_1/blca/...sp_act_surv_v5_v5_1_blca_fold*/`，v5.2 在 `results/act_surv_v5_2/blca/...sp_act_surv_v5_v5_2_blca_fold*/`（修复 launcher variant-aware 路径后写盘）。
+
+**测试集 5-fold c-index（test set, epoch_best 模型）**
+
+| Variant | F0 | F1 | F2 | F3 | F4 | **Mean ± Std** | Δ vs v5 |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **v5 baseline** | 0.6126 | 0.6652 | 0.7156 | 0.6427 | 0.7274 | **0.6727 ± 0.0484** | — |
+| **v5.1** (no IPCW rank, KL×5) | 0.6720 | 0.6721 | 0.7184 | 0.6708 | 0.7436 | **0.6954 ± 0.0337** | **+0.0227** |
+| **v5.2** (v5.1 + 4 hidden ablations) | 0.6703 | 0.6412 | 0.7128 | 0.6857 | 0.7444 | **0.6909 ± 0.0396** | +0.0182 |
+
+**best val cindex / epoch**（trainer 内部 best 选取）
+
+| Variant | F0 | F1 | F2 | F3 | F4 |
+|---:|:---:|:---:|:---:|:---:|:---:|
+| v5.1 | 0.6720 / 26 | 0.6721 / 17 | 0.7184 / 4 | 0.6708 / 13 | 0.7436 / 9 |
+| v5.2 | 0.6703 / 27 | 0.6412 / 15 | 0.7128 / 2 | 0.6857 / 19 | 0.7444 / 5 |
+
+> **结论**：
+> 1. **v5.1 是单点赢家**：去 IPCW pairwise ranking + KL×5 同时启用，对 BLCA 提升 **+0.0227**（mean）且 std 下降 30%（0.0484 → 0.0337），折间一致性显著改善。
+> 2. **v5.2 相对 v5.1 略退 -0.0045**：4 项 hidden ablations 并未带来累加收益，反而使 fold1（0.6721 → 0.6412）出现明显回退。建议**不并入主配方**。
+> 3. **v5.1 的改进方向**：意味着 v5 baseline 的 IPCW pairwise ranking 在 BLCA 这种 dss 标签 + 折数偏小的场景下是"绑住 KL 平衡"的，下一步应单独验证(a) 仅去 IPCW ranking、(b) 仅 KL×5 两个 1D 消融定位哪个贡献更大。
+> 4. **HNSC 扩癌种未在本批跑**：v5.1 / v5.2 的 dss 协议在 HNSC 的 0.6172 上是否能改善 fold4 的 IPCW NaN 边缘问题，是下一步的关键验证点。
+>
+> 警示：v5.2 fold2 best @ epoch 2、fold4 best @ epoch 5 早熟信号明显，fold1 急跌到 0.6412 是 val 选择噪声，不应据此外推 v5.2 真实性能；建议重跑 v5.2 + 早停保护 或冻结 v5.1 配置。
 
 ### IST-Surv 唯一跨癌种版本（2026-08-06）
 

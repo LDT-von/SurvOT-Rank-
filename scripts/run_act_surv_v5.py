@@ -69,6 +69,16 @@ SUPPORTED_CANCERS = (
 DEFAULT_CANCERS = ("blca", "kirc", "ucec", "hnsc", "lusc", "skcm")
 DEFAULT_FOLDS = (0, 1, 2, 3, 4)
 RESULT_ROOT = Path("results/act_surv_v5")
+# Each variant writes to its own top-level results dir, so identical recipes
+# (same lr/batch/dim/seed → identical param_code) don't collide in trainer's
+# per-experiment subdirectory. Without this, v5_1 results would be silently
+# written under act_surv_v5/blca/.../sp_act_surv_v5_blca_fold*/ and become
+# indistinguishable from the v5 baseline checkpoint series.
+_VARIANT_RESULT_ROOT = {
+    "v5": "results/act_surv_v5",
+    "v5_1": "results/act_surv_v5_1",
+    "v5_2": "results/act_surv_v5_2",
+}
 WHICH_SPLITS = "5fold_uni2h"
 DATA_ROOT = DEFAULT_DATA_ROOT  # mutable; main() may overwrite via --data-root
 
@@ -148,6 +158,7 @@ def build_jobs(
     if not dry_run:
         verify_child_cuda(sys.executable, dict(os.environ))
     jobs: list[Job] = []
+    result_root = Path(_VARIANT_RESULT_ROOT[variant])
 
     for cancer in cancers:
         if cancer not in SUPPORTED_CANCERS:
@@ -178,7 +189,7 @@ def build_jobs(
                 # Fall back to baseline if a variant doesn't exist for this cancer
                 print(f"WARN: {config.name} missing, falling back to act_surv_v5_{cancer}.yaml")
                 config = REPO_ROOT / "configs" / f"act_surv_v5_{cancer}.yaml"
-            result_dir = RESULT_ROOT / cancer / f"fold{fold}"
+            result_dir = result_root / cancer / f"fold{fold}"
             result_dir.mkdir(parents=True, exist_ok=True)
 
             fold_overrides = {
@@ -186,7 +197,17 @@ def build_jobs(
                 "k_start": fold,
                 "k_end": fold + 1,
                 "study": cancer,
-                "specific_simple": f"act_surv_v5_{cancer}_fold{fold}",
+                # Include the variant tag in specific_simple so trainer's param_code
+                # (= "<lr>_b<bs>_<label>_Dim_<dim>_e_<ep>_g_<rna>_sig_<sig>_seed<n>"
+                #   "_rW_<w>_rG_<g>_sp_<specific_simple>") differs across variants.
+                # Without this, v5 / v5_1 / v5_2 write to the SAME trainer experiment
+                # directory (same param_code → same leaf folder), silently overwriting
+                # each other.
+                "specific_simple": (
+                    f"act_surv_v5_{cancer}_fold{fold}"
+                    if variant == "v5"
+                    else f"act_surv_v5_{variant}_{cancer}_fold{fold}"
+                ),
             }
             if "max_epochs" in fold_overrides and fold_overrides["max_epochs"] > 2:
                 # Logging pipe for long jobs
@@ -256,8 +277,9 @@ def main():
         help="Print commands without running",
     )
     parser.add_argument(
-        "--result-root", default=str(RESULT_ROOT),
-        help="Override result root directory",
+        "--result-root", default=None,
+        help="Override result root directory (default: per-variant auto, "
+             "e.g. results/act_surv_v5_1 for --variant v5_1)",
     )
     parser.add_argument(
         "--variant", default="v5", choices=["v5", "v5_1", "v5_2"],
@@ -270,6 +292,9 @@ def main():
 
     cancers = [c.strip() for c in args.cancers.split(",")]
     folds = args.folds
+
+    if args.result_root is None:
+        args.result_root = _VARIANT_RESULT_ROOT[args.variant]
 
     overrides = overrides_for_variant(args.variant)
     overrides["results_dir"] = args.result_root
