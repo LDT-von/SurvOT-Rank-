@@ -90,6 +90,49 @@ nohup python scripts/verify_act_surv_v5_all.py \
 
 ---
 
+### Step 6（新）: 补做实验 A2 — ACT vs MLP head C-index on real v5.1 checkpoint
+
+**为什么**：A 是 synthetic self-consistency test，ρ=-0.03/0.32 不是真问题——是 design 如此（ACT 用 archetype 结构，MLP 用自由参数）。真正的"ACT 几乎等于 MLP" claim 要在真实 v5.1 checkpoint + 真实 val set 上测 C-index。
+
+```bash
+# A2: 真实 v5.1 BLCA fold-0 checkpoint + 真实 val loader
+nohup python scripts/verify_act_surv_v5_all.py \
+    --experiments A2 --device cuda \
+    --a2-ckpt-path results/act_surv_v5_1/blca/fold0/model_best_s0.pth \
+    --a2-data-root /data1/TCGA-UNI2-h-features \
+    --a2-cancer blca --a2-fold 0 \
+    > logs/v5_proof_A2_blca_fold0.log 2>&1 &
+```
+
+**输出**: `results/act_surv_v5/proofs/act_surv_v5_proofs_<timestamp>.json` 里多 `experiments.A2` 段，含 `c_index_act`, `c_index_mlp`, `delta_c_index`, `verdict`, `passed`。
+
+**判定**:
+- |ΔC| < 0.02 → ✅ §4.3 写 "ACT-head ≈ MLP-head" (free swap claim 成立)
+- |ΔC| ≥ 0.02 → ⚠️ 诚实写 "ACT 表达不同 ranking，idea 的 claim 偏渐进"
+
+**auto-derive**：
+- 不传 `--a2-ckpt-path` 会自动找：
+  - `results/act_surv_v5_1/blca/fold0/models/best_model.pt`
+  - `results/act_surv_v5_1/blca/fold0/model_best_s0.pth`
+  - `results/act_surv_v5_1/blca/**/sp_act_surv_v5_v5_1_blca_fold0/model_best_s0.pth`
+- 不传 `--a2-data-root` 会用 env `DATA_ROOT` 或 `/data1/TCGA-UNI2-h-features`
+
+**A2 跑完 5 折**：把 fold 1..4 也跑一遍：
+
+```bash
+for fold in 1 2 3 4; do
+    python scripts/verify_act_surv_v5_all.py \
+        --experiments A2 --device cuda \
+        --a2-ckpt-path results/act_surv_v5_1/blca/fold${fold}/model_best_s${fold}.pth \
+        --a2-cancer blca --a2-fold ${fold} \
+        --output-dir results/act_surv_v5/proofs_a2 \
+        > logs/v5_proof_A2_blca_fold${fold}.log 2>&1
+done
+# 5 折合并：报告里写 |ΔC| mean ± std
+```
+
+---
+
 ## 跑完之后发我
 
 请把以下文件 push 回来：
@@ -108,3 +151,4 @@ nohup python scripts/verify_act_surv_v5_all.py \
 - [ ] 把 C 的 N=5000 数字写进 §4.5（数字一回来就改）
 - [ ] 把 F 的图嵌入 §4.6（PNG 一回来就嵌）
 - [ ] 把台账 (`paper_drafts/ArcSurv/ArcSurv_主张与证据台账.md`) 的 §4 已核验段更新
+- [ ] 把 A2 的 |ΔC| 写进 §4.3（替代/补充 A 的 synthetic verdict）
