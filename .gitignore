@@ -59,6 +59,26 @@ survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold/*
 survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/*
 !survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/blca/
 !survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/blca/fold_*.csv
+# 2026-08-18: extend legacy splits to all 10 cancers (mirrored verbatim from
+# SlotSPE-main) so --which-splits=5fold_legacy works cross-cancer.
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/brca/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/brca/fold_*.csv
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/coadread/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/coadread/fold_*.csv
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/hnsc/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/hnsc/fold_*.csv
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/kirc/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/kirc/fold_*.csv
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/luad/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/luad/fold_*.csv
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/lusc/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/lusc/fold_*.csv
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/skcm/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/skcm/fold_*.csv
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/stad/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/stad/fold_*.csv
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/ucec/
+!survot_rank/research/legacy/slotspe_runtime/dataset_csv/splits/5fold_legacy/ucec/fold_*.csv
 
 # Local open-access papers and upstream code snapshots used for method study.
 references/*/papers/*.pdf
