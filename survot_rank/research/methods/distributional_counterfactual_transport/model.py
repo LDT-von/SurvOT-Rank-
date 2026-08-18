@@ -418,10 +418,7 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
         for stage_idx in range(self.spt_num_stages):
             stage_plans, stage_distances = [], []
             for cost_idx in range(costs.size(2)):
-                if (
-                    bool(getattr(self, "dct_fixed_coupling", False))
-                    and self._factual_plan_cache is not None
-                ):
+                if bool(getattr(self, "dct_fixed_coupling", False)):
                     plan = self._replay_cached_plan(stage_idx, cost_idx, costs, rows, cols)
                 else:
                     plan = self._log_sinkhorn(
@@ -451,22 +448,7 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
                 eps=float(getattr(self.args, "otehv2_eps", 0.05)),
                 max_iter=self.ot_iter,
             )
-        cached_plan = cached[stage_idx][cost_idx]
-        target_batch = rows.size(0)
-        cached_batch = cached_plan.size(0)
-        if target_batch % cached_batch != 0:
-            raise RuntimeError(
-                "fixed-coupling replay requires the intervention batch to be "
-                f"an integer multiple of the factual batch; got {target_batch} "
-                f"and {cached_batch}"
-            )
-        if target_batch != cached_batch:
-            cached_plan = cached_plan.repeat(target_batch // cached_batch, 1, 1)
-        return self._project_coupling(
-            cached_plan,
-            rows[:, stage_idx],
-            cols[:, stage_idx],
-        )
+        return self._project_coupling(cached[stage_idx][cost_idx], rows[:, stage_idx], cols[:, stage_idx])
 
     def _stage_membership_weights(self, event_time, censorship):
         """IPCW weights for event-in-stage (high) and survived-past-stage (low)."""
@@ -743,9 +725,6 @@ class DistributionalCounterfactualTransport(FaithfulEvidenceTransport):
             self._reset_ipcw_memory_for_epoch(epoch)
 
         factual_costs, rows, cols, evidence_gate = self._cost_tensor(slots_wsi, slots_omic)
-        if self.dct_fixed_coupling:
-            # Freeze this batch's factual plan, not the previous batch's cache.
-            self._factual_plan_cache = None
         factual_plans, ot_distance = self._plans_from_cost_tensor(factual_costs, rows, cols, epoch)
         if self.dct_fixed_coupling:
             # Cache the factual plans (detached) so the intervention path can
