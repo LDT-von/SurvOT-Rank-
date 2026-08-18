@@ -20,6 +20,9 @@ Usage:
     python scripts/run_act_surv_v5.py --cancers blca --variant v5_3 --folds 0 1 2 3 4 --which-splits 5fold_legacy
     python scripts/run_act_surv_v5.py --cancers blca --variant v5_4 --folds 0 1 2 3 4 --which-splits 5fold_legacy
 
+    # v5_k4 K=6 vs K=4 ablation (proves K=6 is necessary)
+    python scripts/run_act_surv_v5.py --cancers blca --variant v5_k4 --folds 0 1 2 3 4 --which-splits 5fold_legacy
+
     # 6-cancer cross-cancer
     python scripts/run_act_surv_v5.py --cancers blca,kirc,ucec,hnsc,lusc,skcm
 
@@ -302,10 +305,10 @@ def main():
         "--variant", default="v5",
         choices=["v5", "v5_1", "v5_2", "v5_3", "v5_4", "v5_k4"],
         help="Config variant: "
-              "v5 (baseline, K=6), "
-              "v5_1 (no IPCW ranking + KLx5), "
-              "v5_2 (v5.1 + 4 hidden tweaks), "
-              "v5_3 (1D ablation: no IPCW ranking only), "
+              "v5 (baseline, K=6, ranking+balance), "
+              "v5_1 (main recipe: no ranking + KLx5), "
+              "v5_2 (v5.1 + temperature/margin tweaks), "
+              "v5_3 (1D ablation: no ranking only), "
               "v5_4 (1D ablation: KLx5 only), "
               "v5_k4 (K=4 ablation vs K=6 baseline)",
     )

@@ -522,17 +522,19 @@ def main():
     print(f"  K={model.num_archetypes} archetypes, C={model.num_classes} classes")
     print(f"  epsilon={model.epsilon}, hazard_scale={model.hazard_scale}")
 
-    # Optionally try to load a checkpoint for real-data verification. If the
-    # checkpoint was trained with a different encoder layout (e.g. legacy per-gene
-    # SNN for RNASeq), strict=False + missing keys is fine; mismatched shapes for
-    # the encoder we DO have will trigger a hard error which we catch and fall back
-    # to fresh-init.
+    # Optionally try to load a checkpoint for real-data verification.
+    # Search order: (1) v5_1 variant → (2) v5 variant → (3) nested path
     state_dict = None
     ckpt_path = None
     if not args.fresh and args.checkpoint != "":
         if args.checkpoint:
             ckpt_path = Path(args.checkpoint)
         else:
+            # Try v5_1 first (main recipe), then v5 (baseline), then nested
+            v5_1_path = (
+                REPO_ROOT / "results" / "act_surv_v5_1" / args.cancer / f"fold{args.fold}"
+            )
+            v5_path = REPO_ROOT / "results" / "act_surv_v5" / args.cancer / f"fold{args.fold}"
             nested = (
                 REPO_ROOT
                 / "results"
@@ -541,11 +543,29 @@ def main():
                 / args.cancer
                 / "SurvOTRank_archetypal_transport_composition_v5"
             )
-            nested_matches = list(nested.glob(f"*sp_act_surv_v5_{args.cancer}_fold{args.fold}/model_best_s{args.fold}.pth"))
-            if nested_matches:
-                ckpt_path = nested_matches[0]
-            else:
-                ckpt_path = REPO_ROOT / "results" / "act_surv_v5" / args.cancer / f"fold{args.fold}" / "models" / "best_model.pt"
+
+            for search_root, search_name in [
+                (v5_1_path, "v5_1"),
+                (v5_path, "v5"),
+            ]:
+                if search_root.exists():
+                    for d in search_root.iterdir():
+                        if d.is_dir() and d.name.endswith(f"_fold{args.fold}"):
+                            matches = list(d.glob("model_best_s*.pth"))
+                            if matches:
+                                ckpt_path = matches[0]
+                                break
+                if ckpt_path:
+                    break
+
+            if ckpt_path is None or not ckpt_path.exists():
+                nested_matches = list(nested.glob(
+                    f"*sp_act_surv_v5_{args.cancer}_fold{args.fold}/model_best_s{args.fold}.pth"
+                ))
+                if nested_matches:
+                    ckpt_path = nested_matches[0]
+                else:
+                    ckpt_path = v5_path / "models" / "best_model.pt"
         if ckpt_path is not None and ckpt_path.exists():
             try:
                 state_dict = load_checkpoint_pretrained_state(ckpt_path)

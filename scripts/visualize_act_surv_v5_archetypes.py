@@ -391,7 +391,30 @@ def main():
         missing, unexpected = model.load_state_dict(state, strict=False)
         print(f"Loaded {ckpt_path.name}: missing={len(missing)}, unexpected={len(unexpected)}")
     else:
-        print(f"No checkpoint at {ckpt_path}; using fresh-init model.")
+        # Try v5_1 then v5 then nested
+        for root_dir, variant in [
+            (REPO_ROOT / "results" / "act_surv_v5_1" / args.cancer, "v5_1"),
+            (REPO_ROOT / "results" / "act_surv_v5" / args.cancer, "v5"),
+        ]:
+            if root_dir.exists():
+                for d in root_dir.iterdir():
+                    if d.is_dir() and d.name.endswith(f"_fold{args.fold}"):
+                        matches = list(d.glob("model_best_s*.pth"))
+                        if matches:
+                            state = load_state_dict(matches[0])
+                            detected = detect_dims(state)
+                            for k, v in detected.items():
+                                if hasattr(config_ns, k):
+                                    setattr(config_ns, k, v)
+                            model = get_model("archetypal_transport_composition_v5", config_ns)
+                            missing, unexpected = model.load_state_dict(state, strict=False)
+                            print(f"Loaded {matches[0].name}: missing={len(missing)}, unexpected={len(unexpected)}")
+                            ckpt_path = matches[0]
+                            break
+            if ckpt_path is not None and ckpt_path.exists():
+                break
+        if ckpt_path is None or not ckpt_path.exists():
+            print(f"No checkpoint at {ckpt_path or 'auto-searched paths'}; using fresh-init model.")
 
     model.to(device_str)
     model.eval()
