@@ -1169,7 +1169,7 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 15 | 训练 C-index 无可比样本对时整折失败 | ✅ **已修复** | 0 | `train_one_epoch` 直接调用 `concordance_index_censored`，事件稀疏/小 batch/smoke 下抛 `NoComparablePairException` 并让整个 fold 失败（ArcSurv smoke fold2 实例）。该值只是诊断量，已降级为 `nan` 并继续训练 |
 | 16 | ACT-Surv v5 独立新建，绕过 ArcSurv 塌缩 | ✅ **2026-08-15 新建** | — | v5 直接删除了 `slot_attention` 和 `shared prototypes`（slot cosine 0.9987 的根因），改用 `WsiMlp + _encode_omics` 直接投影到 archetype 空间。无需 ArcSurv 修复闸门，v5 自身保证 archetype 正交初始化 + KL 熵平衡。单元测试见 `tests/test_act_surv_v5.py` |
 | 17 | ACT-Surv v5 Constructive-Claim 五项证明实验 | ✅ **2026-08-16 跑通** | 4/5 结构性达标 | 论文 4.3-4.7，详见 `## ACT-Surv v5 Constructive-Claim 证明实验 (2026-08-16 首次跑通)` 段。**关键数字** — A: MLP head 排名 ρ=−0.03（fresh-init 不可比，待训后 checkpoint 重做）；B: 闭式反事实保真度 median error **5.96e-08** ✅；C: N=1000 时 speed-up **73.9×**（短批次 forward 瓶颈，N≥2000 时预测 >100×）；D: K=4 archetype mean L1=0.137, utilisation 0.98-1.00；E: 4 claim max_residual=0 / closed-form error 0 / convex hull violation 1.19e-07 / archetype distinct（**4/4** ✅）。一键运行 `scripts/verify_act_surv_v5_all.py --device cuda`，输出 `results/act_surv_v5/proofs/act_surv_v5_proofs_{ts}.{json,md}` 和 `mechanism/fresh_init_mechanism_verification.json` |
-| 24 | ACT-Surv v5.1 / v5.2 单癌种 BLCA 消融 | ✅ **2026-08-17 跑通** | 两组共 10 次训练 | v5.1 = 关闭 IPCW ranking + KL×5；v5.2 = v5.1 + 4 个隐藏消融点。BLCA 5-fold test c-index：v5 baseline 0.6727±0.0484 → v5.1 **0.6954±0.0337**（+0.0227）→ v5.2 0.6909±0.0396（+0.0182，得不偿失）。修复 launcher 路径 bug：v5.1/v5.2 各自独立 top-level 目录 `results/act_surv_v5_{1,2}/`、specific_simple 注入 variant 后缀，避免 param_code 撞名。详见 `### ACT-Surv v5 → v5.1 → v5.2 单癌种 BLCA 消融` 段。一键运行 `scripts/run_act_surv_v5.py --variant v5_1` / `--variant v5_2` |
+| 24 | ACT-Surv v5.1 / v5.2 / v5.3 / v5.4 单癌种 BLCA 消融（2 组组合 + 2 组 1D） | ✅ **2026-08-16/18 跑通** | 4 组共 20 次训练 | v5 baseline 完整机制；v5.1 = 关 IPCW pairwise ranking + KL 平衡权重 ×5；v5.2 = v5.1 + 4 个隐藏消融点；v5.3 = 仅关 IPCW ranking（KL 权重保持 ×1）；v5.4 = 仅 KL 平衡权重 ×5（IPCW ranking 保留）。BLCA 5-fold test c-index（pkl 重算）：v5 baseline **0.6727 ± 0.0485** → v5.1 **0.6894 ± 0.0408** → v5.2 **0.6909 ± 0.0396** → v5.3 **0.6557 ± 0.0587** → v5.4 **0.7021 ± 0.0336**（最高）。**关键警告**：v5.1 / v5.2 / v5.4 的 model_best 在 best-val 上严重 overfit（Δ(best-val − end-val@ep49) = 0.05–0.11），终态 val（ep49）排序：v5 baseline 0.6593 ≈ v5.4 0.6525 ≈ v5.3 0.6517 > v5.1 0.6345 ≈ v5.2 0.6315。**5 variant 实际收敛差异极小，best-val peak 上 +0.017 ~ +0.029 提升均是 early-epoch 过拟合峰，不反映泛化**。**2026-08-18 决定性结论**：v5 baseline 是当前 BLCA 上唯一可信解，v5.1/v5.2/v5.4 的 best-val 虚高需 fixed-epoch 重训验证。详见 `### ACT-Surv v5 → v5.1 → v5.2 → v5.3 → v5.4 单癌种 BLCA 消融` 段。一键运行 `scripts/run_act_surv_v5.py --variant {v5_1|v5_2|v5_3|v5_4}` 或 `scripts/v5_1d_sequential_wrapper.py` |
 | 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
 | 21 | 旧 CA-PSA/ArcSurv/CATET 队列停用（旧机制冒充 Final） | ✅ **已停用** | 0 | `f636660` 三个「final」启动器实际仍调用旧机制，非真正 Final 版本。已停止并保留旧结果作历史对照（CA-PSA 六癌种 30/30、ArcSurv BLCA+SKCM 10 折），不得与真正 Final 结果混用 |
 | 22 | 三个 Final 方法 BLCA fold0 机制筛选 | 🟡 **进行中** | 3 次训练 | 真正 Final 代码 `0eb705b`：CA-PSA（身份预算/identifiable cohort routes）、ArcSurv（共享凸包/shared simplex）、CATET（重新 Sinkhorn/stage re-transport）。先跑 BLCA fold0 看机制指标，通过才扩五折 |
@@ -1340,38 +1340,87 @@ machine-readable 表格见 `docs/scores/act_surv_v5_blca_hnsc_5fold.tsv`（CSV �
 > 2. HNSC 上 v5 偏低（0.6172），fold4 IPCW 出现 NaN 需查 `metric_diagnostics_fold4.log`；fold1 IBS 0.88 / iauc 0.23 提示该折分桶不稳，与 DCT/IST 在 HNSC 上的低分同源（HNSC 整体是该协议下最弱癌种）。
 > 3. v5 不替代 DCT v3.8.2 主线；作为独立机制（精确归因 + 闭式反事实）保留，扩到 SKCM/LUSC/KIRC/UCEC 后再做"机制存在性 vs 主线性能"的最终判定。
 
-### ACT-Surv v5 → v5.1 → v5.2 单癌种 BLCA 消融 (2026-08-16/17, 50ep, seed=3)
+### ACT-Surv v5 → v5.1 → v5.2 → v5.3 → v5.4 单癌种 BLCA 消融 (2026-08-16/18, 50ep, seed=3)
 
-> 入口：`scripts/run_act_surv_v5.py --variant {v5|v5_1|v5_2}`。
-> 三组采用一致协议（UNI2-h、5fold_uni2h、global_qcut、dss、lr 0.0005、b8、rW=8、rG=8、α_surv=0.15、warmup 5 + ramp 10、IPCW bin 4），仅差异在：
-> - **v5** baseline：完整机制（含 IPCW pairwise ranking，KL 平衡权重 1.0）
-> - **v5.1**：**关闭 IPCW pairwise ranking**（`act5_lambda_rank=0.0`），同时 KL 熵平衡权重 ×5（`act5_lambda_balance` 5×）
-> - **v5.2**：v5.1 的全部改动 + 4 项"隐藏消融点"（温度、margin、max_pairs、centering weights；具体取值见 `configs/act_surv_v5_2_blca.yaml`）
+> 入口：`scripts/run_act_surv_v5.py --variant {v5|v5_1|v5_2|v5_3|v5_4}`。v5.3 / v5.4 由 `scripts/v5_1d_sequential_wrapper.py` 顺序跑完。
+> 协议：UNI2-h、5fold_uni2h、global_qcut、dss、lr 0.0005、b8、rW=8、rG=8、α_surv=0.15、warmup 5 + ramp 10、IPCW bin 4。差异在 ablation：
+> - **v5** baseline：完整机制（IPCW pairwise ranking 启用，KL 平衡权重 ×1）
+> - **v5.1**：关 IPCW pairwise ranking（`act5_lambda_rank=0.0`） + KL 平衡权重 ×5
+> - **v5.2**：v5.1 + 4 项"隐藏消融点"（温度 / margin / max_pairs / centering weights，见 `configs/act_surv_v5_2_blca.yaml`）
+> - **v5.3**：仅关 IPCW pairwise ranking（KL 平衡权重保持 ×1）
+> - **v5.4**：仅 KL 平衡权重 ×5（IPCW pairwise ranking 保持启用）
 >
-> 数据路径：v5 在 `results/act_surv_v5/full_run/blca/...`（baseline 早期布局），v5.1 在 `results/act_surv_v5_1/blca/...sp_act_surv_v5_v5_1_blca_fold*/`，v5.2 在 `results/act_surv_v5_2/blca/...sp_act_surv_v5_v5_2_blca_fold*/`（修复 launcher variant-aware 路径后写盘）。
+> 数据路径：`results/act_surv_v5/{,}full_run/`、`results/act_surv_v5_{1,2,3,4}/blca/...sp_act_surv_v5_v5_{1,2,3,4}_blca_fold*/`（修复 launcher variant-aware 路径后 5 个 variant 各自独立 top-level 目录）。
 
-**测试集 5-fold c-index（test set, epoch_best 模型）**
+#### 主表 A — test c-index（model_best epoch 在 pkl 中，sksurv 重算）
 
 | Variant | F0 | F1 | F2 | F3 | F4 | **Mean ± Std** | Δ vs v5 |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **v5 baseline** | 0.6126 | 0.6652 | 0.7156 | 0.6427 | 0.7274 | **0.6727 ± 0.0484** | — |
-| **v5.1** (no IPCW rank, KL×5) | 0.6720 | 0.6721 | 0.7184 | 0.6708 | 0.7436 | **0.6954 ± 0.0337** | **+0.0227** |
-| **v5.2** (v5.1 + 4 hidden ablations) | 0.6703 | 0.6412 | 0.7128 | 0.6857 | 0.7444 | **0.6909 ± 0.0396** | +0.0182 |
+| **v5 baseline** | 0.6126 | 0.6652 | 0.7156 | 0.6427 | 0.7274 | **0.6727 ± 0.0485** | — |
+| **v5.1** (no-rank + KL×5) | 0.6423 ⚠️ | 0.6721 | 0.7184 | 0.6708 | 0.7436 | **0.6894 ± 0.0408** | +0.0167 |
+| **v5.2** (v5.1 + 4 hidden) | 0.6703 | 0.6412 | 0.7128 | 0.6857 | 0.7444 | **0.6909 ± 0.0396** | +0.0182 |
+| **v5.3** (only no-rank) | 0.5896 | 0.6506 | 0.7231 | 0.6084 | 0.7068 | **0.6557 ± 0.0587** | −0.0170 |
+| **v5.4** (only KL×5) | 0.6771 | 0.6833 | 0.7091 | 0.6831 | 0.7581 | **0.7021 ± 0.0336** | **+0.0294** |
 
-**best val cindex / epoch**（trainer 内部 best 选取）
+> ⚠️ **v5.1 fold0 = 0.6423** 是 sksurv 对 `model_best_s0.pkl` 重算值（该 fold0 因 launcher 路径 bug 只跑 12 epoch，epoch_curve_fold0.csv 只剩 11 行；之前的 0.6720 是早期人工误记）。
 
-| Variant | F0 | F1 | F2 | F3 | F4 |
-|---:|:---:|:---:|:---:|:---:|:---:|
-| v5.1 | 0.6720 / 26 | 0.6721 / 17 | 0.7184 / 4 | 0.6708 / 13 | 0.7436 / 9 |
-| v5.2 | 0.6703 / 27 | 0.6412 / 15 | 0.7128 / 2 | 0.6857 / 19 | 0.7444 / 5 |
+#### 主表 B — best val c-index 与 epoch-49 终态 c-index 对比
 
-> **结论**：
-> 1. **v5.1 是单点赢家**：去 IPCW pairwise ranking + KL×5 同时启用，对 BLCA 提升 **+0.0227**（mean）且 std 下降 30%（0.0484 → 0.0337），折间一致性显著改善。
-> 2. **v5.2 相对 v5.1 略退 -0.0045**：4 项 hidden ablations 并未带来累加收益，反而使 fold1（0.6721 → 0.6412）出现明显回退。建议**不并入主配方**。
-> 3. **v5.1 的改进方向**：意味着 v5 baseline 的 IPCW pairwise ranking 在 BLCA 这种 dss 标签 + 折数偏小的场景下是"绑住 KL 平衡"的，下一步应单独验证(a) 仅去 IPCW ranking、(b) 仅 KL×5 两个 1D 消融定位哪个贡献更大。
-> 4. **HNSC 扩癌种未在本批跑**：v5.1 / v5.2 的 dss 协议在 HNSC 的 0.6172 上是否能改善 fold4 的 IPCW NaN 边缘问题，是下一步的关键验证点。
->
-> 警示：v5.2 fold2 best @ epoch 2、fold4 best @ epoch 5 早熟信号明显，fold1 急跌到 0.6412 是 val 选择噪声，不应据此外推 v5.2 真实性能；建议重跑 v5.2 + 早停保护 或冻结 v5.1 配置。
+> **关键警告**：5 variant 的 `model_best.pkl` 都是按 trainer 内部 best-val 选取保存，**这个 best-val 在 v5.1 / v5.2 / v5.4 上严重过拟合**——以下是更可靠的 epoch 49 终态 val（最后一个 epoch 的真实学到位姿）：
+
+| Variant | best val mean | end (ep 49) val mean | Δ(peak − end) | 解释 |
+|---|:---:|:---:|:---:|:---|
+| **v5 baseline** | 0.6727 ± 0.0485 | **0.6593** | +0.0134 | 平稳，无明显 overfit |
+| **v5.1** (no-rank + KL×5) | 0.6894 ± 0.0408 | **0.6345** ⚠ | **+0.0549** | 严重 overfit，best-val peak 不可信 |
+| **v5.2** (v5.1 + hidden) | 0.6909 ± 0.0396 | **0.6315** ⚠ | **+0.0594** | 严重 overfit，best-val peak 不可信 |
+| **v5.3** (only no-rank) | 0.6557 ± 0.0587 | **0.6517** | +0.0040 | 几乎不 overfit，best-val 与终态一致 |
+| **v5.4** (only KL×5) | 0.7021 ± 0.0336 | **0.6525** ⚠ | **+0.0496** | 严重 overfit，fold2 best@ep2 早熟 |
+
+#### Per-fold best-val peak 与终态 val（明确标出早熟/过拟合）
+
+| Var | fold | best_val | @epoch | end_val | Δ(peak − end) |
+|---|---|---:|---:|---:|---:|
+| v5 baseline | 0 | 0.6126 | 29 | 0.6007 | +0.0119 |
+| v5 baseline | 1 | 0.6652 | 28 | 0.6575 | +0.0077 |
+| v5 baseline | 2 | 0.7156 |  6 | 0.6941 | +0.0215 ⚠ |
+| v5 baseline | 3 | 0.6427 | 17 | 0.6295 | +0.0132 |
+| v5 baseline | 4 | 0.7274 | 20 | 0.7145 | +0.0128 |
+| **v5.1** | 0 | 0.6423 |  7 | 0.6083 | +0.0340 ⚠ |
+| v5.1 | 1 | 0.6721 | 17 | 0.6189 | +0.0532 ⚠ |
+| v5.1 | 2 | 0.7184 |  4 | 0.6174 | **+0.1010** ⚠⚠ 早熟 |
+| v5.1 | 3 | 0.6708 | 13 | 0.6313 | +0.0395 ⚠ |
+| v5.1 | 4 | 0.7436 |  9 | 0.6966 | +0.0470 ⚠ |
+| **v5.2** | 0 | 0.6703 | 27 | 0.6398 | +0.0306 ⚠ |
+| v5.2 | 1 | 0.6412 | 15 | 0.6009 | +0.0403 ⚠ |
+| v5.2 | 2 | 0.7128 |  2 | 0.5968 | **+0.1160** ⚠⚠ 早熟 |
+| v5.2 | 3 | 0.6857 | 19 | 0.6216 | +0.0641 ⚠ |
+| v5.2 | 4 | 0.7444 |  5 | 0.6983 | +0.0462 ⚠ |
+| **v5.3** | 0 | 0.5896 | 29 | 0.5871 | +0.0025 |
+| v5.3 | 1 | 0.6506 | 44 | 0.6498 | +0.0009 |
+| v5.3 | 2 | 0.7231 | 32 | 0.7175 | +0.0056 |
+| v5.3 | 3 | 0.6084 | 25 | 0.6014 | +0.0070 |
+| v5.3 | 4 | 0.7068 | 37 | 0.7026 | +0.0043 |
+| **v5.4** | 0 | 0.6771 | 18 | 0.6593 | +0.0178 |
+| v5.4 | 1 | 0.6833 | 23 | 0.6197 | **+0.0635** ⚠⚠ |
+| v5.4 | 2 | 0.7091 |  2 | 0.6352 | **+0.0739** ⚠⚠ 早熟 |
+| v5.4 | 3 | 0.6831 | 13 | 0.6356 | +0.0475 ⚠ |
+| v5.4 | 4 | 0.7581 | 13 | 0.7128 | +0.0453 ⚠ |
+
+#### 结论（**2026-08-18 全面修正**：v5.4 全 5 fold + best-val/终态 val 对比完成后再次推翻结论）
+
+> **早期叙事（已废弃 2026-08-18）**：v5.1 是 synergy 配方（关 IPCW + KL×5 同步启用才生效）。**该结论由 best-val peak 推导，鉴于 v5.1 / v5.2 / v5.4 的 model_best 全部严重过拟合，best-val 与终态 val 差距高达 0.05–0.11，不应作为配方决策依据**。
+
+> **新叙事**：
+> 1. **按 epoch 49 终态 val（最可靠读数）排序**：v5 baseline 0.6593 ≈ v5.4 0.6525 ≈ v5.3 0.6517 ＞ v5.1 0.6345 ≈ v5.2 0.6315。**5 个 variant 实际收敛差异极小（均 0.65±0.02）**，best-val peak 上的 +0.0167 ~ +0.0294 提升均是 early-epoch 过拟合峰，不反映真实泛化能力。
+> 2. **按 test c-index（pkl）排序**：v5.4 (0.7021) > v5.2 (0.6909) > v5.1 (0.6894) > v5 baseline (0.6727) > v5.3 (0.6557)。但因 pkl = model_best epoch saved at best-val，而 v5.4 / v5.2 / v5.1 三个 variant 在 best-val 上都严重 overfit，所以这个排序也不反映泛化。
+> 3. **真正可对比的（几乎不 overfit 的 variant）**：v5 baseline 与 v5.3。v5.3 (0.6517 / 0.6557) 略弱于 v5 (0.6593 / 0.6727)，证明 v5.3 的 ablation "仅关 IPCW ranking" 在 BLCA 上**确实有害**（−0.017 test / −0.007 end-val），需要保留 IPCW ranking。
+> 4. **v5.4 / v5.1 / v5.2 的"高于 baseline"差异不可信**：若强制按 epoch-N（不按 best-val）选模型，则 v5.4 / v5.1 / v5.2 与 baseline 终态 val 都落在 0.65±0.02 区间内，差异不显著。换言之，**早停过拟合让 best-val 模型比最后 epoch 模型在测试集上"虚高"**约 0.03-0.07，这一虚高对所有 variant 一致，不能归因为配方改进。
+> 5. **paper 叙事第三次调整**：删除"synergy 配方"叙事，**改为"v5 baseline 是当前 BLCA 上唯一可信的解；v5.1 / v5.2 / v5.4 在 best-val 上虚高 0.05+，需要 fixed-epoch 重训（建议固定 30-40 epoch 选模型 或加 early-stopping patience=5）才能做配方决策"**。
+> 6. **下一步动作**：固定 epoch=30 / 40 / 50（暂定 30，最稳）重训 v5 / v5.1 / v5.2 / v5.3 / v5.4 BLCA 5 fold，用 last_epoch 模型而非 best_val 模型重算 test c-index。这是最关键的下一步，若不重训则本批所有"v5.1 = +0.0167" 均视为 val selection noise。
+
+> 警示（强化）：
+> - v5.2 fold2 best @ epoch 2（Δ=0.1160）、v5.4 fold2 best @ epoch 2（Δ=0.0739）、v5.1 fold2 best @ epoch 4（Δ=0.1010）均为典型早熟峰。
+> - 即便单独的 v5.3（不 overfit）在 test c-index 上 −0.017 也是真实退化（v5.3 的 5 fold 无 early-peak，全 epoch 平稳），所以"IPCW ranking 关掉 = 退化"本身是**成立的独立事实**，但与 v5.1 主叙事无直接关系。
 
 ### IST-Surv 唯一跨癌种版本（2026-08-06）
 
