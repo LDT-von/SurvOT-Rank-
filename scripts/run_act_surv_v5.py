@@ -6,19 +6,19 @@ launcher structure but launches only ACT-Surv v5 under the same protocol so resu
 are directly comparable.
 
 Usage:
-    # BLCA 3-fold quick validation (before committing to full 5-fold)
-    python scripts/run_act_surv_v5.py --cancers blca --folds 0 1 2
+    # BLCA 5-fold with old community-standard split (recommended)
+    python scripts/run_act_surv_v5.py --cancers blca --folds 0 1 2 3 4 --which-splits 5fold_legacy
 
-    # Full BLCA 5-fold
+    # BLCA 5-fold with new rebalanced split (default)
     python scripts/run_act_surv_v5.py --cancers blca --folds 0 1 2 3 4
 
     # v5.1 / v5.2 BLCA variants (BLCA-only tuning configs)
-    python scripts/run_act_surv_v5.py --cancers blca --variant v5_1 --folds 0 1 2 3 4
-    python scripts/run_act_surv_v5.py --cancers blca --variant v5_2 --folds 0 1 2 3 4
+    python scripts/run_act_surv_v5.py --cancers blca --variant v5_1 --folds 0 1 2 3 4 --which-splits 5fold_legacy
+    python scripts/run_act_surv_v5.py --cancers blca --variant v5_2 --folds 0 1 2 3 4 --which-splits 5fold_legacy
 
     # v5.3 / v5.4 1D ablations (isolate ranking vs KL×5 contribution)
-    python scripts/run_act_surv_v5.py --cancers blca --variant v5_3 --folds 0 1 2 3 4
-    python scripts/run_act_surv_v5.py --cancers blca --variant v5_4 --folds 0 1 2 3 4
+    python scripts/run_act_surv_v5.py --cancers blca --variant v5_3 --folds 0 1 2 3 4 --which-splits 5fold_legacy
+    python scripts/run_act_surv_v5.py --cancers blca --variant v5_4 --folds 0 1 2 3 4 --which-splits 5fold_legacy
 
     # 6-cancer cross-cancer
     python scripts/run_act_surv_v5.py --cancers blca,kirc,ucec,hnsc,lusc,skcm
@@ -84,9 +84,11 @@ _VARIANT_RESULT_ROOT = {
     "v5_2": "results/act_surv_v5_2",
     "v5_3": "results/act_surv_v5_3",
     "v5_4": "results/act_surv_v5_4",
+    "v5_k4": "results/act_surv_v5_k4",
 }
-WHICH_SPLITS = "5fold_uni2h"
+_DEFAULT_WHICH_SPLITS = "5fold_uni2h"   # protocol default
 DATA_ROOT = DEFAULT_DATA_ROOT  # mutable; main() may overwrite via --data-root
+_WHICH_SPLITS = _DEFAULT_WHICH_SPLITS  # module-global for use in build_jobs
 
 # Frozen v5 recipe — do not add cancer-specific tuning here.
 FINAL_OVERRIDES: dict[str, object] = {
@@ -99,7 +101,7 @@ FINAL_OVERRIDES: dict[str, object] = {
     "event_stratified_batches": True,
     "event_sampling_fraction": 0.0,
     "num_patches": 2048,
-    "which_splits": WHICH_SPLITS,
+    "which_splits": _WHICH_SPLITS,
     "on_missing_wsi": "error",
     "wsi_encoder": "uni2-h",
     "encoding_dim": 1536,
@@ -164,16 +166,16 @@ def build_jobs(
     if not dry_run:
         verify_child_cuda(sys.executable, dict(os.environ))
     jobs: list[Job] = []
-    result_root = Path(_VARIANT_RESULT_ROOT[variant])
+    result_root = Path(overrides["results_dir"])
 
     for cancer in cancers:
         if cancer not in SUPPORTED_CANCERS:
             raise ValueError(f"Unsupported cancer: {cancer}. Choose from {SUPPORTED_CANCERS}")
 
         # ── Verify data ──────────────────────────────────────────────────
-        csv_dir = Path(DATASET_CSV_ROOT) / "splits" / WHICH_SPLITS / cancer
+        csv_dir = Path(DATASET_CSV_ROOT) / "splits" / _WHICH_SPLITS / cancer
         inspect_feature_directory(DATA_ROOT, cancer)
-        inspect_split_directory(cancer, which_splits=WHICH_SPLITS)
+        inspect_split_directory(cancer, which_splits=_WHICH_SPLITS)
         split_folds = sorted([
             int(p.name.split("_")[1].split(".")[0])
             for p in csv_dir.glob("fold_*.csv")
@@ -279,6 +281,15 @@ def main():
         help="Override data root",
     )
     parser.add_argument(
+        "--which-splits",
+        default=_DEFAULT_WHICH_SPLITS,
+        choices=["5fold", "5fold_uni2h", "5fold_legacy"],
+        help=f"Split directory under dataset_csv/splits/ (default: {_DEFAULT_WHICH_SPLITS}). "
+             "Use '5fold_legacy' for the old community-standard split (pre-bee66a2, "
+             "preserved at 5fold_legacy/ via 0e87fb4). Use '5fold' for the newer "
+             "rebalanced split from bee66a2.",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Print commands without running",
     )
@@ -289,27 +300,34 @@ def main():
     )
     parser.add_argument(
         "--variant", default="v5",
-        choices=["v5", "v5_1", "v5_2", "v5_3", "v5_4"],
+        choices=["v5", "v5_1", "v5_2", "v5_3", "v5_4", "v5_k4"],
         help="Config variant: "
-              "v5 (baseline), "
-              "v5_1 (no IPCW ranking + KL×5 = single winning ablation), "
+              "v5 (baseline, K=6), "
+              "v5_1 (no IPCW ranking + KLx5), "
               "v5_2 (v5.1 + 4 hidden tweaks), "
               "v5_3 (1D ablation: no IPCW ranking only), "
-              "v5_4 (1D ablation: KL×5 only)",
+              "v5_4 (1D ablation: KLx5 only), "
+              "v5_k4 (K=4 ablation vs K=6 baseline)",
     )
     args = parser.parse_args()
 
-    global DATA_ROOT
+    global DATA_ROOT, _WHICH_SPLITS
     DATA_ROOT = args.data_root
+    _WHICH_SPLITS = args.which_splits
 
     cancers = [c.strip() for c in args.cancers.split(",")]
     folds = args.folds
 
     if args.result_root is None:
-        args.result_root = _VARIANT_RESULT_ROOT[args.variant]
+        base = _VARIANT_RESULT_ROOT[args.variant]
+        # Tag non-default split so old-split runs don't clobber new-split results
+        if _WHICH_SPLITS != _DEFAULT_WHICH_SPLITS:
+            base = f"{base}_{_WHICH_SPLITS}"
+        args.result_root = base
 
     overrides = overrides_for_variant(args.variant)
     overrides["results_dir"] = args.result_root
+    overrides["which_splits"] = _WHICH_SPLITS
     jobs = build_jobs(cancers, folds, overrides, dry_run=args.dry_run, variant=args.variant)
 
     print(f"Total jobs: {len(jobs)}")
