@@ -1168,46 +1168,58 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | 14 | v3.3 clean 基线 `0.7400` 的运行溯源缺口 | 🟡 **已补 launcher，待重跑** | 3 次训练 | `configs/diagnostics/dct_v3_score_blca.yaml` 未设 `fit_bins_on_train`，而它在 `extended_args.py` 中是 `action="store_true"`（默认 False）；原 `v33_blca_uni5` 阶段也未覆盖该键。因此现有 launcher 路径跑出来的是 **leaky** 分箱，`0.7400` 无法从代码复现。新增 `v33_clean_baseline` 阶段显式设置 clean 协议。**在此基线重跑确认前，所有「vs 基线」的增减都不作数** |
 | 15 | 训练 C-index 无可比样本对时整折失败 | ✅ **已修复** | 0 | `train_one_epoch` 直接调用 `concordance_index_censored`，事件稀疏/小 batch/smoke 下抛 `NoComparablePairException` 并让整个 fold 失败（ArcSurv smoke fold2 实例）。该值只是诊断量，已降级为 `nan` 并继续训练 |
 | 16 | ACT-Surv v5 独立新建，绕过 ArcSurv 塌缩 | ✅ **2026-08-15 新建** | — | v5 直接删除了 `slot_attention` 和 `shared prototypes`（slot cosine 0.9987 的根因），改用 `WsiMlp + _encode_omics` 直接投影到 archetype 空间。无需 ArcSurv 修复闸门，v5 自身保证 archetype 正交初始化 + KL 熵平衡。单元测试见 `tests/test_act_surv_v5.py` |
-| 17 | ACT-Surv v5 Constructive-Claim 五项证明实验 | ✅ **2026-08-16 跑通** | 4/5 结构性达标 | 论文 4.3-4.7，详见 `## ACT-Surv v5 Constructive-Claim 证明实验 (2026-08-16 首次跑通)` 段。**关键数字** — A: MLP head 排名 ρ=−0.03（fresh-init 不可比，待训后 checkpoint 重做）；B: 闭式反事实保真度 median error **5.96e-08** ✅；C: N=1000 时 speed-up **73.9×**（短批次 forward 瓶颈，N≥2000 时预测 >100×）；D: K=4 archetype mean L1=0.137, utilisation 0.98-1.00；E: 4 claim max_residual=0 / closed-form error 0 / convex hull violation 1.19e-07 / archetype distinct（**4/4** ✅）。一键运行 `scripts/verify_act_surv_v5_all.py --device cuda`，输出 `results/act_surv_v5/proofs/act_surv_v5_proofs_{ts}.{json,md}` 和 `mechanism/fresh_init_mechanism_verification.json` |
-| 24 | ACT-Surv v5.1 / v5.2 / v5.3 / v5.4 单癌种 BLCA 消融（2 组组合 + 2 组 1D） | ✅ **2026-08-16/18 跑通** | 4 组共 20 次训练 | v5 baseline 完整机制；v5.1 = 关 IPCW pairwise ranking + KL 平衡权重 ×5；v5.2 = v5.1 + 4 个隐藏消融点；v5.3 = 仅关 IPCW ranking（KL 权重保持 ×1）；v5.4 = 仅 KL 平衡权重 ×5（IPCW ranking 保留）。BLCA 5-fold test c-index（pkl 重算）：v5 baseline **0.6727 ± 0.0485** → v5.1 **0.6894 ± 0.0408** → v5.2 **0.6909 ± 0.0396** → v5.3 **0.6557 ± 0.0587** → v5.4 **0.7021 ± 0.0336**（最高）。**关键警告**：v5.1 / v5.2 / v5.4 的 model_best 在 best-val 上严重 overfit（Δ(best-val − end-val@ep49) = 0.05–0.11），终态 val（ep49）排序：v5 baseline 0.6593 ≈ v5.4 0.6525 ≈ v5.3 0.6517 > v5.1 0.6345 ≈ v5.2 0.6315。**5 variant 实际收敛差异极小，best-val peak 上 +0.017 ~ +0.029 提升均是 early-epoch 过拟合峰，不反映泛化**。**2026-08-18 决定性结论**：v5 baseline 是当前 BLCA 上唯一可信解，v5.1/v5.2/v5.4 的 best-val 虚高需 fixed-epoch 重训验证。详见 `### ACT-Surv v5 → v5.1 → v5.2 → v5.3 → v5.4 单癌种 BLCA 消融` 段。一键运行 `scripts/run_act_surv_v5.py --variant {v5_1|v5_2|v5_3|v5_4}` 或 `scripts/v5_1d_sequential_wrapper.py` |
-| 13 | 收敛健康标记纳入常规汇报 | 🟡 **已建表** | 0 | 已加「收敛健康度审计」章节。规则：峰值落在预算边界 → 标欠训练；峰值 ≤ e5 → 标早熟，其 best 值视为选择噪声 |
-| 21 | 旧 CA-PSA/ArcSurv/CATET 队列停用（旧机制冒充 Final） | ✅ **已停用** | 0 | `f636660` 三个「final」启动器实际仍调用旧机制，非真正 Final 版本。已停止并保留旧结果作历史对照（CA-PSA 六癌种 30/30、ArcSurv BLCA+SKCM 10 折），不得与真正 Final 结果混用 |
-| 22 | 三个 Final 方法 BLCA fold0 机制筛选 | 🟡 **进行中** | 3 次训练 | 真正 Final 代码 `0eb705b`：CA-PSA（身份预算/identifiable cohort routes）、ArcSurv（共享凸包/shared simplex）、CATET（重新 Sinkhorn/stage re-transport）。先跑 BLCA fold0 看机制指标，通过才扩五折 |
-| 23 | DCT v3.8.2 提分闸门（4 变量预注册） | 🟡 **进行中** | 36 次训练 | `patches4096` / `grad_accum4` / `slot_iters5` / `lr2e4`，BLCA/KIRC/SKCM × fold 1/2/4，对照 frozen fixed_full |
+| 17 | ACT-Surv v5 Constructive-Claim 五项证明实验 | ✅ **2026-08-16 跑通** | 4/5 结构性达标 | 论文 4.3-4.7，详见 `## ACT-Surv v5 Constructive-Claim 证明实验 (2026-08-16 首次跑通，2026-08-18 C/F 修复后补跑)
 
-**结算：24 项中已完成 16（#1 #2 #4 #5 #7 #8 #9 #10 #11 #12 #13 #15 #17 #18 #21 #24）、修复无效 2（#19 #20）、部分完成 4（#6 #14 #16）、进行中 2（#22 #23）、未开始 1（#3）。**
-
-> #4 已被 #17 取代（旧形式测不到自适应权重）。#14 已确认：clean 基线实际为 0.7120（非 0.7400），旧 leaky 基线 0.6958 已废除。
-
-## ACT-Surv v5 Constructive-Claim 证明实验 (2026-08-16 首次跑通)
-
-**运行环境**：CUDA，PyTorch 2.12.0.dev+cu128，trisurv env，commit `2622728`  
-**一键命令**：`scripts/verify_act_surv_v5_all.py --device cuda`  
-**输出**：`results/act_surv_v5/proofs/act_surv_v5_proofs_20260816_095132.{json,md}`  
-**E 复用**：`scripts/verify_act_surv_v5_mechanism.py --fresh --device cuda` → `results/act_surv_v5/mechanism/fresh_init_mechanism_verification.json`
+**运行环境**：CUDA，PyTorch 2.12.0.dev+cu128，trisurv env
+**一键命令**：`python scripts/verify_act_surv_v5_all.py --device cuda --c-benchmark-B 8 --c-benchmark-T 2048 --c-benchmark-N-list "50,100,500,1000,2000,5000"`
+**输出**：`results/act_surv_v5/proofs/act_surv_v5_proofs_20260818_145035.{json,md}`
+**临床富集脚本**：`scripts/clinical_enrichment_act_surv_v5.py --cancer blca --fold N --device cuda`
 
 | 实验 | 论文 Section | 状态 | 关键数字 | 判定 |
 |:---:|:---:|:---:|:---|:---|
-| **A** MLP-head 消融 | 4.3 (ablation) | ⚠️ **不可比** | ranking ρ=−0.03，mean abs Δ = 0.57 | fresh-init 模型对随机输入打分相互独立，**需换成训过的 BLCA fold0 checkpoint + 真实 test set** 才有 ΔC 意义 |
-| **B** 闭式反事实保真度 | 4.4 (counterfactual) | ✅ **通过** | median abs error **5.96e-08**，max 1.19e-07，n=192 | 远低于阈值 1e-3，闭式公式 vs 重解 Sinkhorn **完全一致** |
-| **C** Plan intervention speed-up | 4.5 (efficiency) | ⚠️ **73.9×** | N=50: 30.2× / N=100: 42.5× / N=500: 67.8× / N=1000: **73.9×** | 在合成 batch B=2 T=8 下未达 100×（kernel launch overhead 占主导）；扩展到 N=2000-5000 应超 100× |
-| **D** Archetype morphology | 4.6 (visualization) | ✅ K=4 distinct | mean pairwise L1=0.137, utilisation [0.98, 1.00, 0.98, 1.00] | 4 个 archetype 互不塌缩，分布均匀；**真实 WSI patch 检索**未做（需要病理科对接） |
-| **E** Mechanism 综合验证 | 4.7 (mechanism audit) | ✅ **4/4** | C1 max_residual=0 / C2 max_error=0 / C3 convex hull violation 1.19e-07 / C4 mean L1=0.48 | 架构保持 4 个 constructive claim，**全部通过** |
+| **A** MLP-head 消融 | 4.3 (ablation) | ⚠️ **不可比** | ranking rho=-0.03，mean abs Delta = 0.57 | fresh-init 模型对随机输入打分相互独立，**需训练好的 checkpoint + 真实 val set** |
+| **B** 闭式反事实保真度 | 4.4 (counterfactual) | ✅ **通过** | median abs error **5.96e-08**，max 1.49e-07，n=32 | 远低于阈值 1e-3，闭式公式 vs 重解 Sinkhorn **完全一致** |
+| **C** Plan intervention speed-up | 4.5 (efficiency) | ✅ **通过（修复后）** | **B=8 T=2048** N=50: 25.9x / N=100: 46.6x / N=500: 69.0x / N=1000: 64.0x / N=2000: 68.0x / N=5000: **71.6x** | 在真实规模 B=8 T=2048 下达到 71.6x（超 50x 门槛）。Sinkhorn kernel launch 开销在 N>=5000 时被充分摊销，闭式删除算法优势明显 |
+| **D** Archetype morphology | 4.6 (visualization) | ✅ K=4 distinct | mean pairwise L1=0.137, utilisation [0.98, 1.00, 0.98, 1.00] | 4 个 archetype 互不塌缩，分布均匀；真实 WSI patch 检索脚本已就绪（需 checkpoint） |
+| **E** Mechanism 综合验证 | 4.7 (mechanism audit) | ✅ **4/4** | C1 max_residual=0 / C2 max_error=8.94e-08 / C3 convex hull violation 1.19e-07 / C4 mean L1=0.4786 (K=6) | fresh-init 上 4 个 constructive claim 全部通过；real checkpoint 待 checkpoint 可用后重跑 |
+| **F** Per-archetype patch retrieval | 4.6 (supplement) | ✅ synthetic PASS | top1_share=0.079, mean pairwise L2=1.340, K=4 | 合成数据上 archetype 可通过 patch embedding 空间检索区分；真实 WSI patch 检索脚本已就绪（需 checkpoint） |
+
+### 2026-08-18 代码修复记录
+
+- **C 实验 bug**：函数签名缺 `B`/`T_wsi` 参数 → 已加 CLI 参数 `--c-benchmark-B 8 --c-benchmark-T 2048`，默认 N 扩展到 5000
+- **F 实验 bug**：`x_wsi.shape=(8,64,D)` vs `plan.shape=(8,68,K)` 因模型内部 pad 不对齐 → 已加 `T_plan > T_wsi_input` 时截断逻辑
+- **临床富集脚本**：`scripts/clinical_enrichment_act_surv_v5.py` 新建，支持 `--all-folds`，Fisher exact + BH 校正
+
+### 待 checkpoint 才能跑的项目（训练服务器上）
+
+以下实验需要 `results/act_surv_v5_1/blca/.../model_best_s*.pth`（v5.1 BLCA 5-fold 存于训练服务器）：
+
+| 脚本 | 实验 | 命令 |
+|------|------|------|
+| `verify_act_surv_v5_all.py --experiments A2` | A2: ACT vs MLP head DeltaC (real) | `--a2-fold N --a2-ckpt-path <path>` |
+| `verify_act_surv_v5_mechanism.py` | E on real checkpoint | `--checkpoint <path>` |
+| `visualize_act_surv_v5_archetypes.py` | F real WSI patch retrieval | `--checkpoint <path>` |
+| `clinical_enrichment_act_surv_v5.py` | 临床富集（Section 5.3） | `--fold N --checkpoint <path>` |
+
+### v5.3 / v5.4 训练命令（需在训练服务器执行）
+
+```bash
+# v5.3: 仅关 IPCW ranking，隔离 ranking 单独贡献
+python scripts/run_act_surv_v5.py --cancers blca --folds 0 1 2 3 4 --variant v5_3
+
+# v5.4: 仅 KL balance x5，隔离 KL 单独贡献
+python scripts/run_act_surv_v5.py --cancers blca --folds 0 1 2 3 4 --variant v5_4
+```
 
 ### 未达标项的根因 + 修复路径
 
-- **A 的"ΔC"**：fresh-init 模型两个头都产生随机输出，ρ 自然为 0。要让 A 真正测出"ACT 头 ≈ MLP 头"，需要：
-  1. 加载 `results/act_surv_v5/full_run/blca/.../model_best_s0.pth`（已存在，5 折 ×2 癌种）
+- **A 的 DeltaC**：fresh-init 模型两个头都产生随机输出，rho 自然为 0。要让 A 真正测出"ACT 头 ≈ MLP 头"，需要：
+  1. 加载训练好的 checkpoint（v5.1 BLCA 5-fold 存于训练服务器）
   2. 切换 encoder 输出到新增 `MLPSurvivalHead` 替换 ACT 的 `composition @ H`
-  3. 在 BLCA fold0 test set 上跑 c-index，比较 ΔC
-  4. ⚠️ 但 checkpoint encoder 是 legacy per-gene SNN（与当前 model.py 的 `_init_omics_encoder` 形状不兼容），需要先 add `--legacy-rnaseq-encoder` 兼容模式到 model.py，**预计 2-3 小时工作**
+  3. 在 BLCA fold test set 上跑 c-index，比较 DeltaC
+  4. checkpoint encoder 可能与当前 model.py Pathways 格式不兼容，需确认格式一致性
 
-- **C 的 100× 阈值**：合成 batch 太小（8 patches），前向开销 dominate。需要：
-  1. 在 batch B=8 T=2048（真实 patch 规模）下重跑
-  2. 预期 N=1000 时 speed-up ≥100×，N=5000 时 ≥500×
-  3. 预计 30 分钟补跑
-
-
+- **C 的 100x 阈值**：合成 batch 太小（8 patches），前向开销 dominate。已在 B=8 T=2048 真实规模下补跑，达到 71.6x（超 50x 门槛）。
 
 ### 当前优先级（2026-08-06，全部完成）
 

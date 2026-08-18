@@ -739,7 +739,7 @@ def experiment_B_deletion_fidelity(args, device: str = "cpu", num_tokens: int = 
 # Experiment C: Runtime benchmark (Section 4.5)
 # ---------------------------------------------------------------------------
 
-def experiment_C_runtime_benchmark(args, device: str = "cpu", N_list: tuple = (50, 100, 500, 1000, 2000, 5000)) -> dict:
+def experiment_C_runtime_benchmark(args, device: str = "cpu", N_list: tuple = (50, 100, 500, 1000, 2000, 5000), B: int = 8, T_wsi: int = 2048) -> dict:
     """Compare wall-clock time for one OT solve + N closed-form deletions vs N full re-solves.
 
     N_list 推到 5000，让 Sinkhorn kernel launch 开销充分摊销。
@@ -750,8 +750,8 @@ def experiment_C_runtime_benchmark(args, device: str = "cpu", N_list: tuple = (5
 
     torch.manual_seed(0)
     model = ArchetypalTransportCompositionV5(make_args()).to(device).eval()
-    # Synthetic batch sized for realistic N (T_wsi=8 to keep memory in check)
-    big_batch = make_synthetic_batch(B=2, T_wsi=8, device=device)
+    # Synthetic batch sized for realistic N (T_wsi=2048 realistic scale)
+    big_batch = make_synthetic_batch(B=B, T_wsi=T_wsi, device=device)
 
     results = []
 
@@ -941,7 +941,13 @@ def experiment_F_per_patch_retrieval(
     # the "patch token" the transport plan is computed on).
     x_wsi = big_batch["x_wsi"].detach().cpu().numpy()  # [B, T, D]
 
-    B, T, K_plan = plan.shape
+    B, T_wsi_input = x_wsi.shape[:2]
+    B2, T_plan, K_plan = plan.shape
+    # Model may internally pad to multiple-of-8, so T_plan may exceed T_wsi_input.
+    # Only take the first T_wsi_input rows of plan so indices stay in bounds.
+    if T_plan > T_wsi_input:
+        plan = plan[:, :T_wsi_input, :]
+        T_plan = T_wsi_input
     assert K_plan == K, f"K mismatch: plan has {K_plan}, model declares {K}"
 
     per_archetype = []
@@ -957,7 +963,7 @@ def experiment_F_per_patch_retrieval(
         # Flatten (b, t) → list of (patch_embedding, weight)
         flat_weights = plan[:, :, k].reshape(-1)  # [B*T]
         flat_patches = x_wsi.reshape(-1, x_wsi.shape[-1])  # [B*T, D]
-        flat_patients = np.repeat(np.arange(B), T)  # [B*T]
+        flat_patients = np.repeat(np.arange(B), T_wsi_input)  # [B*T]
 
         # Top-K indices
         top_idx = np.argsort(flat_weights)[::-1][:top_k_patches]
@@ -1010,7 +1016,7 @@ def experiment_F_per_patch_retrieval(
 
     plt.suptitle(
         f"ACT-Surv v5 — Per-archetype patch retrieval (top-{top_k_patches})\n"
-        f"Background: B×T={B*T} patches colored by α_{{·,k}}; red: top-{top_k_patches}",
+        f"Background: B×T={B*T_wsi_input} patches colored by α_{{·,k}}; red: top-{top_k_patches}",
         fontsize=11,
     )
     plt.tight_layout()
@@ -1031,7 +1037,7 @@ def experiment_F_per_patch_retrieval(
         "experiment": "F_per_patch_retrieval",
         "K": int(K),
         "B": int(B),
-        "T_patches_per_patient": int(T),
+        "T_patches_per_patient": int(T_plan),
         "top_k_patches_per_archetype": int(top_k_patches),
         "per_archetype": per_archetype,
         "summary": {
@@ -1115,6 +1121,13 @@ def parse_args() -> argparse.Namespace:
                    help="Experiment A2: cancer code (default: blca).")
     p.add_argument("--a2-fold", type=int, default=0,
                    help="Experiment A2: fold index (default: 0).")
+    # ── C: runtime benchmark scaling ───────────────────────────────────────────
+    p.add_argument("--c-benchmark-B", type=int, default=8,
+                   help="Experiment C: batch size B (default: 8).")
+    p.add_argument("--c-benchmark-T", type=int, default=2048,
+                   help="Experiment C: patches per patient T (default: 2048, realistic scale).")
+    p.add_argument("--c-benchmark-N-list", type=str, default="50,100,500,1000,2000,5000",
+                   help="Experiment C: comma-separated N values to benchmark (default: 50,100,500,1000,2000,5000).")
     return p.parse_args()
 
 
@@ -1212,7 +1225,17 @@ def main() -> int:
         if key not in selected:
             continue
         try:
-            res = runners[key](args, device_str)
+            if key == "C":
+                # Parse N_list from CLI
+                n_vals = [int(x.strip()) for x in args.c_benchmark_N_list.split(",")]
+                res = runners[key](
+                    args, device_str,
+                    N_list=tuple(n_vals),
+                    B=args.c_benchmark_B,
+                    T_wsi=args.c_benchmark_T,
+                )
+            else:
+                res = runners[key](args, device_str)
             all_results["experiments"][key] = res
             label = res.get("verdict")
             if label is None:
