@@ -403,58 +403,6 @@ def verify_claim4_archetype_differentiation(model, dataloader, device="cpu") -> 
 # Data loading
 # ---------------------------------------------------------------------------
 
-def build_synthetic_dataloader(model, batch_size: int = 4, num_batches: int = 4, device="cpu"):
-    """Build a synthetic dataloader that matches the loaded model's input shapes.
-
-    Mechanism checks (additive attribution, closed-form vs re-solve, convex hull,
-    archetype differentiation) only depend on the *shapes* of the inputs. The model's
-    forward pass produces valid transport plans and hazard logits as long as the inputs
-    are correctly shaped, which is sufficient for verifying the constructive claims on a
-    real trained checkpoint. This is used when the real `get_fold_dataset` pipeline is
-    unavailable (e.g. the checkpoint was trained with a different RNA format than the
-    verify-time YAML expects).
-    """
-    from torch.utils.data import DataLoader, Dataset
-
-    rna_fmt = getattr(model.args, "rna_format", "RNASeq")
-    omic_total = getattr(model.args, "omic_input_dim", None) or sum(model.omic_sizes)
-    wsi_dim = model.wsi_embedding_dim
-
-    class _SynthBatch(dict):
-        def __init__(self, b):
-            kw = {
-                "x_wsi": torch.randn(b, 32, wsi_dim, device=device),
-                "wsi_available": torch.ones(b, dtype=torch.bool, device=device),
-                "omics_available": torch.ones(b, dtype=torch.bool, device=device),
-            }
-            if rna_fmt == "Pathways":
-                for i, sz in enumerate(model.omic_sizes, start=1):
-                    kw[f"x_omic{i}"] = torch.randn(b, sz, device=device)
-            elif rna_fmt == "RNASeq":
-                kw["x_omics"] = torch.randn(b, omic_total, device=device)
-            elif rna_fmt == "GeneEmbedding":
-                kw["x_omics"] = torch.randn(b, 768, device=device)
-            else:
-                kw["x_omics"] = torch.randn(b, omic_total or 768, device=device)
-            super().__init__(kw)
-
-    class _SynthDS(Dataset):
-        def __len__(self):
-            return num_batches * batch_size
-
-        def __getitem__(self, idx):
-            return _SynthBatch(1)  # batch_size=1 so collate works cleanly
-
-    loader = DataLoader(_SynthDS(), batch_size=1, shuffle=False, num_workers=0)
-
-    # Custom collate to combine into batched dicts
-    def collate(_):
-        return _SynthBatch(batch_size)
-
-    loader = DataLoader(_SynthDS(), batch_size=1, shuffle=False, num_workers=0, collate_fn=collate)
-    return loader
-
-
 def build_dataloader(cancer: str, fold: int, batch_size: int = 4, device="cpu"):
     """Build a simple test dataloader for one fold."""
     try:
@@ -509,11 +457,10 @@ def main():
         device_str = "cpu"
 
     # Build the model first (always). Use a fixed config so the model architecture
-    # is reproducible. Synthetic data will be shaped to match.
+    # is reproducible.
     config_path = REPO_ROOT / "configs" / "act_surv_v5_blca.yaml"
     flat_cfg = flatten_config(load_config(config_path))
     flat_cfg["survot_method"] = "archetypal_transport_composition_v5"
-    # Use the YAML's declared encoding_dim; this is for the synthetic-data path.
     flat_cfg.setdefault("encoding_dim", 1024)
     flat_cfg.setdefault("omic_sizes", [128, 128, 128, 128])
     config_ns = argparse.Namespace(**flat_cfg)
@@ -598,34 +545,20 @@ def main():
     model.to(device_str)
     model.eval()
 
-    # Build dataloader
+    # Build dataloader (real BLCA data only — no synthetic fallback)
     print(f"\nLoading data: {args.cancer} fold {args.fold} ...")
-    dataloader = None
-    try:
-        dataloader = build_dataloader(args.cancer, args.fold, args.batch_size, device_str)
-        num_batches = len(dataloader)
-        print(f"  {num_batches} batches, batch_size={args.batch_size}")
-    except Exception as e:
-        print(f"WARNING: Real dataloader unavailable ({e});")
-    if dataloader is None:
-        print("  Falling back to shape-matched synthetic data for mechanism checks.")
-        dataloader = build_synthetic_dataloader(model, args.batch_size, num_batches=4, device=device_str)
-        print(f"  4 synthetic batches, batch_size={args.batch_size}")
+    dataloader = build_dataloader(args.cancer, args.fold, args.batch_size, device_str)
+    num_batches = len(dataloader)
+    print(f"  {num_batches} batches, batch_size={args.batch_size}")
 
     results = {}
     print("\n" + "=" * 60)
     print("ACT-Surv v5 Mechanism Verification")
     print("=" * 60)
 
-    def fmt(value, default="N/A"):
-        return default if value == "N/A" or value is None else value
-
     # Claim 1: Completeness
     print("\n[1/4] Verifying Claim 1: Completeness residual < 1e-5 ...")
-    if dataloader:
-        r1 = verify_claim1_completeness(model, dataloader, device_str)
-    else:
-        r1 = {"passed": False, "note": "No dataloader available"}
+    r1 = verify_claim1_completeness(model, dataloader, device_str)
     results["claim1_completeness"] = r1
     status = "✅ PASS" if r1.get("passed") else "❌ FAIL"
     mr = r1.get('max_residual', 'N/A')
@@ -635,10 +568,7 @@ def main():
 
     # Claim 2: Closed-form vs re-solve
     print("\n[2/4] Verifying Claim 2: Closed-form vs re-solve error < 0.001 ...")
-    if dataloader:
-        r2 = verify_claim2_closed_form_vs_resolve(model, dataloader, device_str)
-    else:
-        r2 = {"passed": False, "note": "No dataloader available"}
+    r2 = verify_claim2_closed_form_vs_resolve(model, dataloader, device_str)
     results["claim2_closed_form"] = r2
     status = "✅ PASS" if r2.get("passed") else "❌ FAIL"
     me = r2.get('max_error', 'N/A')
@@ -648,10 +578,7 @@ def main():
 
     # Claim 3: Bounded extrapolation
     print("\n[3/4] Verifying Claim 3: Convex hull (bounded extrapolation) ...")
-    if dataloader:
-        r3 = verify_claim3_bounded_extrapolation(model, dataloader, device_str)
-    else:
-        r3 = {"passed": False, "note": "No dataloader available"}
+    r3 = verify_claim3_bounded_extrapolation(model, dataloader, device_str)
     results["claim3_convex_hull"] = r3
     status = "✅ PASS" if r3.get("passed") else "❌ FAIL"
     mv = r3.get('max_violation', 'N/A')
@@ -661,10 +588,7 @@ def main():
 
     # Claim 4: Archetype differentiation
     print("\n[4/4] Verifying Claim 4: Archetype differentiation ...")
-    if dataloader:
-        r4 = verify_claim4_archetype_differentiation(model, dataloader, device_str)
-    else:
-        r4 = {"passed": False, "note": "No dataloader available"}
+    r4 = verify_claim4_archetype_differentiation(model, dataloader, device_str)
     results["claim4_archetype"] = r4
     status = "✅ PASS" if r4.get("passed") else "❌ FAIL"
     ml = r4.get('mean_pairwise_l1', 'N/A')
@@ -688,7 +612,7 @@ def main():
     else:
         out_dir = REPO_ROOT / "results" / "act_surv_v5" / "mechanism"
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / "fresh_init_mechanism_verification.json"
+        out_path = out_dir / "mechanism_verification.json"
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2, default=str)
     print(f"\nResults saved to: {out_path}")

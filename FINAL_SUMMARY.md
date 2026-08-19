@@ -1180,14 +1180,14 @@ v3.3 (UNI v1, leaky, `5fold`) = 0.6958 vs v3.8 highscore/base (UNI2-h, leaky, `5
 | **A** MLP-head 消融 | 4.3 (ablation) | ⚠️ **不可比** | ranking rho=-0.03，mean abs Delta = 0.57 | fresh-init 模型对随机输入打分相互独立，**需训练好的 checkpoint + 真实 val set** |
 | **B** 闭式反事实保真度 | 4.4 (counterfactual) | ✅ **通过** | median abs error **5.96e-08**，max 1.49e-07，n=32 | 远低于阈值 1e-3，闭式公式 vs 重解 Sinkhorn **完全一致** |
 | **C** Plan intervention speed-up | 4.5 (efficiency) | ✅ **通过（修复后）** | **B=8 T=2048** N=50: 25.9x / N=100: 46.6x / N=500: 69.0x / N=1000: 64.0x / N=2000: 68.0x / N=5000: **71.6x** | 在真实规模 B=8 T=2048 下达到 71.6x（超 50x 门槛）。Sinkhorn kernel launch 开销在 N>=5000 时被充分摊销，闭式删除算法优势明显 |
-| **D** Archetype morphology | 4.6 (visualization) | ✅ K=4 distinct | mean pairwise L1=0.137, utilisation [0.98, 1.00, 0.98, 1.00] | 4 个 archetype 互不塌缩，分布均匀；真实 WSI patch 检索脚本已就绪（需 checkpoint） |
-| **E** Mechanism 综合验证 | 4.7 (mechanism audit) | ✅ **4/4** | C1 max_residual=0 / C2 max_error=8.94e-08 / C3 convex hull violation 1.19e-07 / C4 mean L1=0.4786 (K=6) | fresh-init 上 4 个 constructive claim 全部通过；real checkpoint 待 checkpoint 可用后重跑 |
-| **F** Per-archetype patch retrieval | 4.6 (supplement) | ✅ synthetic PASS | top1_share=0.079, mean pairwise L2=1.340, K=4 | 合成数据上 archetype 可通过 patch embedding 空间检索区分；真实 WSI patch 检索脚本已就绪（需 checkpoint） |
+| **D** Archetype morphology | 4.6 (visualization) | ⚠️ **需真实数据重跑** | mean pairwise L1=0.137, utilisation [0.98, 1.00, 0.98, 1.00] | 4 个 archetype 互不塌缩，分布均匀；前置于真实 WSI patch 可视化（需先修复 `detect_dims` Pathway 判断 bug） |
+| **E** Mechanism 综合验证 | 4.7 (mechanism audit) | ⚠️ **需真实数据重跑** | C1 max_residual=0 / C2 max_error=8.94e-08 / C3 convex hull violation 1.19e-07 / C4 mean L1=0.4786 (K=6) | 4 个 constructive claim 在合成数据上全部通过；build_synthetic_dataloader 已删除，需在真实 BLCA val data 上重跑以确认 |
+| **F** Per-archetype patch retrieval | 4.6 (supplement) | ❌ **失败（待修复）** | 5次运行全部 `no valid batches` | 真实 WSI patch 前向传播失败；`detect_dims` 将 Pathways checkpoint (329 pathway, max_idx=328) 误判为 RNASeq，导致模型架构与 checkpoint 不匹配，权重未正确加载；修复 `detect_dims` 的 Pathway/RNASeq 判断逻辑后方可重跑 |
 
 ### 2026-08-18 代码修复记录
 
 - **C 实验 bug**：函数签名缺 `B`/`T_wsi` 参数 → 已加 CLI 参数 `--c-benchmark-B 8 --c-benchmark-T 2048`，默认 N 扩展到 5000
-- **F 实验 bug**：`x_wsi.shape=(8,64,D)` vs `plan.shape=(8,68,K)` 因模型内部 pad 不对齐 → 已加 `T_plan > T_wsi_input` 时截断逻辑
+- **F 实验 bug（已知根因）**：`detect_dims` 将 Pathways checkpoint (329 pathway, max_idx=328) 误判为 RNASeq → 模型被构建为 RNASeq 格式 → checkpoint 权重无法正确加载 (missing=2, unexpected=1316) → 前向传播失败。修复方向：改用 `sig_networks` key 嵌套层级判断而非 `max_idx >= 10`
 - **临床富集脚本**：`scripts/clinical_enrichment_act_surv_v5.py` 新建，支持 `--all-folds`，Fisher exact + BH 校正
 
 ### 待 checkpoint 才能跑的项目（训练服务器上）
@@ -1217,7 +1217,7 @@ python scripts/run_act_surv_v5.py --cancers blca --folds 0 1 2 3 4 --variant v5_
   1. 加载训练好的 checkpoint（v5.1 BLCA 5-fold 存于训练服务器）
   2. 切换 encoder 输出到新增 `MLPSurvivalHead` 替换 ACT 的 `composition @ H`
   3. 在 BLCA fold test set 上跑 c-index，比较 DeltaC
-  4. checkpoint encoder 可能与当前 model.py Pathways 格式不兼容，需确认格式一致性
+  4. ~~checkpoint encoder 可能与当前 model.py Pathways 格式不兼容~~ → **已确认为 `detect_dims` bug**，非真实不兼容：修复后重新跑 E/F 即可
 
 - **C 的 100x 阈值**：合成 batch 太小（8 patches），前向开销 dominate。已在 B=8 T=2048 真实规模下补跑，达到 71.6x（超 50x 门槛）。
 
