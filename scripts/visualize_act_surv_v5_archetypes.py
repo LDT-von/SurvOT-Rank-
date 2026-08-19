@@ -59,6 +59,12 @@ def load_state_dict(path: Path) -> dict:
     return ckpt
 
 
+def natural_sort_key(s: str):
+    """Sort strings containing numbers so that 'sig_networks.10' comes after 'sig_networks.2'."""
+    import re
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", s)]
+
+
 def detect_dims(state: dict) -> dict:
     dims: dict[str, int] = {}
     if "wsi_mlp.0.weight" in state:
@@ -76,13 +82,15 @@ def detect_dims(state: dict) -> dict:
         if max_dot_count == 3:  # RNASeq: sig_networks.{mod}.0.weight
             dims["rna_format"] = "RNASeq"
             total = 0
-            for k in sorted(state.keys()):
+            for k in sorted(state.keys(), key=natural_sort_key):
                 if k.startswith("sig_networks.") and k.endswith(".0.weight"):
                     total += int(state[k].shape[1])
             dims["omic_input_dim"] = total
         else:  # Pathways: sig_networks.{p}.0.0.weight (dot_count >= 4)
+            # Natural sort so sizes[i] matches checkpoint pathway index i (not
+            # lexical, which would put '10' before '2').
             sizes = []
-            for k in sorted(state.keys()):
+            for k in sorted(state.keys(), key=natural_sort_key):
                 if k.startswith("sig_networks.") and k.endswith(".0.0.weight"):
                     sizes.append(int(state[k].shape[1]))
             if sizes:
@@ -234,7 +242,15 @@ def per_archetype_retrieval(
                 mask = nonzero[b]
                 if mask.sum() == 0:
                     continue
-                all_plans.append(plan[b][mask])
+                # Plan may be padded inside the model; align to x_wsi row count.
+                T_wsi = x_wsi_np.shape[1]
+                T_plan = plan.shape[1]
+                if T_plan >= T_wsi:
+                    plan_aligned = plan[b, :T_wsi]
+                else:
+                    pad_rows = np.zeros((T_wsi - T_plan, plan.shape[2]), dtype=plan.dtype)
+                    plan_aligned = np.concatenate([plan[b], pad_rows], axis=0)
+                all_plans.append(plan_aligned[mask])
                 all_x_wsi.append(x_wsi_np[b][mask])
 
     if not all_plans:
