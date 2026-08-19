@@ -1431,8 +1431,42 @@ machine-readable 表格见 `docs/scores/act_surv_v5_blca_hnsc_5fold.tsv`（CSV �
 > 6. **下一步动作**：固定 epoch=30 / 40 / 50（暂定 30，最稳）重训 v5 / v5.1 / v5.2 / v5.3 / v5.4 BLCA 5 fold，用 last_epoch 模型而非 best_val 模型重算 test c-index。这是最关键的下一步，若不重训则本批所有"v5.1 = +0.0167" 均视为 val selection noise。
 
 > 警示（强化）：
-> - v5.2 fold2 best @ epoch 2（Δ=0.1160）、v5.4 fold2 best @ epoch 2（Δ=0.0739）、v5.1 fold2 best @ epoch 4（Δ=0.1010）均为典型早熟峰。
+> - v5.2 fold2 best @ epoch 2（Δ=0.1160）、v5.4 fold2 best @ epoch 2（Δ=0.0739）、v5.1 fold2 fold2 best @ epoch 4（Δ=0.1010）均为典型早熟峰。
 > - 即便单独的 v5.3（不 overfit）在 test c-index 上 −0.017 也是真实退化（v5.3 的 5 fold 无 early-peak，全 epoch 平稳），所以"IPCW ranking 关掉 = 退化"本身是**成立的独立事实**，但与 v5.1 主叙事无直接关系。
+
+### v5.4 BLCA 重训 —— `5fold_legacy` split, 50ep（2026-08-19）
+
+> 与上方表不同：本次重训使用 `which_splits=5fold_legacy`（非 `5fold_uni2h`），是直接对 `legacy` 分桶
+> （更早的 BLCA 临床分桶）跑 5 fold，验证「split 依赖性」。
+>
+> 入口：`scripts/run_act_surv_v5.py --variant v5_4 --cancers blca --folds 0 1 2 3 4`
+> 日志：`logs/v5_4_blca_5fold_legacy.log`
+> 结果目录：`results/act_surv_v5_4_5fold_legacy/blca/`
+
+#### 主表 B — test c-index（best-val epoch 在 pkl）
+
+| Variant | F0 | F1 | F2 | F3 | F4 | **Mean ± Std** |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **v5.4** (KL×5, legacy) | 0.7559 | 0.7538 | 0.6926 | 0.6328 | 0.7260 | **0.7122 ± 0.0459** |
+| **v5.4** (KL×5, uni2h)  | 0.6771 | 0.6833 | 0.7091 | 0.6831 | 0.7581 | **0.7021 ± 0.0336** |
+| Δ (legacy − uni2h) | +0.0788 | +0.0705 | −0.0165 | −0.0503 | −0.0321 | **+0.0101** |
+
+| Fold | best cindex | @ epoch | stopped @ |
+|---|---|:---:|:---:|
+| 0 | 0.7559 | 11 | 49 |
+| 1 | 0.7538 | 7 | 49 |
+| 2 | 0.6926 | 21 | 49 |
+| 3 | 0.6328 | 9 | 49 |
+| 4 | 0.7260 | 26 | 49 |
+
+> **观察**：
+> 1. legacy split 下 v5.4 **mean = 0.7122**（略高于 uni2h 0.7021），Δ=+0.0101 仍在 fold 方差内，但说明「split 选择本身就是 ~0.01 量级的可观察变量」。
+> 2. fold3 仍是最差折（0.6328），与 uni2h 跑中 fold3 同样属于弱势折 ——「fold3 难」在两份独立 split 中均成立。
+> 3. legacy split 上 fold0/1 跑出 0.7559 / 0.7538 远高于 uni2h（0.6771 / 0.6833），差值 +0.07 ~ +0.08
+> 明显超出 best-val 过拟合虚高（~0.05 上限），推断是 **legacy split 的 fold0/1 训练/验证分桶更易区分**，
+> 与 v5.4 配方本身无关。
+> 4. 同一模型结构、同 50 epoch、只改 split → 0.0101 mean Δ 与单折 0.08 Δ 并存，意味着
+> BLCA 五折 CV 报告里「mean ± std」对 split 选法的依赖性需在论文方法节明确说明。
 
 ### IST-Surv 唯一跨癌种版本（2026-08-06）
 
