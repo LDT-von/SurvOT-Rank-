@@ -67,15 +67,20 @@ def detect_dims(state: dict) -> dict:
         dims["wsi_projection_dim"] = int(state["wsi_mlp.2.weight"].shape[0])
     sig_keys = [k for k in state if k.startswith("sig_networks.")]
     if sig_keys:
-        max_idx = max(int(k.split(".")[1]) for k in sig_keys)
-        if max_idx >= 10:
+        # Detect RNASeq vs Pathways by key nesting depth, NOT by max pathway index.
+        #   RNASeq:   sig_networks.0.0.weight       (3 dots  → 4 parts)
+        #   Pathways: sig_networks.0.0.0.weight     (4 dots  → 5 parts)
+        # Wrong heuristic: max(pathway_index) >= 10 → falsely triggers RNASeq
+        #                  for Pathways checkpoints with >10 pathways.
+        max_dot_count = max(k.count(".") for k in sig_keys)
+        if max_dot_count == 3:  # RNASeq: sig_networks.{mod}.0.weight
             dims["rna_format"] = "RNASeq"
             total = 0
             for k in sorted(state.keys()):
-                if k.startswith("sig_networks.") and k.endswith(".0.0.weight"):
+                if k.startswith("sig_networks.") and k.endswith(".0.weight"):
                     total += int(state[k].shape[1])
             dims["omic_input_dim"] = total
-        else:
+        else:  # Pathways: sig_networks.{p}.0.0.weight (dot_count >= 4)
             sizes = []
             for k in sorted(state.keys()):
                 if k.startswith("sig_networks.") and k.endswith(".0.0.weight"):
