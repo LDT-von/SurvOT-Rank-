@@ -58,6 +58,11 @@ class DCTTransportInterventionConsistency(DistributionalCounterfactualTransport)
         )
         self.dct_v38_dose_every = int(getattr(args, "dct_v38_dose_every", 1))
 
+        # Ablation: permutation null (propagated from DCT base class).
+        # dct_perm_labels_seed is set by DistributionalCounterfactualTransport.__init__;
+        # we reference it here for clarity in Targeted Null experiments.
+        self.dct_perm_labels_seed = int(getattr(args, "dct_perm_labels_seed", 0))
+
         nonnegative = {
             "dct_v38_lambda_direction": self.dct_v38_lambda_direction,
             "dct_v38_lambda_dose": self.dct_v38_lambda_dose,

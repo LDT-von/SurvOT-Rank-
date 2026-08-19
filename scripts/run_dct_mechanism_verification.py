@@ -49,11 +49,11 @@ import torch.nn.functional as F
 warnings.filterwarnings("ignore")
 
 try:
-    from scripts import run_dct_v382_final_cross_cancer as base
+    from scripts.run_dct_v38_transport_consistency import _override_args
 except (ModuleNotFoundError, ImportError):
-    import run_dct_v382_final_cross_cancer as base
+    from run_dct_v38_transport_consistency import _override_args
 
-REPO_ROOT = base.REPO_ROOT
+REPO_ROOT = Path(__file__).parent.parent.resolve()
 RESULTS_BASE = Path("results/dct_v382_mechanism_verification")
 
 # =============================================================================
@@ -530,7 +530,7 @@ class MechanismVerificationRunner:
                  python_cmd: str = "python"):
         self.study = study
         self.fold = fold
-        self.base_config = base_config
+        self.base_config = Path(base_config)
         self.python_cmd = python_cmd
         
         # Initialize experiment objects
@@ -540,10 +540,19 @@ class MechanismVerificationRunner:
         self.faithfulness_exp = FaithfulnessExperiment(study=study, fold=fold)
     
     def run_sensitivity_experiments(self, gpu: int = 0, max_epochs: int = 30):
-        """Run λ_direction sensitivity sweep."""
+        """Run λ_direction sensitivity sweep.
+        
+        Args:
+            gpu: GPU device id
+            max_epochs: Max training epochs
+            
+        Note: Sensitivity experiments run sequentially due to single-GPU memory constraint.
+              RTX 5090 32GB can only run one training at a time.
+        """
         print(f"\n{'='*60}")
         print(f"EXPERIMENT 1: Sensitivity Analysis")
         print(f"Testing λ_direction ∈ {LAMBDA_DIRECTION_VALUES}")
+        print(f"Running sequentially (single GPU)")
         print(f"{'='*60}")
         
         results = []
@@ -551,28 +560,37 @@ class MechanismVerificationRunner:
             print(f"\n  Running with λ_direction = {lambda_dir}")
             
             overrides = self.sensitivity_exp.get_config_overrides(lambda_dir)
-            override_str = " ".join([f"--set {k}={v}" for k, v in overrides.items()])
+            result_dir = RESULTS_BASE / "sensitivity" / f"{self.study}_fold{self.fold}_ld{lambda_dir}"
             
-            # Build command
+            values = {
+                "k_start": self.fold,
+                "k_end": self.fold + 1,
+                "gpu": gpu,
+                "results_dir": result_dir.as_posix(),
+                "max_epochs": max_epochs,
+                "specific_simple": f"dct_mech_verif_sens_{self.study}_ld{lambda_dir}",
+            }
+            values.update(overrides)
+            
             cmd = (
-                f"{self.python_cmd} scripts/run_dct_v382_final_cross_cancer.py run "
-                f"--config {self.base_config} "
-                f"--study {self.study} --k_start {self.fold} --k_end {self.fold + 1} "
-                f"--gpu {gpu} --max_epochs {max_epochs} "
-                f"--results_dir results/dct_v382_mechanism_verification/sensitivity/{self.study}_fold{self.fold}_ld{lambda_dir} "
-                f"{override_str}"
+                self.python_cmd,
+                "-m",
+                "survot_rank.cli",
+                "train",
+                "--config",
+                self.base_config.as_posix(),
+                *_override_args(values),
             )
             
-            print(f"    CMD: {cmd}")
-            os.system(cmd)
+            cmd_str = " ".join(str(c) for c in cmd)
+            print(f"    CMD: {cmd_str}")
+            os.system(cmd_str)
             
-            # After training, run audit
             results.append({
                 "lambda_direction": lambda_dir,
                 "status": "completed"
             })
         
-        # Save aggregated results
         results_df = pd.DataFrame(results)
         self.sensitivity_exp.save_results(results_df)
         
@@ -590,19 +608,31 @@ class MechanismVerificationRunner:
             print(f"\n  Running with permuted labels (seed={seed})")
             
             overrides = self.null_exp.get_config_overrides(seed)
-            override_str = " ".join([f"--set {k}={v}" for k, v in overrides.items()])
+            result_dir = RESULTS_BASE / "targeted_null" / f"{self.study}_fold{self.fold}_seed{seed}"
+            
+            values = {
+                "k_start": self.fold,
+                "k_end": self.fold + 1,
+                "gpu": gpu,
+                "results_dir": result_dir.as_posix(),
+                "max_epochs": max_epochs,
+                "specific_simple": f"dct_mech_verif_null_{self.study}_seed{seed}",
+            }
+            values.update(overrides)
             
             cmd = (
-                f"{self.python_cmd} scripts/run_dct_v382_final_cross_cancer.py run "
-                f"--config {self.base_config} "
-                f"--study {self.study} --k_start {self.fold} --k_end {self.fold + 1} "
-                f"--gpu {gpu} --max_epochs {max_epochs} "
-                f"--results_dir results/dct_v382_mechanism_verification/targeted_null/{self.study}_fold{self.fold}_seed{seed} "
-                f"{override_str}"
+                self.python_cmd,
+                "-m",
+                "survot_rank.cli",
+                "train",
+                "--config",
+                self.base_config.as_posix(),
+                *_override_args(values),
             )
             
-            print(f"    CMD: {cmd}")
-            os.system(cmd)
+            cmd_str = " ".join(str(c) for c in cmd)
+            print(f"    CMD: {cmd_str}")
+            os.system(cmd_str)
             
             results.append({
                 "null_seed": seed,

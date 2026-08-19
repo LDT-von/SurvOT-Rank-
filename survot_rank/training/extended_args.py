@@ -419,6 +419,27 @@ def build_base_parser() -> argparse.ArgumentParser:
         "--dct_v382_adaptive_kl_strength", type=float, default=0.01
     )
 
+    # Ablation switches shared across DCT variants.
+    parser.add_argument(
+        "--dct_perm_labels_seed", type=int, default=0,
+        help=(
+            "Permute event times before stage fitting (seed > 0 triggers null calibration). "
+            "Used in the Targeted Null experiment."
+        ),
+    )
+    parser.add_argument(
+        "--dct_random_anchors", action="store_true", default=False,
+        help="Use random anchor costs instead of learned ones (ablation).",
+    )
+    parser.add_argument(
+        "--dct_fixed_coupling", action="store_true", default=False,
+        help="Fix coupling to uniform distribution (ablation).",
+    )
+    parser.add_argument(
+        "--dct_stage_jitter_fraction", type=float, default=0.0,
+        help="Jitter stage edges by this fraction of the total span (ablation).",
+    )
+
     # DCT v4.1 Survival-Evidence Ledger (SELC). This method replaces the
     # inherited slot mechanism while retaining the verified v3.3 DCT path.
     parser.add_argument("--v41_modality_dropout", type=float, default=0.35)
