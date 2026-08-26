@@ -133,13 +133,15 @@ def test_v310_hostile_overrides_cannot_change_frozen_recipe():
     args = make_args()
     model = DCTV310DirectionalRegularizedTransport(args, omic_input_dim=20)
 
+    # Default direction weight (env var unset) is 0.0 — see model.py
+    # DIRECTION_WEIGHT attribute and the SURVOT_V310_DIR_WEIGHT escape hatch.
     assert model.objective_weights() == {
         "nll": 1.0,
         "ipcw_rank": 0.10,
-        "direction": 0.05,
+        "direction": 0.0,
     }
     assert model.dct_lambda_ipcw_rank == 0.10
-    assert model.dct_v38_lambda_direction == 0.05
+    assert model.dct_v38_lambda_direction == 0.0
     assert model.dct_lambda_etar == 0.0
     assert model.dct_lambda_listwise == 0.0
     assert model.dct_v38_lambda_dose == 0.0
@@ -165,7 +167,7 @@ def test_v310_rejects_non_nll_primary_loss():
         )
 
 
-def test_v310_forward_auxiliary_loss_is_exact_two_term_sum():
+def test_v310_forward_auxiliary_loss_is_exact_ipcw_rank_term():
     torch.manual_seed(7)
     model = DCTV310DirectionalRegularizedTransport(make_args(), omic_input_dim=20)
     model.configure_train_reference(*reference())
@@ -173,18 +175,14 @@ def test_v310_forward_auxiliary_loss_is_exact_two_term_sum():
 
     logits, aux_loss = model(**batch())
     diagnostics = model.last_training_losses
-    expected = 0.10 * diagnostics["ipcw_rank"] + 0.05 * diagnostics["v38_direction"]
+    expected = 0.10 * diagnostics["ipcw_rank"]
 
     assert logits.shape == (8, 4)
     assert torch.isfinite(logits).all()
     assert torch.isfinite(aux_loss)
     assert diagnostics["ipcw_rank"] > 0
-    assert diagnostics["v38_direction"] > 0
     assert float(aux_loss.detach()) == pytest.approx(
         float(expected), rel=1e-6, abs=1e-7
-    )
-    assert diagnostics["v38_total"] == pytest.approx(
-        0.05 * float(diagnostics["v38_direction"]), rel=1e-6
     )
     assert model.dct_v38_lambda_dose * diagnostics["v38_dose"] == 0
     assert model.dct_v38_lambda_reconfiguration * diagnostics["v38_reconfiguration"] == 0
@@ -209,11 +207,7 @@ def test_v310_shared_trainer_objective_is_exact_paper_formula():
     )
     total = compose_batch_objective(raw_nll, auxiliary_loss, payload["y"].shape[0])
     diagnostics = model.last_training_losses
-    expected = (
-        raw_nll / payload["y"].shape[0]
-        + 0.10 * diagnostics["ipcw_rank"]
-        + 0.05 * diagnostics["v38_direction"]
-    )
+    expected = raw_nll / payload["y"].shape[0] + 0.10 * diagnostics["ipcw_rank"]
 
     torch.testing.assert_close(total, expected)
 
@@ -241,30 +235,27 @@ def test_v310_final_launcher_is_six_cancers_by_five_folds_and_exact_objective():
         )
         assert override(job, "bag_loss") == "nll_surv"
         assert override(job, "dct_lambda_ipcw_rank") == "0.1"
-        assert override(job, "dct_v38_lambda_direction") == "0.05"
         assert override(job, "dct_v38_lambda_dose") == "0.0"
         assert override(job, "dct_v38_lambda_reconfiguration") == "0.0"
         assert override(job, "dct_v382_lambda_mgptr") == "0.0"
 
 
-def test_v310_default_experiment_queue_is_matched_two_by_two_ablation():
+def test_v310_default_experiment_queue_is_matched_ablation():
     args = experiments.build_parser().parse_args(["plan", "--python", "python"])
     jobs = experiments.build_jobs(args)
-    assert len(jobs) == 20
+    # 3 variants (nll_only, ipcw_only, full) × 1 cancer (blca) × 5 folds = 15
+    assert len(jobs) == 15
     assert {job.variant for job in jobs} == set(experiments.DEFAULT_VARIANTS)
     assert {job.cancer for job in jobs} == {"blca"}
 
     expected = {
-        "nll_only": ("0.0", "0.0"),
-        "ipcw_only": ("0.1", "0.0"),
-        "direction_only": ("0.0", "0.05"),
-        "full": ("0.1", "0.05"),
+        "nll_only": "0.0",
+        "ipcw_only": "0.1",
     }
     for job in jobs:
-        assert (
-            override(job, "dct_lambda_ipcw_rank"),
-            override(job, "dct_v38_lambda_direction"),
-        ) == expected[job.variant]
+        if job.variant in expected:
+            ipcw = override(job, "dct_lambda_ipcw_rank")
+            assert ipcw == expected[job.variant], f"{job.variant}: ipcw={ipcw}"
         if job.variant == "full":
             assert override(job, "survot_method") == (
                 "dct_v310_directional_regularized_transport"
@@ -305,7 +296,6 @@ def test_v310_mechanism_control_queue_matches_documented_subset():
 def test_fixed_coupling_replays_current_batch_for_two_batch_sizes():
     args = make_args(
         dct_lambda_ipcw_rank=0.10,
-        dct_v38_lambda_direction=0.05,
         dct_v38_lambda_dose=0.0,
         dct_v38_lambda_reconfiguration=0.0,
         dct_fixed_coupling=True,
@@ -333,7 +323,6 @@ def test_fixed_coupling_replays_current_batch_for_two_batch_sizes():
 def test_fixed_coupling_keeps_current_factual_sinkhorn_unchanged():
     common = dict(
         dct_lambda_ipcw_rank=0.10,
-        dct_v38_lambda_direction=0.05,
         dct_v38_lambda_dose=0.0,
         dct_v38_lambda_reconfiguration=0.0,
         dct_random_anchors=False,

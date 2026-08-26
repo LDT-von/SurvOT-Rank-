@@ -1,0 +1,61 @@
+name: act_surv_v5_4_kirc
+description: >
+  v5.4 ACT-Surv (KL×5) — KIRC cross-cancer variant.
+  Identical to v5.4 BLCA except `study`, `results_dir`, `specific_simple`
+  re-tagged for KIRC. Lambda_balance ×5 (vs v5 baseline ×1), other
+  ACT-Surv v5 hyperparameters unchanged.
+
+data:
+  study: kirc
+  data_root_dir: /data/CPathPatchFeature
+  data_path: survot_rank/research/legacy/slotspe_runtime/dataset_csv
+  wsi_encoder: uni
+  rna_format: Pathways
+  label_col: survival_months_dss
+  signature: combine
+  n_classes: 4
+  num_patches: 2048
+  encoding_dim: 1024
+
+split:
+  k_start: 0
+  k_end: 5
+
+train:
+  survot_method: archetypal_transport_composition_v5
+  specific_simple: act_surv_v5_4_kirc
+  results_dir: results/act_surv_v5_4_5fold_legacy/kirc
+  max_epochs: 50
+  batch_size: 8
+  grad_clip_norm: 1.0
+  early_stop_patience: 0
+  fit_bins_on_train: true
+  binning_mode: global_qcut
+  event_stratified_batches: true
+  seed: 3
+  lr: 0.0005
+  opt: adamW
+  reg: 0.0005
+  scheduler: cosine
+  eta_min: 0.000001
+  gpu: 0
+  num_workers: 4
+  bag_loss: nll_surv
+  alpha_surv: 0.15
+  min_free_space_gb: 2.0
+
+model:
+  wsi_projection_dim: 256
+
+  # ── ACT-Surv v5 core (matches BLCA v5.4) ─────────────────────────────
+  act5_num_archetypes: 6
+  act5_epsilon: 0.10
+  act5_hazard_scale: 1.0
+  act5_warmup_epochs: 5
+
+  # ── Loss weights — v5.4 KL×5 ──────────────────────────────────────────
+  act5_lambda_balance: 0.05    # KL entropy balance ×5 vs v5 baseline 0.01
+  act5_lambda_rank: 0.10
+  act5_rank_margin: 0.02
+  act5_rank_temperature: 0.50
+  act5_rank_max_pairs: 4096

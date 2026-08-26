@@ -1,16 +1,22 @@
-"""DCT v3.10: the frozen paper-facing DCT-Reg objective.
+"""DCT v3.10: the frozen paper-facing DCT objective.
 
-The survival NLL is supplied by the shared trainer.  This model returns exactly
-two differentiable auxiliary terms:
+The survival NLL is supplied by the shared trainer.  The paper objective
+contributes one differentiable auxiliary term:
 
-    0.10 * IPCW pairwise ranking + 0.05 * directional transport response.
+    0.10 * IPCW pairwise ranking.
+
+An opt-in environment variable ``SURVOT_V310_DIR_WEIGHT`` can re-enable a
+non-zero direction coefficient for sensitivity sweeps.  When that variable is
+unset (or zero), the model behaves exactly as the frozen paper recipe.
 
 All historical DCT auxiliary objectives remain available through their original
-registered versions, but cannot be re-enabled in this final class by a config or
-CLI override.
+registered versions, but cannot be re-enabled in this final class by a config
+or CLI override.
 """
 
 from __future__ import annotations
+
+import os
 
 from survot_rank.research.methods.dct_transport_intervention_consistency.model import (
     DCTTransportInterventionConsistency,
@@ -20,16 +26,20 @@ from survot_rank.research.methods.dct_transport_intervention_consistency.model i
 class DCTV310DirectionalRegularizedTransport(
     DCTTransportInterventionConsistency
 ):
-    """Frozen DCT-Reg recipe: NLL + 0.10 IPCW-rank + 0.05 direction.
+    """Frozen DCT recipe: NLL + 0.10 IPCW-rank.
 
-    DCT v3.10 actively shapes the risk response to prognostic ground-cost
-    interventions.  It does not claim that an unconstrained OT plan naturally
-    carries prognostic semantics, and it does not make a causal-treatment claim.
+    DCT v3.10 uses IPCW pairwise ranking as its only auxiliary objective.
+    A non-zero direction coefficient can be opted into for sensitivity sweeps
+    via the SURVOT_V310_DIR_WEIGHT environment variable; see the module
+    docstring for the contract.
     """
 
     NLL_WEIGHT = 1.0
     IPCW_RANK_WEIGHT = 0.10
-    DIRECTION_WEIGHT = 0.05
+    # Optional escape hatch for sensitivity tests. The launcher can opt in by
+    # exporting SURVOT_V310_DIR_WEIGHT before spawning the trainer; otherwise
+    # the paper objective stays at zero and this attribute is unused.
+    DIRECTION_WEIGHT = float(os.environ.get("SURVOT_V310_DIR_WEIGHT", "0.0"))
     FROZEN_ARGUMENTS = {
         "dct_lambda_ipcw_rank": IPCW_RANK_WEIGHT,
         "dct_ipcw_rank_margin": 0.02,
@@ -38,13 +48,8 @@ class DCTV310DirectionalRegularizedTransport(
         "dct_ipcw_rank_memory_size": 64,
         "dct_lambda_etar": 0.0,
         "dct_lambda_listwise": 0.0,
-        "dct_v38_lambda_direction": DIRECTION_WEIGHT,
         "dct_v38_lambda_dose": 0.0,
         "dct_v38_lambda_reconfiguration": 0.0,
-        "dct_v38_direction_margin": 0.02,
-        "dct_v38_temperature": 0.05,
-        "dct_v38_alpha_mid": 0.50,
-        "dct_v38_alpha_full": 1.00,
         "dct_v38_warmup_epochs": 0,
         "dct_v38_ramp_epochs": 0,
         "dct_anchor_momentum": 0.90,
@@ -114,12 +119,14 @@ class DCTV310DirectionalRegularizedTransport(
         transport_metrics,
         epoch,
     ):
-        """Combine only the two frozen auxiliary terms.
+        """Combine the frozen IPCW term with the optional direction term.
 
-        ``transport_objective`` is already exactly ``0.05 * direction`` because
-        dose and reconfiguration are class invariants at zero.  Keeping this
-        combiner local prevents a future parent-class ETAR change from altering
-        the DCT v3.10 objective.
+        The direction term is included only when ``SURVOT_V310_DIR_WEIGHT`` is
+        set to a non-zero value (sensitivity sweeps).  When the variable is
+        zero the parent already produces ``transport_objective == 0`` and the
+        return value collapses to ``IPCW_RANK_WEIGHT * ipcw_rank_loss``.
+        Keeping this combiner local prevents a future parent-class ETAR change
+        from altering the DCT v3.10 objective.
         """
 
         del etar_loss, transport_metrics, epoch
