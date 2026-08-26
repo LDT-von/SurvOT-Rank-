@@ -271,7 +271,7 @@ def _run_alpha_sweep(
     sweep_alphas = np.array(alpha_list, dtype=np.float64)
     case_offset = 0
     for batch_idx, data in enumerate(val_loader):
-        out, _, _, _ = _process_data_and_forward(
+        out, _, event_time, c = _process_data_and_forward(
             parsed, model, data, device, test=True
         )
         _, _ = out
@@ -364,7 +364,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
     device = next(model.parameters()).device
     label_df_indexed = val_data.label_df.reset_index(drop=True)
     for batch_idx, data in enumerate(val_loader):
-        out, _, _, event_time, c = _process_data_and_forward(
+        out, _, event_time, c = _process_data_and_forward(
             parsed, model, data, device, test=False
         )
         logits, _ = out
@@ -520,7 +520,7 @@ def _reconfiguration_from_distances(
 
 
 def _load_parsed_args(args: argparse.Namespace):
-    from survot_rank.training.extended_args import load_config, apply_overrides
+    from survot_rank.config import load_config, apply_overrides
     config = apply_overrides(load_config(args.config), args.set or [])
     parsed = process_args_extended(config_to_argv(config))
     return parsed

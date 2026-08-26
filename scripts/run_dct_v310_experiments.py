@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Matched objective and mechanism experiments for DCT v3.10.
 
-Core 2x2 objective ablation:
+Core objective ablation:
 
-* nll_only:       NLL
-* ipcw_only:      NLL + 0.10 IPCW-rank
-* direction_only: NLL + 0.05 direction
-* full:           NLL + 0.10 IPCW-rank + 0.05 direction
+* nll_only:   NLL
+* ipcw_only:  NLL + 0.10 IPCW-rank
+* full:       NLL + 0.10 IPCW-rank (frozen DCT v3.10 final recipe)
 
 Mechanism controls reuse the same v3.10 architecture and protocol but are
 registered through the v3.8 parent so the frozen final class remains immutable.
@@ -32,17 +31,10 @@ VARIANTS: dict[str, dict[str, object]] = {
     "nll_only": {
         "survot_method": PARENT_METHOD,
         "dct_lambda_ipcw_rank": 0.0,
-        "dct_v38_lambda_direction": 0.0,
     },
     "ipcw_only": {
         "survot_method": PARENT_METHOD,
         "dct_lambda_ipcw_rank": 0.10,
-        "dct_v38_lambda_direction": 0.0,
-    },
-    "direction_only": {
-        "survot_method": PARENT_METHOD,
-        "dct_lambda_ipcw_rank": 0.0,
-        "dct_v38_lambda_direction": 0.05,
     },
     "full": {},
     "fixed_coupling": {
@@ -64,10 +56,9 @@ VARIANTS: dict[str, dict[str, object]] = {
 }
 
 DESCRIPTIONS = {
-    "nll_only": "Prediction-only baseline.",
-    "ipcw_only": "Isolates the independent contribution of IPCW ranking.",
-    "direction_only": "Isolates direction regularization without IPCW ranking.",
-    "full": "Frozen DCT v3.10 final objective.",
+    "nll_only": "Prediction-only baseline (NLL only).",
+    "ipcw_only": "NLL + IPCW ranking only.",
+    "full": "Frozen DCT v3.10 final objective (NLL + IPCW).",
     "fixed_coupling": "Replays the current factual coupling under intervention.",
     "noisy_batch_mean_anchors": (
         "Replaces prognostic risk-set anchors with noisy batch-mean cost anchors."
@@ -76,7 +67,7 @@ DESCRIPTIONS = {
     "stage_jitter": "Jitters train-fold stage edges by 30 percent.",
 }
 
-DEFAULT_VARIANTS = ("nll_only", "ipcw_only", "direction_only", "full")
+DEFAULT_VARIANTS = ("nll_only", "ipcw_only", "full")
 RESULT_ROOT = Path("results/dct_v3.10_experiments/robust")
 SMOKE_ROOT = Path("results/dct_v3.10_experiments_smoke")
 
